@@ -32,25 +32,28 @@ final class LegacyScoringTests: XCTestCase {
     }
 }
 
-@MainActor
 final class CareerLengthTests: XCTestCase {
     /// A 2000 start runs the full 30 seasons; 2010 and 2020 starts run
     /// proportionally fewer, all converging on the same fixed end year —
     /// the core mechanic behind Legacy Mode's fixed-era career start.
     ///
-    /// This deliberately checks the `careerEndYear - startYear` arithmetic
-    /// directly rather than going through a live `GameStore()` instance:
-    /// constructing one bare (no `newGame`/App-lifecycle setup) currently
-    /// crashes this test bundle with a malloc double-free somewhere in its
-    /// initialization — a real, pre-existing issue with the class's raw
-    /// constructibility, unrelated to this formula, and worth its own
-    /// investigation rather than being masked here.
-    func testMaxSeasonsScalesWithStartYearToAFixedEndYear() {
-        XCTAssertEqual(GameStore.careerEndYear - 2000, 30)
-        XCTAssertEqual(GameStore.careerEndYear - 2010, 20)
-        XCTAssertEqual(GameStore.careerEndYear - 2020, 10)
+    /// Exercises the real `maxSeasons` computed property on a live
+    /// instance, not just the arithmetic it's defined by — see
+    /// `makeTestStore()` for why construction is routed through a `Task`
+    /// hop rather than called inline.
+    func testMaxSeasonsScalesWithStartYearToAFixedEndYear() async {
+        let store = await makeTestStore()
+        await MainActor.run {
+            store.startYear = 2000
+            XCTAssertEqual(store.maxSeasons, 30)
+            store.startYear = 2010
+            XCTAssertEqual(store.maxSeasons, 20)
+            store.startYear = 2020
+            XCTAssertEqual(store.maxSeasons, 10)
+        }
     }
 
+    @MainActor
     func testAvailableStartYearsAreExactlyTheThreeFixedEras() {
         XCTAssertEqual(GameStore.availableStartYears, [2000, 2010, 2020])
     }
