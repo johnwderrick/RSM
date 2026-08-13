@@ -40,6 +40,9 @@ final class LiveMatch {
     let userFreeKickTakerID: UUID?
     /// Difficulty multiplier applied to the user's team strength.
     let userStrengthMult: Double
+    /// The AI opponent's hidden manager trait — biases their starting
+    /// mentality (below) and, later, their substitution choices.
+    let opponentPersonality: ManagerPersonality?
 
     // MARK: - Live state
 
@@ -57,6 +60,16 @@ final class LiveMatch {
     /// Bumped the instant a player is sent off — the UI watches this to
     /// flash "RED CARD!".
     private(set) var redCardCount = 0
+    /// Bumped the instant any player is booked — the UI watches this to
+    /// flash "YELLOW CARD".
+    private(set) var yellowCardFlashCount = 0
+    private(set) var lastYellowCardPlayerName = ""
+    /// Bumped only for the user's own substitutions (always manual, so
+    /// there's no risk of the AI's own subs spamming this) — the UI
+    /// watches this to flash "SUBSTITUTION".
+    private(set) var substitutionFlashCount = 0
+    private(set) var lastSubOffName = ""
+    private(set) var lastSubOnName = ""
 
     private(set) var isPaused = true
     private(set) var isFinished = false
@@ -99,6 +112,12 @@ final class LiveMatch {
     // Persistent outcomes reported back to the league.
     private(set) var homeScorerIDs: [UUID] = []
     private(set) var awayScorerIDs: [UUID] = []
+    /// Assist credits — only for genuine open-play goals (not penalties or
+    /// direct free-kicks, neither of which has a real assist), and only on
+    /// the ~65% of those where the engine decides someone actually set it
+    /// up rather than the scorer doing it all himself.
+    private(set) var homeAssistIDs: [UUID] = []
+    private(set) var awayAssistIDs: [UUID] = []
     private(set) var injuredOut: [(side: Side, id: UUID)] = []
     private(set) var sentOff: [(side: Side, id: UUID)] = []
 
@@ -135,6 +154,21 @@ final class LiveMatch {
         homeShort = home.shortName
         awayShort = away.shortName
         isUserHome = homeIndex == store.userClubIndex
+
+        let opponentIndex = isUserHome ? awayIndex : homeIndex
+        let opponentPersonality = store.personality(forClubIndex: opponentIndex)
+        self.opponentPersonality = opponentPersonality
+        // AI mentality is fixed to balanced by default; a manager with a
+        // strong tactical identity sets up accordingly from kick-off — a
+        // cup specialist raises their game specifically in cup competition.
+        let openingMentality: Mentality
+        switch opponentPersonality {
+        case .aggressive: openingMentality = .attacking
+        case .defensive:  openingMentality = .defensive
+        case .cupSpecialist: openingMentality = isCup ? .attacking : .balanced
+        default: openingMentality = .balanced
+        }
+        if isUserHome { awayMentality = openingMentality } else { homeMentality = openingMentality }
 
         let (homeXI, homeSubs) = store.matchLineupAndBench(forClubIndex: homeIndex)
         let (awayXI, awaySubs) = store.matchLineupAndBench(forClubIndex: awayIndex)
@@ -197,6 +231,7 @@ final class LiveMatch {
         guard loopTask == nil else { return }
         events.append(MatchEvent(minute: 0, side: nil, type: .kickOff, name: "Kick-off", note: nil))
         say("Kick-off at \(stadium). \(homeName) vs \(awayName). \(weather.glyph) \(weather.rawValue.lowercased()) conditions.")
+        SoundManager.shared.play(.whistleKickOff)
         isPaused = false
         loopTask = Task { [weak self] in await self?.loop() }
     }
@@ -253,12 +288,17 @@ final class LiveMatch {
             isPaused = true
             events.append(MatchEvent(minute: 45, side: nil, type: .halfTime, name: "Half-time", note: nil))
             say("Half-time. \(homeShort) \(homeGoals)-\(awayGoals) \(awayShort).")
+            SoundManager.shared.play(.whistleHalfTime)
             runAISubstitutions(forcedAt: false)
         }
 
-        // Set stoppage time when regulation ends.
+        // Stoppage time reflects how eventful the second half actually
+        // was — goals, cards, subs and injuries all cost real clock time
+        // for a referee to manage — rather than a flat random guess.
         if minute == 90 && addedTime == 0 {
-            addedTime = Int.random(in: 1...5)
+            let stoppageCausingTypes: Set<MatchEventType> = [.goal, .penalty, .yellowCard, .redCard, .substitution, .injury]
+            let secondHalfStoppages = events.filter { $0.minute > 45 && stoppageCausingTypes.contains($0.type) }.count
+            addedTime = min(8, 1 + secondHalfStoppages / 2 + Int.random(in: 0...1))
         }
 
         generateChances()
@@ -267,8 +307,10 @@ final class LiveMatch {
         drainEnergy()
         recomputeDerivedStats()
 
-        // Occasional AI substitutions in the second half.
-        if minute == 60 || minute == 72 {
+        // Occasional AI substitutions in the second half, plus one last
+        // proactive window late on to freshen tired legs before the final
+        // push rather than leaving it entirely to the reactive-to-injury path.
+        if minute == 60 || minute == 72 || minute == 80 {
             runAISubstitutions(forcedAt: false)
         }
 
@@ -290,6 +332,15 @@ final class LiveMatch {
         // The user's tactical instruction tweaks their own attack / solidity.
         if side == userSide { attack *= userInstruction.attack }
         if side.opposite == userSide { defence *= userInstruction.solidity }
+
+        // Late drama: a side chasing the game in the final quarter-hour
+        // pushes bodies forward — sharper going forward, thinner at the
+        // back for it — rather than settling for the scoreline.
+        if minute >= 75 {
+            if isLosing(side) { attack *= 1.16 }
+            if isLosing(side.opposite) { defence *= 0.90 }
+        }
+
         let homeBoost = side == .home ? 1.10 : 1.0
         let probability = 0.22 * homeBoost * attack / (attack + defence)
 
@@ -363,12 +414,15 @@ final class LiveMatch {
         writePitch(side) { $0[index].yellowCards += 1 }
         let player = pitch(side)[index].player
         yellowByID[player.id, default: 0] += 1
+        lastYellowCardPlayerName = player.name
+        yellowCardFlashCount += 1
         if pitch(side)[index].yellowCards >= 2 {
             sendOff(side, playerIndex: index, note: "Second yellow")
         } else {
             events.append(MatchEvent(minute: minute, side: side, type: .yellowCard,
                                      name: player.name.uppercased(), note: nil))
             say("🟨 \(player.name) (\(teamName(side))) is booked.", side: side)
+            SoundManager.shared.play(.yellowCard)
         }
     }
 
@@ -384,7 +438,11 @@ final class LiveMatch {
         events.append(MatchEvent(minute: minute, side: side, type: .redCard,
                                  name: player.name.uppercased(), note: note))
         say("🟥 RED CARD! \(player.name) (\(teamName(side))) is sent off — \(note.lowercased()).", side: side)
+        SoundManager.shared.play(.redCard)
         redCardCount += 1
+        // A red card is one of the biggest momentum swings in the game —
+        // the side with a man advantage press on, the reduced side retreats.
+        bumpMomentum(toward: side.opposite, by: 0.12)
     }
 
     // MARK: - Goals
@@ -398,17 +456,55 @@ final class LiveMatch {
     private func recordGoal(_ side: Side, scorer: Player, type: MatchEventType, note: String?) {
         if side == .home { homeGoals += 1; homeScorerIDs.append(scorer.id) }
         else { awayGoals += 1; awayScorerIDs.append(scorer.id) }
+        var assistNote = ""
+        if type == .goal && note == nil, let assister = weightedAssister(side, excluding: scorer.id) {
+            if side == .home { homeAssistIDs.append(assister.id) } else { awayAssistIDs.append(assister.id) }
+            assistNote = " (assist: \(assister.name))"
+        }
         events.append(MatchEvent(minute: minute, side: side, type: type,
                                  name: scorer.name.uppercased(), note: note))
         let how = note == "(PEN)" ? " from the spot" : (note == "(FK)" ? " with a free-kick" : "")
-        say("⚽︎ GOAL! \(scorer.name) scores\(how) for \(teamName(side))! \(homeShort) \(homeGoals)-\(awayGoals) \(awayShort)", side: side)
+        say("⚽︎ GOAL! \(scorer.name) scores\(how) for \(teamName(side))!\(assistNote) \(homeShort) \(homeGoals)-\(awayGoals) \(awayShort)", side: side)
+        SoundManager.shared.play(.goalCrowd)
         bumpMomentum(toward: side, by: 0.22)
+        // The crowd doesn't sing for every single goal — but the home end
+        // celebrating one of their own is a nice, occasional flourish.
+        if side == userSide, Double.random(in: 0..<1) < 0.35 {
+            say("🎵 The crowd breaks into song: \"\(ChantBook.goalChant(playerName: scorer.name))\"", side: side)
+        }
+    }
+
+    /// Roughly two-thirds of open-play goals have a real assist in
+    /// football; the rest are solo efforts, rebounds or headers off a
+    /// hopeful ball nobody's really claiming. Weighted toward players with
+    /// good passing/vision, same style as `weightedScorer`.
+    private func weightedAssister(_ side: Side, excluding scorerID: UUID) -> Player? {
+        guard Double.random(in: 0..<1) < 0.65 else { return nil }
+        let squad = pitch(side).filter { $0.onPitch && $0.player.id != scorerID }.map { $0.player }
+        guard !squad.isEmpty else { return nil }
+        func weight(_ p: Player) -> Double {
+            attr(p, "Passing") * 2.0 + attr(p, "Vision") * 1.5 + Double(p.rating) * 0.2
+        }
+        let total = squad.reduce(0.0) { $0 + weight($1) }
+        var roll = Double.random(in: 0..<max(total, 0.001))
+        for player in squad {
+            let w = weight(player)
+            if roll < w { return player }
+            roll -= w
+        }
+        return squad.last
     }
 
     /// Shifts momentum toward a side, clamped to 0.15…0.85.
     private func bumpMomentum(toward side: Side, by amount: Double) {
         let delta = side == .home ? amount : -amount
         momentum = min(0.85, max(0.15, momentum + delta))
+    }
+
+    private func isLosing(_ side: Side) -> Bool {
+        let goalsFor = side == .home ? homeGoals : awayGoals
+        let goalsAgainst = side == .home ? awayGoals : homeGoals
+        return goalsFor < goalsAgainst
     }
 
     /// A direct free-kick attempt, taken by the side's designated taker.
@@ -484,6 +580,10 @@ final class LiveMatch {
                                  name: "\(surnameOf(on.name)) ▸ \(surnameOf(off.player.name))",
                                  note: nil))
         say("Substitution for \(teamName(side)): \(on.name) on for \(off.player.name).", side: side)
+        SoundManager.shared.play(.substitution)
+        lastSubOffName = off.player.name
+        lastSubOnName = on.name
+        substitutionFlashCount += 1
         return true
     }
 
@@ -499,13 +599,25 @@ final class LiveMatch {
         let onField = pitch(side).enumerated().filter { $0.element.onPitch && $0.element.player.position != .goalkeeper }
         guard let tired = onField.min(by: { $0.element.energy < $1.element.energy }) else { return }
         guard tired.element.energy < 78 || forced else { return }
-        guard let fresh = bench(side).sorted(by: { $0.rating > $1.rating }).first,
+        guard let fresh = pickSubstitute(from: bench(side)),
               let benchIndex = bench(side).firstIndex(where: { $0.id == fresh.id }) else { return }
 
         writePitch(side) { $0[tired.offset].onPitch = false }
         writeBench(side) { $0.remove(at: benchIndex) }
         writePitch(side) { $0.append(PitchPlayer(player: fresh, energy: 100)) }
         setSubsLeft(side, subsLeft(side) - 1)
+    }
+
+    /// Who comes off the bench — normally the best-rated option, but a
+    /// youth developer would rather blood a promising young player than
+    /// always reach for the highest-rated veteran on the bench.
+    private func pickSubstitute(from bench: [Player]) -> Player? {
+        guard !bench.isEmpty else { return nil }
+        if opponentPersonality == .youthDeveloper,
+           let youngster = bench.filter({ $0.age <= 21 }).max(by: { $0.rating < $1.rating }) {
+            return youngster
+        }
+        return bench.sorted(by: { $0.rating > $1.rating }).first
     }
 
     // MARK: - Injuries
@@ -645,6 +757,7 @@ final class LiveMatch {
         computeUserRatings()
         say("Full-time! \(homeShort) \(homeGoals)-\(awayGoals) \(awayShort).")
         events.append(MatchEvent(minute: minute, side: nil, type: .fullTime, name: "Full-time", note: nil))
+        SoundManager.shared.play(.whistleFullTime)
         loopTask?.cancel()
         loopTask = nil
     }

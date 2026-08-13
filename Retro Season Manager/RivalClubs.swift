@@ -44,3 +44,15 @@ enum RivalClubs {
         pairs[nameA]?.contains(nameB) ?? false
     }
 }
+
+/// A rivalry that formed organically during a career — a title race, a
+/// string of ill-tempered meetings — on top of the real-world derbies
+/// above. Order-independent: `clubA`/`clubB` don't imply direction.
+struct RivalryPair: Codable, Equatable {
+    let clubA: String
+    let clubB: String
+
+    func involves(_ nameA: String, _ nameB: String) -> Bool {
+        (clubA == nameA && clubB == nameB) || (clubA == nameB && clubB == nameA)
+    }
+}

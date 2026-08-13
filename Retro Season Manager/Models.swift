@@ -214,6 +214,67 @@ enum Personality: String, Codable, CaseIterable {
     }
 }
 
+/// How hard a club is to do transfer business with — a distinct trait
+/// from `ManagerPersonality` (which drives an AI manager's own buying
+/// habits): this one governs how the club's board responds when it's on
+/// the other side of the table from the user, in `proposeBid` and
+/// `counterSellOffer`.
+enum ClubNegotiationStance: String, Codable, CaseIterable {
+    case difficult, flexible, desperate, protective, balanced
+
+    /// >1 = harder to please (tighter thresholds, smaller concessions);
+    /// <1 = easier. Applied by multiplying when the club is selling
+    /// (needs relatively more to say yes) and dividing when it's buying
+    /// (won't stretch as far above value to say yes).
+    var hardnessMultiplier: Double {
+        switch self {
+        case .difficult:  return 1.25
+        case .flexible:   return 0.8
+        case .desperate:  return 0.65
+        case .protective: return 1.15
+        case .balanced:   return 1.0
+        }
+    }
+
+    /// Extra resistance specifically for a genuine star (rating ≥ 80) —
+    /// only a protective board treats its best players differently.
+    func starPlayerHardness(rating: Int) -> Double {
+        self == .protective && rating >= 80 ? 1.25 : 1.0
+    }
+
+    var displayLabel: String {
+        switch self {
+        case .difficult:  return "Difficult negotiator"
+        case .flexible:   return "Flexible negotiator"
+        case .desperate:  return "Financially stretched"
+        case .protective: return "Protective of their best players"
+        case .balanced:   return "Balanced negotiator"
+        }
+    }
+}
+
+/// Hidden numeric personality values, 0...100 each, never shown directly
+/// in the UI — a richer, more granular layer on top of the `Personality`
+/// archetype above. Higher is always "more of the named quality" in a
+/// positive sense: a 90 temperament is composed, not explosive; a 90
+/// pressure is ice-cool in a big match. Expressed only through how a
+/// player trains, develops, handles moves, swings in morale, suits the
+/// captaincy, times their retirement, and comes across in the press —
+/// see the various `GameStore` extensions that read these fields.
+struct PlayerTraits: Codable {
+    var professionalism: Int
+    var leadership: Int
+    var temperament: Int
+    var loyalty: Int
+    var ambition: Int
+    var pressure: Int
+    var consistency: Int
+    var workEthic: Int
+
+    static let neutral = PlayerTraits(professionalism: 50, leadership: 50, temperament: 50, loyalty: 50,
+                                       ambition: 50, pressure: 50, consistency: 50, workEthic: 50)
+}
+
 /// A player's standing in the pecking order — driven by ability and
 /// whether they're actually starting, not stored on the player directly
 /// so it always reflects the squad's current shape. Flavours contract
@@ -301,6 +362,7 @@ struct Player: Identifiable, Codable {
     /// A fixed character trait set when the player is created — colours
     /// contract negotiations and how sharply their mood swings.
     var personality: Personality = .professional
+    var traits: PlayerTraits = .neutral
     /// A release-clause figure agreed at the last renewal, in £000s. Any
     /// bid a rival makes for this player is set at least this high.
     var releaseClause: Int? = nil
@@ -316,6 +378,17 @@ struct Player: Identifiable, Codable {
     /// a player more injury-prone on top of their fixed `durability`,
     /// resets to zero at season rollover.
     var injuriesThisSeason: Int = 0
+    /// League assists this season — resets alongside `goals`/`apps` at
+    /// season rollover. Attributed by the live match engine on non-penalty
+    /// goals.
+    var assists: Int = 0
+    /// Clean sheets kept this season while on the pitch as goalkeeper —
+    /// resets alongside `goals`/`apps` at season rollover.
+    var cleanSheets: Int = 0
+    /// The player's nation, for the profile screen and Hall of Fame — a
+    /// flavour detail set at generation time, not tied to any gameplay
+    /// mechanic.
+    var nationality: String = "England"
 
     /// Detailed 1...20 attributes, keyed by name.
     var attributes: [String: Int] = [:]
@@ -426,6 +499,8 @@ struct Player: Identifiable, Codable {
         case attributes, foot, recentRatings
         case retrainingRole, retrainingDaysRemaining, durability, releaseClause, injuriesThisSeason, personality
         case sellOnClause, buyBackClause
+        case assists, cleanSheets, nationality
+        case traits
     }
 }
 
@@ -482,8 +557,12 @@ extension Player {
         releaseClause = try container.decodeIfPresent(Int.self, forKey: .releaseClause)
         injuriesThisSeason = try container.decodeIfPresent(Int.self, forKey: .injuriesThisSeason) ?? 0
         personality = try container.decodeIfPresent(Personality.self, forKey: .personality) ?? .professional
+        traits = try container.decodeIfPresent(PlayerTraits.self, forKey: .traits) ?? .neutral
         sellOnClause = try container.decodeIfPresent(SellOnClause.self, forKey: .sellOnClause)
         buyBackClause = try container.decodeIfPresent(BuyBackClause.self, forKey: .buyBackClause)
+        assists = try container.decodeIfPresent(Int.self, forKey: .assists) ?? 0
+        cleanSheets = try container.decodeIfPresent(Int.self, forKey: .cleanSheets) ?? 0
+        nationality = try container.decodeIfPresent(String.self, forKey: .nationality) ?? "England"
     }
 }
 
@@ -686,6 +765,86 @@ struct HallEntry: Identifiable, Codable {
     let peakSeason: String
 }
 
+/// A player permanently inducted into a club's Hall of Fame at retirement —
+/// judged on real career data accumulated while playing under the user's
+/// management (appearances, goals, assists, clean sheets, average rating,
+/// captaincy, loyalty, trophies, individual awards), not a fabricated
+/// record. See `GameStore+CareerHistory.swift`'s `evaluateForLegendStatus`
+/// for the induction criteria.
+struct ClubLegend: Identifiable, Codable {
+    var id = UUID()
+    let playerID: UUID
+    let name: String
+    let position: Position
+    let nationality: String
+    let clubName: String
+    let joinedSeason: Int
+    let retiredSeason: Int
+    let finalAge: Int
+    let appearances: Int
+    let goals: Int
+    let assists: Int
+    let cleanSheets: Int
+    let averageRating: Double
+    let seasonsAsCaptain: Int
+    let trophiesWon: [String]
+    let individualAwards: Int
+    let peakRating: Int
+    let legendScore: Int
+    let isGlobalLegend: Bool
+    let biography: String
+
+    var yearsAtClub: Int { max(1, retiredSeason - joinedSeason + 1) }
+}
+
+/// The user's own managerial career, evaluated the same way a Club Legend
+/// is — computed fresh from `history`/`careerHonours`/`careerRecordByClub`
+/// each time rather than stored, since it can always be re-derived and
+/// should reflect the career's current state, not a snapshot.
+struct LegendaryManagerProfile {
+    let totalSeasons: Int
+    let totalTrophies: Int
+    let totalWins: Int
+    let totalMatches: Int
+    let winPercentage: Int
+    let clubsManaged: Int
+    let longestSpell: (club: String, seasons: Int)?
+    let reputation: Int
+    let legendScore: Int
+    let isLegendary: Bool
+    let biography: String
+}
+
+/// A hidden behavioural profile for an AI-controlled manager — never shown
+/// directly in the UI, but expressed through how their club buys and sells,
+/// sets up tactically, uses its bench, develops youth, renews contracts and
+/// fares in the wider managerial job market. Keeps AI-vs-AI careers from
+/// ever playing out identically twice.
+enum ManagerPersonality: String, Codable, CaseIterable {
+    case aggressive, defensive, youthDeveloper, bigSpender, moneySaver
+    case cupSpecialist, pressFriendly, loyal, journeyman
+
+    static func random() -> ManagerPersonality { allCases.randomElement()! }
+}
+
+/// The tone of a generated fan reaction — drives which colour/glyph a
+/// `SocialPost` renders with.
+enum SocialSentiment: String, Codable {
+    case hype, outrage, banter, concern, pride
+}
+
+/// A short, punchy social-media-style reaction to a club event — never
+/// literal in-fiction dialogue, just flavour that makes the fanbase feel
+/// like a living crowd instead of a single confidence number.
+struct SocialPost: Identifiable, Codable {
+    var id = UUID()
+    let handle: String
+    let text: String
+    let date: Date
+    let likeCount: Int
+    let sentiment: SocialSentiment
+}
+
 /// A job offer from a rival club at the end of a season.
 struct JobOffer: Identifiable, Codable {
     var id = UUID()
@@ -710,6 +869,13 @@ struct ScoutReport {
     let verdict: String
     /// A short note on the player's profile.
     let note: String
+    /// A value range rather than a single figure — how wide it is (and
+    /// how confident the report is) depends on the scouting network's
+    /// level, not a hidden exact number handed straight to the manager.
+    let valueRangeLow: Int
+    let valueRangeHigh: Int
+    /// 0...100 — how much to trust the range above.
+    let confidence: Int
 }
 
 /// A rough multiplier for how much bigger transfer fees, wages and club
@@ -801,13 +967,15 @@ struct TransferOffer: Identifiable {
     let playerID: UUID
     let playerName: String
     let fromClubIndex: Int
-    /// Bid amount in thousands of pounds.
-    let amount: Int
+    /// Bid amount in thousands of pounds — a `var` since a counteroffer
+    /// revises it in place rather than replacing the whole offer (which
+    /// would mint a new `id` and break UI/expiry tracking).
+    var amount: Int
     let expiryDate: Date
 }
 
 /// The kind of news feed item.
-enum NewsCategory {
+enum NewsCategory: Codable {
     case result, transfer, offer, injury, board, info, world
 
     var glyph: String {
@@ -870,6 +1038,55 @@ struct NewsItem: Identifiable {
     let body: String
     var playerName: String? = nil
     var playerRating: Int? = nil
+    var playerPosition: Position? = nil
+    var playerAge: Int? = nil
+    var clubName: String? = nil
+    /// Links this inbox item to its generated front page in `GameStore.newspapers`,
+    /// when the underlying story was judged newspaper-worthy — see `GameStore+Newspaper.swift`.
+    var newspaperID: UUID? = nil
+}
+
+/// Which kind of outlet ran a story — drives both the masthead styling and
+/// the flavour of headline a story gets (a local human-interest piece reads
+/// very differently to a national splash on the same event).
+enum NewspaperOutlet: String, Codable, CaseIterable {
+    case local, national, european, magazine
+
+    var editionLabel: String {
+        switch self {
+        case .local:     return "LOCAL EDITION"
+        case .national:  return "NATIONAL EDITION"
+        case .european:  return "EUROPEAN EDITION"
+        case .magazine:  return "FEATURE"
+        }
+    }
+}
+
+/// How big a splash a story deserves — scales headline size/colour and
+/// decides whether it was worth printing a front page for at all.
+enum NewspaperImportance: Int, Codable, Comparable {
+    case minor = 0, notable = 1, major = 2, historic = 3
+
+    static func < (lhs: NewspaperImportance, rhs: NewspaperImportance) -> Bool {
+        lhs.rawValue < rhs.rawValue
+    }
+}
+
+/// A generated newspaper front page for one news story — the dressed-up
+/// presentation layer over a `NewsItem`. Kept as a permanent archive (unlike
+/// the ephemeral `news` inbox) so it can double as illustrated season history.
+struct Newspaper: Identifiable, Codable {
+    var id = UUID()
+    let date: Date
+    let season: Int
+    let outlet: NewspaperOutlet
+    let masthead: String
+    let headline: String
+    let standfirst: String
+    let body: String
+    let category: NewsCategory
+    let importance: NewspaperImportance
+    var playerName: String? = nil
     var playerPosition: Position? = nil
     var playerAge: Int? = nil
     var clubName: String? = nil
@@ -1129,6 +1346,19 @@ struct Club: Identifiable, Codable {
     /// seats and keeps fans onside; premium pricing earns more per head
     /// but costs some attendance and fan goodwill. Defaults to neutral.
     var ticketPriceLevel = 3
+    /// The rest of a club's investable infrastructure, 0...5 each, same
+    /// escalating-cost pattern as the academy/stadium above — see
+    /// `GameStore+Facilities.swift` for costs and `README`-style effects:
+    /// training ground speeds up player development; medical centre cuts
+    /// injury frequency/duration; scouting network speeds up and sharpens
+    /// scouting; hospitality adds matchday revenue; museum builds prestige
+    /// and fan loyalty; club shop boosts season commercial income.
+    var trainingGroundLevel = 0
+    var medicalCentreLevel = 0
+    var scoutingNetworkLevel = 0
+    var hospitalityLevel = 0
+    var museumLevel = 0
+    var clubShopLevel = 0
 
     var points: Int { won * 3 + drawn }
     var goalDifference: Int { goalsFor - goalsAgainst }
@@ -1140,14 +1370,28 @@ struct Club: Identifiable, Codable {
         case played, won, drawn, lost, goalsFor, goalsAgainst
         case recordWinMargin, recordWinDescription
         case youthFacilityLevel, stadiumExpansionLevel, ticketPriceLevel
+        case trainingGroundLevel, medicalCentreLevel, scoutingNetworkLevel
+        case hospitalityLevel, museumLevel, clubShopLevel
     }
 
-    /// Resets the season record and every player's goal tally.
+    /// Resets the season record and every player's season-scoped stats.
+    ///
+    /// `apps`/`ratingPoints` previously had no reset at all despite being
+    /// documented as "this season" — meaning `averageRating` was
+    /// quietly a career average, not a season one, and the all-time
+    /// accumulation in `GameStore+CareerHistory.swift` was re-adding an
+    /// ever-growing cumulative `apps` figure every season instead of just
+    /// that season's appearances. Fixed here alongside adding
+    /// `assists`/`cleanSheets` to the same reset.
     mutating func resetSeason() {
         played = 0; won = 0; drawn = 0; lost = 0
         goalsFor = 0; goalsAgainst = 0
         for index in players.indices {
             players[index].goals = 0
+            players[index].assists = 0
+            players[index].cleanSheets = 0
+            players[index].apps = 0
+            players[index].ratingPoints = 0
             players[index].injuriesThisSeason = 0
         }
     }
@@ -1180,6 +1424,12 @@ extension Club {
         youthFacilityLevel = try container.decodeIfPresent(Int.self, forKey: .youthFacilityLevel) ?? 0
         stadiumExpansionLevel = try container.decodeIfPresent(Int.self, forKey: .stadiumExpansionLevel) ?? 0
         ticketPriceLevel = try container.decodeIfPresent(Int.self, forKey: .ticketPriceLevel) ?? 3
+        trainingGroundLevel = try container.decodeIfPresent(Int.self, forKey: .trainingGroundLevel) ?? 0
+        medicalCentreLevel = try container.decodeIfPresent(Int.self, forKey: .medicalCentreLevel) ?? 0
+        scoutingNetworkLevel = try container.decodeIfPresent(Int.self, forKey: .scoutingNetworkLevel) ?? 0
+        hospitalityLevel = try container.decodeIfPresent(Int.self, forKey: .hospitalityLevel) ?? 0
+        museumLevel = try container.decodeIfPresent(Int.self, forKey: .museumLevel) ?? 0
+        clubShopLevel = try container.decodeIfPresent(Int.self, forKey: .clubShopLevel) ?? 0
     }
 }
 

@@ -630,38 +630,139 @@ enum AchievementKind: String, CaseIterable, Codable, Identifiable {
     case wins100 = "100 Wins"
     case wins200 = "200 Wins"
     case dynasty = "Dynasty"
+    case giantKiller = "Giant Killer"
+    case youthRevolution = "Youth Revolution"
+    case transferGenius = "Transfer Genius"
+    case underdog = "Underdog"
+    case greatEscape = "Great Escape"
+    case matches1000 = "1000 Matches"
+    case legendaryManager = "Legendary Manager"
 
     var id: String { rawValue }
 
     var subtitle: String {
         switch self {
-        case .promotion:     return "Win promotion to a higher division."
-        case .leagueTitle:   return "Win the league title."
-        case .cupWinner:     return "Win a domestic cup."
-        case .europeanGlory: return "Win a European trophy."
-        case .treble:        return "Win the league, a cup and Europe in the same season."
-        case .invincible:    return "Go through an entire league season unbeaten."
-        case .wins50:        return "Win 50 matches as a manager."
-        case .wins100:       return "Win 100 matches as a manager."
-        case .wins200:       return "Win 200 matches as a manager."
-        case .dynasty:       return "Manage the same club for 10 seasons."
+        case .promotion:        return "Win promotion to a higher division."
+        case .leagueTitle:      return "Win the league title."
+        case .cupWinner:        return "Win a domestic cup."
+        case .europeanGlory:    return "Win a European trophy."
+        case .treble:           return "Win the league, a cup and Europe in the same season."
+        case .invincible:       return "Go through an entire league season unbeaten."
+        case .wins50:           return "Win 50 matches as a manager."
+        case .wins100:          return "Win 100 matches as a manager."
+        case .wins200:          return "Win 200 matches as a manager."
+        case .dynasty:          return "Manage the same club for 10 seasons."
+        case .giantKiller:      return "Beat a club far above your station three times in a career."
+        case .youthRevolution:  return "Give five academy graduates real first-team minutes in one season."
+        case .transferGenius:   return "Turn a profit on five separate transfer sales."
+        case .underdog:         return "Win a major trophy as one of the least fancied clubs in your division."
+        case .greatEscape:      return "Survive relegation by the barest of margins."
+        case .matches1000:      return "Take charge of 1,000 matches as a manager."
+        case .legendaryManager: return "Build a managerial career worthy of legend."
+        }
+    }
+
+    /// The bigger, punchier headline used on the unlock celebration and
+    /// the history page — distinct from the shorter grid label above.
+    var flavorTitle: String {
+        switch self {
+        case .promotion:        return "PROMOTION!"
+        case .leagueTitle:      return "CHAMPIONS!"
+        case .cupWinner:        return "CUP WINNERS!"
+        case .europeanGlory:    return "EUROPEAN GLORY!"
+        case .treble:           return "TREBLE WINNERS!"
+        case .invincible:       return "THE INVINCIBLES"
+        case .wins50:           return "50 WINS"
+        case .wins100:          return "CENTURY OF WINS"
+        case .wins200:          return "200 WINS"
+        case .dynasty:          return "A DYNASTY"
+        case .giantKiller:      return "THE GIANT KILLER"
+        case .youthRevolution:  return "YOUTH REVOLUTION"
+        case .transferGenius:   return "TRANSFER GENIUS"
+        case .underdog:         return "THE UNDERDOG"
+        case .greatEscape:      return "THE GREAT ESCAPE"
+        case .matches1000:      return "1,000 MATCHES"
+        case .legendaryManager: return "LEGENDARY MANAGER"
+        }
+    }
+
+    /// Career points banked the moment this is first unlocked — scaled
+    /// roughly by how hard it is to earn.
+    var points: Int {
+        switch self {
+        case .promotion:        return 100
+        case .leagueTitle:      return 300
+        case .cupWinner:        return 200
+        case .europeanGlory:    return 350
+        case .treble:           return 500
+        case .invincible:       return 400
+        case .wins50:           return 50
+        case .wins100:          return 100
+        case .wins200:          return 200
+        case .dynasty:          return 300
+        case .giantKiller:      return 150
+        case .youthRevolution:  return 200
+        case .transferGenius:   return 250
+        case .underdog:         return 250
+        case .greatEscape:      return 200
+        case .matches1000:      return 300
+        case .legendaryManager: return 500
+        }
+    }
+
+    var category: AchievementCategory {
+        switch self {
+        case .promotion, .leagueTitle, .cupWinner, .europeanGlory, .treble:
+            return .trophies
+        case .invincible, .underdog, .greatEscape, .giantKiller:
+            return .character
+        case .wins50, .wins100, .wins200, .matches1000:
+            return .milestones
+        case .dynasty, .youthRevolution, .transferGenius, .legendaryManager:
+            return .legacy
         }
     }
 
     var trophy: (kind: TrophyKind, tier: TrophyTier) {
         switch self {
-        case .promotion:     return (.league, .bronze)
-        case .leagueTitle:   return (.league, .premium)
-        case .cupWinner:     return (.cup, .gold)
-        case .europeanGlory: return (.europa, .premium)
-        case .treble:        return (.champions, .premium)
-        case .invincible:    return (.playerOfYear, .premium)
-        case .wins50:        return (.managerAward, .bronze)
-        case .wins100:       return (.managerAward, .silver)
-        case .wins200:       return (.managerAward, .gold)
-        case .dynasty:       return (.managerOfMonth, .gold)
+        case .promotion:        return (.league, .bronze)
+        case .leagueTitle:      return (.league, .premium)
+        case .cupWinner:        return (.cup, .gold)
+        case .europeanGlory:    return (.europa, .premium)
+        case .treble:           return (.champions, .premium)
+        case .invincible:       return (.playerOfYear, .premium)
+        case .wins50:           return (.managerAward, .bronze)
+        case .wins100:          return (.managerAward, .silver)
+        case .wins200:          return (.managerAward, .gold)
+        case .dynasty:          return (.managerOfMonth, .gold)
+        case .giantKiller:      return (.cup, .silver)
+        case .youthRevolution:  return (.youthAward, .gold)
+        case .transferGenius:   return (.managerAward, .silver)
+        case .underdog:         return (.cup, .premium)
+        case .greatEscape:      return (.league, .bronze)
+        case .matches1000:      return (.managerAward, .premium)
+        case .legendaryManager: return (.managerOfMonth, .premium)
         }
     }
+}
+
+/// Groups achievements into sections on the gallery screen.
+enum AchievementCategory: String, CaseIterable, Codable {
+    case trophies = "Trophies"
+    case character = "Character"
+    case milestones = "Milestones"
+    case legacy = "Legacy"
+}
+
+/// The rich record of one achievement's unlock — when, and the story
+/// behind it — kept alongside the bare `unlockedAchievements` set so the
+/// gallery's history page has something to actually show.
+struct AchievementUnlock: Codable, Identifiable {
+    var id: AchievementKind { kind }
+    let kind: AchievementKind
+    let season: Int
+    let date: Date
+    let context: String
 }
 
 /// One pixel-art trophy, in its tier's metallic finish.
