@@ -17,6 +17,20 @@ struct RetroSeasonManagerApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                #if os(iOS)
+                // Belt-and-suspenders alongside `AppDelegate`'s orientation
+                // mask: on some cold launches UIKit doesn't consult that
+                // delegate method early enough to rotate out of portrait
+                // before the first frame draws, leaving a landscape-only
+                // app stuck rendering sideways in a portrait-shaped window
+                // until something else triggers a relayout. Requesting the
+                // geometry update directly as soon as a window scene exists
+                // closes that gap.
+                .onAppear {
+                    guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene else { return }
+                    scene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscape))
+                }
+                #endif
         }
     }
 }

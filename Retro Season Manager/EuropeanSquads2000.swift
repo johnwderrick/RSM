@@ -31,6 +31,7 @@ enum EuropeanSquads2000 {
             HistoricalPlayer(name: "Raúl Antúnez", detailedPosition: .striker, age: 23, rating: 90),
             HistoricalPlayer(name: "Felipe Steiner", detailedPosition: .striker, age: 24, rating: 82),
             HistoricalPlayer(name: "Karim Karlsen", detailedPosition: .striker, age: 27, rating: 62),
+            HistoricalPlayer(name: "Geremi Solano", detailedPosition: .striker, age: 22, rating: 65),
         ],
         "Camp Blaugrana": [
             HistoricalPlayer(name: "Tunde Winstanley", detailedPosition: .goalkeeper, age: 33, rating: 74),
@@ -125,6 +126,7 @@ enum EuropeanSquads2000 {
             HistoricalPlayer(name: "Thomas Foulkes", detailedPosition: .centralMid, age: 23, rating: 68),
             HistoricalPlayer(name: "Connor Sherrington", detailedPosition: .leftWing, age: 24, rating: 78, secondaryPositions: [.striker]),
             HistoricalPlayer(name: "Andrea Pirlio", detailedPosition: .centralMid, age: 21, rating: 72, secondaryPositions: [.attackingMid]),
+            HistoricalPlayer(name: "Salvatore Bianchi", detailedPosition: .centralMid, age: 25, rating: 65, secondaryPositions: [.holding]),
             HistoricalPlayer(name: "Viktor Whitfield", detailedPosition: .rightWing, age: 24, rating: 62, secondaryPositions: [.striker]),
             HistoricalPlayer(name: "Christian Marotta", detailedPosition: .striker, age: 27, rating: 88),
             HistoricalPlayer(name: "Ronaldo Basso", detailedPosition: .striker, age: 24, rating: 92),
