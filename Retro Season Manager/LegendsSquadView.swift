@@ -220,6 +220,9 @@ struct LegendsSquadView: View {
                 Text(card.name)
                     .font(.system(.footnote, design: .monospaced).bold())
                     .foregroundStyle(Retro.text)
+                Text("age \(store.effectiveAge(for: card))")
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(Retro.text.opacity(0.5))
                 Spacer()
                 Text("\(store.effectiveOverall(for: card))")
                     .font(.system(.footnote, design: .monospaced).bold())
@@ -251,7 +254,9 @@ private struct LegendsCardPickerSheet: View {
     }
 
     private var availableCards: [LegendsCard] {
-        let owned = LegendsCardDatabase.all.filter { store.profile.ownedCardIDs.contains($0.id) && !placedElsewhere.contains($0.id) }
+        let owned = LegendsCardDatabase.all.filter {
+            store.profile.ownedCardIDs.contains($0.id) && !placedElsewhere.contains($0.id) && !store.isRetired($0)
+        }
         guard let slotPosition else { return owned.sorted { store.effectiveOverall(for: $0) > store.effectiveOverall(for: $1) } }
         return owned.sorted { a, b in
             let aFits = a.position == slotPosition
@@ -314,7 +319,7 @@ private struct LegendsCardPickerSheet: View {
                                             Text(card.name)
                                                 .font(.system(.footnote, design: .monospaced).bold())
                                                 .foregroundStyle(Retro.text)
-                                            Text("\(card.position.rawValue) · \(card.rarity.rawValue)")
+                                            Text("\(card.position.rawValue) · \(card.rarity.rawValue) · age \(store.effectiveAge(for: card))")
                                                 .font(.system(.caption2, design: .monospaced))
                                                 .foregroundStyle(Retro.text.opacity(0.6))
                                         }

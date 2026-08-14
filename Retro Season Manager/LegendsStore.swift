@@ -74,6 +74,14 @@ struct LegendsProfile: Codable {
     var activeManagerID: String? = nil
     var ownedStadiumIDs: Set<String> = []
     var activeStadiumID: String? = nil
+    /// Seasonal aging (see LegendsStore+Aging.swift). A "season" is
+    /// `LegendsStore.matchesPerSeason` matches, not a calendar period —
+    /// Legends has no fixture list to hang a real calendar off of.
+    var currentSeason: Int = 1
+    var matchesPlayedThisSeason: Int = 0
+    /// Years aged on top of a card's own printed `age`, keyed by card ID
+    /// — only present once a card has actually aged past its base age.
+    var cardAgeOffsets: [String: Int] = [:]
 
     static func starter() -> LegendsProfile {
         LegendsProfile(clubName: "RSM Legends FC", crestShort: "RSM",
@@ -96,6 +104,7 @@ struct LegendsProfile: Codable {
         case lastDailyReset, lastWeeklyReset
         case completedPermanentChallengeIDs, completedDailyChallengeIDs, completedWeeklyChallengeIDs
         case ownedManagerIDs, activeManagerID, ownedStadiumIDs, activeStadiumID
+        case currentSeason, matchesPlayedThisSeason, cardAgeOffsets
     }
 
     init(clubName: String, crestShort: String, crestColorRGB: [Double],
@@ -111,7 +120,8 @@ struct LegendsProfile: Codable {
          completedPermanentChallengeIDs: Set<String> = [], completedDailyChallengeIDs: Set<String> = [],
          completedWeeklyChallengeIDs: Set<String> = [],
          ownedManagerIDs: Set<String> = [], activeManagerID: String? = nil,
-         ownedStadiumIDs: Set<String> = [], activeStadiumID: String? = nil) {
+         ownedStadiumIDs: Set<String> = [], activeStadiumID: String? = nil,
+         currentSeason: Int = 1, matchesPlayedThisSeason: Int = 0, cardAgeOffsets: [String: Int] = [:]) {
         self.clubName = clubName
         self.crestShort = crestShort
         self.crestColorRGB = crestColorRGB
@@ -144,6 +154,9 @@ struct LegendsProfile: Codable {
         self.activeManagerID = activeManagerID
         self.ownedStadiumIDs = ownedStadiumIDs
         self.activeStadiumID = activeStadiumID
+        self.currentSeason = currentSeason
+        self.matchesPlayedThisSeason = matchesPlayedThisSeason
+        self.cardAgeOffsets = cardAgeOffsets
     }
 
     init(from decoder: Decoder) throws {
@@ -180,6 +193,9 @@ struct LegendsProfile: Codable {
         activeManagerID = try c.decodeIfPresent(String.self, forKey: .activeManagerID)
         ownedStadiumIDs = try c.decodeIfPresent(Set<String>.self, forKey: .ownedStadiumIDs) ?? []
         activeStadiumID = try c.decodeIfPresent(String.self, forKey: .activeStadiumID)
+        currentSeason = try c.decodeIfPresent(Int.self, forKey: .currentSeason) ?? 1
+        matchesPlayedThisSeason = try c.decodeIfPresent(Int.self, forKey: .matchesPlayedThisSeason) ?? 0
+        cardAgeOffsets = try c.decodeIfPresent([String: Int].self, forKey: .cardAgeOffsets) ?? [:]
     }
 }
 
@@ -199,18 +215,24 @@ final class LegendsStore {
     /// Starting XI (11) + Bench = 18, matching Career Mode's own squad size.
     static let benchSize = 7
     /// Wins needed at a division before promotion (Phase 7).
-    static let winsToPromote = 3
+    static let winsToPromote = 6
     /// How many Starting XI players must share a nation/era/club for the
     /// "core XI" challenges (Phase 8) — see LegendsStore+Challenges.swift.
     static let xiShareThreshold = 6
+    /// A "season" for aging purposes (LegendsStore+Aging.swift) — this
+    /// many Play Match results, not a calendar period.
+    static let matchesPerSeason = 10
 
     init() {
         profile = Self.load() ?? .starter()
     }
 
-    /// A card's overall including any duplicate-earned upgrade, capped at 99.
+    /// A card's overall including any duplicate-earned upgrade and any
+    /// seasonal aging decline (LegendsStore+Aging.swift), capped at 99
+    /// and floored at 1.
     func effectiveOverall(for card: LegendsCard) -> Int {
-        min(99, card.overall + (profile.cardUpgrades[card.id] ?? 0))
+        let upgraded = card.overall + (profile.cardUpgrades[card.id] ?? 0)
+        return min(99, max(1, upgraded - agingPenalty(for: card)))
     }
 
     private static var fileURL: URL {

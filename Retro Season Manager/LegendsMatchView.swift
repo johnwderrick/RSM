@@ -141,6 +141,9 @@ struct LegendsMatchView: View {
         if summary.leveledUp || summary.newManager != nil || summary.newStadium != nil || !summary.completedChallenges.isEmpty {
             SoundManager.shared.play(.trophyLift)
         }
+        if let retiredCount = summary.seasonAdvance?.retiredCards.count, retiredCount > 0 {
+            SoundManager.shared.play(.redCard)
+        }
     }
 
     private var searchingPanel: some View {
@@ -183,6 +186,28 @@ struct LegendsMatchView: View {
                             Text("✓ \(completion.challenge.title)")
                                 .font(.system(.footnote, design: .monospaced).bold())
                                 .foregroundStyle(Retro.emerald)
+                        }
+                    }
+                }
+                .frame(maxWidth: 380)
+            }
+
+            if let seasonAdvance = summary.seasonAdvance {
+                Panel(title: "SEASON \(seasonAdvance.newSeason) BEGINS") {
+                    if seasonAdvance.retiredCards.isEmpty {
+                        Text("Every card in your collection is a year older.")
+                            .font(.system(.footnote, design: .monospaced))
+                            .foregroundStyle(Retro.text.opacity(0.85))
+                    } else {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("These players have retired — replace them in Squad:")
+                                .font(.system(.footnote, design: .monospaced))
+                                .foregroundStyle(Retro.text.opacity(0.85))
+                            ForEach(seasonAdvance.retiredCards, id: \.id) { card in
+                                Text("• \(card.name) (\(store.effectiveAge(for: card)))")
+                                    .font(.system(.footnote, design: .monospaced).bold())
+                                    .foregroundStyle(Retro.warning)
+                            }
                         }
                     }
                 }

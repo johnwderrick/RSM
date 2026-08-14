@@ -39,7 +39,8 @@ struct LegendsCollectionView: View {
         }
         .sheet(item: $selectedCard) { card in
             LegendsCardDetailSheet(card: card, owned: store.profile.ownedCardIDs.contains(card.id),
-                                    effectiveOverall: store.effectiveOverall(for: card))
+                                    effectiveOverall: store.effectiveOverall(for: card),
+                                    age: store.effectiveAge(for: card), retired: store.isRetired(card))
         }
     }
 
@@ -114,6 +115,7 @@ struct LegendsCollectionView: View {
 
     private func cardTile(_ card: LegendsCard) -> some View {
         let owned = store.profile.ownedCardIDs.contains(card.id)
+        let retired = owned && store.isRetired(card)
         return Button {
             Haptics.tap()
             selectedCard = card
@@ -131,15 +133,20 @@ struct LegendsCollectionView: View {
                     .font(.system(.caption2, design: .monospaced).bold())
                     .foregroundStyle(owned ? Retro.text : Retro.text.opacity(0.4))
                     .lineLimit(1)
-                Text(owned ? "\(store.effectiveOverall(for: card)) OVR" : card.rarity.rawValue.uppercased())
+                Text(owned ? "\(store.effectiveOverall(for: card)) OVR · \(store.effectiveAge(for: card))" : card.rarity.rawValue.uppercased())
                     .font(.system(size: 9, design: .monospaced))
                     .foregroundStyle(card.rarity.tint.opacity(owned ? 1 : 0.6))
+                if retired {
+                    Text("RETIRED")
+                        .font(.system(size: 8, design: .monospaced).bold())
+                        .foregroundStyle(Retro.warning)
+                }
             }
             .frame(maxWidth: .infinity, minHeight: 92)
             .padding(8)
             .background(Retro.panel.opacity(owned ? 0.7 : 0.35))
             .clipShape(RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10).stroke(card.rarity.tint.opacity(owned ? 0.6 : 0.15), lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke((retired ? Retro.warning : card.rarity.tint).opacity(owned ? 0.6 : 0.15), lineWidth: 1))
         }
         .buttonStyle(PressableButtonStyle())
     }
@@ -149,6 +156,8 @@ private struct LegendsCardDetailSheet: View {
     let card: LegendsCard
     let owned: Bool
     let effectiveOverall: Int
+    let age: Int
+    let retired: Bool
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -182,10 +191,23 @@ private struct LegendsCardDetailSheet: View {
                         Text("\(card.club) · \(card.nation) · \(card.season)")
                             .font(.system(.footnote, design: .monospaced))
                             .foregroundStyle(Retro.text.opacity(0.7))
+                        Text(retired ? "RETIRED AT AGE \(age)" : "AGE \(age)")
+                            .font(.system(.caption, design: .monospaced).bold())
+                            .foregroundStyle(retired ? Retro.warning : Retro.text.opacity(0.6))
                     }
                 }
 
                 if owned {
+                    if retired {
+                        Panel(title: "RETIRED") {
+                            Text("This player has retired and can no longer be fielded. Open packs for a replacement.")
+                                .font(.system(.footnote, design: .monospaced))
+                                .foregroundStyle(Retro.warning)
+                                .multilineTextAlignment(.center)
+                                .frame(maxWidth: .infinity)
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
                     Panel(title: "ATTRIBUTES") {
                         VStack(spacing: 8) {
                             statBar("OVR", effectiveOverall)

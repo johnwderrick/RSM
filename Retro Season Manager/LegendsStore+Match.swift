@@ -29,6 +29,7 @@ struct LegendsMatchOutcomeSummary {
     var completedChallenges: [LegendsChallengeCompletion] = []
     var newManager: LegendsManagerCard? = nil
     var newStadium: LegendsStadiumCard? = nil
+    var seasonAdvance: LegendsSeasonAdvanceResult? = nil
 }
 
 extension LegendsStore {
@@ -108,9 +109,13 @@ extension LegendsStore {
             }
         }
 
+        // Every match counts toward the current season, win or not —
+        // aging doesn't care about the scoreline, only that time passed.
+        let seasonAdvance = advanceSeasonIfNeeded()
+
         var summary = LegendsMatchOutcomeSummary(opponent: opponent, result: result, coinsEarned: coins, tokensEarned: tokens,
                                                   xpEarned: xp, leveledUp: leveledUp, promoted: promoted, newDivision: profile.division,
-                                                  newManager: newManager, newStadium: newStadium)
+                                                  newManager: newManager, newStadium: newStadium, seasonAdvance: seasonAdvance)
         // recordMatchResult persists — it runs last so it sees every
         // stat this match just updated (division, manager level, etc.)
         summary.completedChallenges = recordMatchResult(summary)

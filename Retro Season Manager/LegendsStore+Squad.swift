@@ -69,15 +69,23 @@ extension LegendsStore {
         }
     }
 
+    /// A retired card (LegendsStore+Aging.swift) can't be fielded — the
+    /// whole point of retirement is forcing a replacement, not letting
+    /// the same aged-out card just get reassigned straight back in.
+    private func isAssignable(_ cardID: String) -> Bool {
+        guard profile.ownedCardIDs.contains(cardID), let card = LegendsCardDatabase.all.first(where: { $0.id == cardID }) else { return false }
+        return !isRetired(card)
+    }
+
     func assign(cardID: String, toXISlot index: Int) {
-        guard profile.ownedCardIDs.contains(cardID), profile.startingXICardIDs.indices.contains(index) else { return }
+        guard isAssignable(cardID), profile.startingXICardIDs.indices.contains(index) else { return }
         removeFromSquad(cardID)
         profile.startingXICardIDs[index] = cardID
         persist()
     }
 
     func assign(cardID: String, toBenchSlot index: Int) {
-        guard profile.ownedCardIDs.contains(cardID), profile.benchCardIDs.indices.contains(index) else { return }
+        guard isAssignable(cardID), profile.benchCardIDs.indices.contains(index) else { return }
         removeFromSquad(cardID)
         profile.benchCardIDs[index] = cardID
         persist()

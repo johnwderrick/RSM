@@ -41,12 +41,12 @@ extension LegendsStore {
         let eligible = LegendsCardDatabase.all.filter(pack.pool)
         guard !eligible.isEmpty else { throw LegendsPackError.emptyPool }
 
-        var pulls = (0..<pack.cardCount).compactMap { _ in eligible.randomElement() }
+        var pulls = (0..<pack.cardCount).compactMap { _ in Self.weightedPull(from: eligible) }
 
         let hasGuaranteedTier = pulls.contains { $0.rarity.tier >= pack.guaranteedMinTier }
         if !hasGuaranteedTier {
             let guaranteedPool = eligible.filter { $0.rarity.tier >= pack.guaranteedMinTier }
-            if let boost = guaranteedPool.randomElement(), let weakestIndex = pulls.indices.min(by: { pulls[$0].rarity.tier < pulls[$1].rarity.tier }) {
+            if let boost = Self.weightedPull(from: guaranteedPool), let weakestIndex = pulls.indices.min(by: { pulls[$0].rarity.tier < pulls[$1].rarity.tier }) {
                 pulls[weakestIndex] = boost
             }
         }
@@ -77,5 +77,22 @@ extension LegendsStore {
 
         persist()
         return results
+    }
+
+    /// Draws one card weighted by `LegendsRarity.pullWeight` rather than
+    /// uniformly — the 40-card database itself already skews toward
+    /// Hero-and-above, so a uniform draw would make top rarities come up
+    /// far too often to feel special. Falls back to a uniform pick only
+    /// if every candidate has zero weight (shouldn't happen with the
+    /// current rarity table, but keeps this total).
+    static func weightedPull(from cards: [LegendsCard]) -> LegendsCard? {
+        let totalWeight = cards.reduce(0.0) { $0 + $1.rarity.pullWeight }
+        guard totalWeight > 0 else { return cards.randomElement() }
+        var roll = Double.random(in: 0..<totalWeight)
+        for card in cards {
+            roll -= card.rarity.pullWeight
+            if roll < 0 { return card }
+        }
+        return cards.last
     }
 }
