@@ -101,6 +101,7 @@ struct LegendsHomeView: View {
     let store: LegendsStore
     var onBack: () -> Void
     @State private var showCollection = false
+    @State private var showPacks = false
 
     private var crestColor: Color { Color(rgb: store.profile.crestColorRGB) }
 
@@ -131,7 +132,7 @@ struct LegendsHomeView: View {
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
                         tile(icon: "sportscourt.fill", title: "Play Match", phase: 7)
                         tile(icon: "person.3.fill", title: "Squad", phase: 5)
-                        tile(icon: "shippingbox.fill", title: "Packs", phase: 4)
+                        packsTile
                         collectionTile
                         tile(icon: "flag.checkered", title: "Challenges", phase: 8)
                         tile(icon: "building.columns.fill", title: "Club", phase: 9)
@@ -146,6 +147,9 @@ struct LegendsHomeView: View {
         }
         .fullScreenCover(isPresented: $showCollection) {
             LegendsCollectionView(store: store) { showCollection = false }
+        }
+        .fullScreenCover(isPresented: $showPacks) {
+            LegendsPacksView(store: store) { showPacks = false }
         }
     }
 
@@ -194,6 +198,34 @@ struct LegendsHomeView: View {
         .padding(.vertical, 10)
         .background(Retro.panel.opacity(0.6))
         .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    private var packsTile: some View {
+        Button {
+            Haptics.tap()
+            showPacks = true
+        } label: {
+            VStack(spacing: 8) {
+                Image(systemName: "shippingbox.fill")
+                    .font(.system(size: 22))
+                    .foregroundStyle(Retro.accent)
+                Text("Packs")
+                    .font(.system(.footnote, design: .monospaced).bold())
+                    .foregroundStyle(Retro.text)
+                Text("\(LegendsPackDatabase.all.count) available")
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(Retro.text.opacity(0.65))
+            }
+            .frame(maxWidth: .infinity, minHeight: 100)
+            .padding(10)
+            .background(
+                LinearGradient(colors: [Retro.panel.opacity(0.95), Retro.panel.opacity(0.7)],
+                               startPoint: .top, endPoint: .bottom)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Retro.accent.opacity(0.4), lineWidth: 1))
+        }
+        .buttonStyle(PressableButtonStyle())
     }
 
     private var collectionTile: some View {

@@ -3,9 +3,8 @@
 //  Retro Season Manager
 //
 //  The Collection Book (Phase 3) — browses the full card database and
-//  tracks which cards are owned. Nothing is ownable yet (Pack Opening is
-//  Phase 4), so every card currently shows as not-owned; the screen is
-//  still real and useful as a database to browse and plan around.
+//  tracks which cards are owned. Ownership comes from opening packs
+//  (Phase 4, LegendsStore+Packs.swift).
 //
 
 import SwiftUI
@@ -39,7 +38,8 @@ struct LegendsCollectionView: View {
             }
         }
         .sheet(item: $selectedCard) { card in
-            LegendsCardDetailSheet(card: card, owned: store.profile.ownedCardIDs.contains(card.id))
+            LegendsCardDetailSheet(card: card, owned: store.profile.ownedCardIDs.contains(card.id),
+                                    effectiveOverall: store.effectiveOverall(for: card))
         }
     }
 
@@ -131,7 +131,7 @@ struct LegendsCollectionView: View {
                     .font(.system(.caption2, design: .monospaced).bold())
                     .foregroundStyle(owned ? Retro.text : Retro.text.opacity(0.4))
                     .lineLimit(1)
-                Text(owned ? "\(card.overall) OVR" : card.rarity.rawValue.uppercased())
+                Text(owned ? "\(store.effectiveOverall(for: card)) OVR" : card.rarity.rawValue.uppercased())
                     .font(.system(size: 9, design: .monospaced))
                     .foregroundStyle(card.rarity.tint.opacity(owned ? 1 : 0.6))
             }
@@ -148,6 +148,7 @@ struct LegendsCollectionView: View {
 private struct LegendsCardDetailSheet: View {
     let card: LegendsCard
     let owned: Bool
+    let effectiveOverall: Int
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -187,7 +188,7 @@ private struct LegendsCardDetailSheet: View {
                 if owned {
                     Panel(title: "ATTRIBUTES") {
                         VStack(spacing: 8) {
-                            statBar("OVR", card.overall)
+                            statBar("OVR", effectiveOverall)
                             statBar("PAC", card.pace)
                             statBar("SHO", card.shooting)
                             statBar("PAS", card.passing)

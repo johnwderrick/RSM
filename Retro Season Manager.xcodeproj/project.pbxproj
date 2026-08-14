@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		00662B6C39544AA6851F522C /* LegendsPackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E30D7225752E3B1942D844E5 /* LegendsPackTests.swift */; };
 		0BA5CDDF24DC0BA9798F2DCB /* GameStoreTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F4E8DEDB4ADD31ECB559195 /* GameStoreTestSupport.swift */; };
 		11302683010CCC0470AF64EF /* TransferGeniusTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A739EF8ADAACAE333C948C4 /* TransferGeniusTests.swift */; };
 		3206C4960AED715B18175B0C /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4EA2B70D878918DA4CFE4BBE /* Foundation.framework */; };
@@ -44,6 +45,7 @@
 		9B121F6A9C9D225B23258477 /* CareerStoryGenerationTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CareerStoryGenerationTests.swift; sourceTree = "<group>"; };
 		B660BAC2FA7DF71D3BADD886 /* LegendsCardDatabaseTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendsCardDatabaseTests.swift; sourceTree = "<group>"; };
 		BF9FCA91756A4B1B9A1D75FC /* EconomyFormulaTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = EconomyFormulaTests.swift; sourceTree = "<group>"; };
+		E30D7225752E3B1942D844E5 /* LegendsPackTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendsPackTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -88,6 +90,7 @@
 				769FB8EEAB31FAE4809E87E9 /* NewspaperClassifierTests.swift */,
 				2A739EF8ADAACAE333C948C4 /* TransferGeniusTests.swift */,
 				B660BAC2FA7DF71D3BADD886 /* LegendsCardDatabaseTests.swift */,
+				E30D7225752E3B1942D844E5 /* LegendsPackTests.swift */,
 			);
 			path = "Retro Season ManagerTests";
 			sourceTree = "<group>";
@@ -235,6 +238,7 @@
 				BF9EE3B68FCD4BB2B3FA026D /* NewspaperClassifierTests.swift in Sources */,
 				11302683010CCC0470AF64EF /* TransferGeniusTests.swift in Sources */,
 				C0D41EE6E559A561127D0FEE /* LegendsCardDatabaseTests.swift in Sources */,
+				00662B6C39544AA6851F522C /* LegendsPackTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

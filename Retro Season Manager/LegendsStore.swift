@@ -32,9 +32,16 @@ struct LegendsProfile: Codable {
     var packTokens: Int
     var division: LegendsDivision
     var teamRating: Int
-    /// IDs into `LegendsCardDatabase.all` — empty until Phase 4 (Pack
-    /// Opening) gives a way to actually acquire cards.
+    /// IDs into `LegendsCardDatabase.all` — populated by opening packs
+    /// (Phase 4).
     var ownedCardIDs: Set<String> = []
+    /// Duplicate pulls not yet consumed into an upgrade, keyed by card ID.
+    /// Resets to 0 (and bumps `cardUpgrades`) every 3rd duplicate.
+    var duplicateProgress: [String: Int] = [:]
+    /// Permanent +OVR earned per card from duplicates, capped at
+    /// `LegendsStore.maxCardUpgrade` to keep the doc's "maximum rating
+    /// capped to maintain realism" rule.
+    var cardUpgrades: [String: Int] = [:]
 
     static func starter() -> LegendsProfile {
         LegendsProfile(clubName: "RSM Legends FC", crestShort: "RSM",
@@ -50,11 +57,13 @@ struct LegendsProfile: Codable {
     enum CodingKeys: String, CodingKey {
         case clubName, crestShort, crestColorRGB, managerLevel, managerXP
         case coins, packTokens, division, teamRating, ownedCardIDs
+        case duplicateProgress, cardUpgrades
     }
 
     init(clubName: String, crestShort: String, crestColorRGB: [Double],
          managerLevel: Int, managerXP: Int, coins: Int, packTokens: Int,
-         division: LegendsDivision, teamRating: Int, ownedCardIDs: Set<String> = []) {
+         division: LegendsDivision, teamRating: Int, ownedCardIDs: Set<String> = [],
+         duplicateProgress: [String: Int] = [:], cardUpgrades: [String: Int] = [:]) {
         self.clubName = clubName
         self.crestShort = crestShort
         self.crestColorRGB = crestColorRGB
@@ -65,6 +74,8 @@ struct LegendsProfile: Codable {
         self.division = division
         self.teamRating = teamRating
         self.ownedCardIDs = ownedCardIDs
+        self.duplicateProgress = duplicateProgress
+        self.cardUpgrades = cardUpgrades
     }
 
     init(from decoder: Decoder) throws {
@@ -79,16 +90,32 @@ struct LegendsProfile: Codable {
         division = try c.decodeIfPresent(LegendsDivision.self, forKey: .division) ?? .division10
         teamRating = try c.decodeIfPresent(Int.self, forKey: .teamRating) ?? 0
         ownedCardIDs = try c.decodeIfPresent(Set<String>.self, forKey: .ownedCardIDs) ?? []
+        duplicateProgress = try c.decodeIfPresent([String: Int].self, forKey: .duplicateProgress) ?? [:]
+        cardUpgrades = try c.decodeIfPresent([String: Int].self, forKey: .cardUpgrades) ?? [:]
     }
 }
 
 @MainActor
 @Observable
 final class LegendsStore {
-    private(set) var profile: LegendsProfile
+    // Plain `var`, not `private(set)` — matching GameStore's own
+    // convention, since `private(set)` is file-scoped in Swift and the
+    // pack-opening logic in LegendsStore+Packs.swift needs to mutate
+    // this from another file.
+    var profile: LegendsProfile
+
+    /// 3 duplicates = +1 OVR, capped at 3 upgrade levels per card (+3 OVR)
+    /// — keeps the doc's "maximum rating capped to maintain realism" rule.
+    static let maxCardUpgrade = 3
+    static let duplicatesPerUpgrade = 3
 
     init() {
         profile = Self.load() ?? .starter()
+    }
+
+    /// A card's overall including any duplicate-earned upgrade, capped at 99.
+    func effectiveOverall(for card: LegendsCard) -> Int {
+        min(99, card.overall + (profile.cardUpgrades[card.id] ?? 0))
     }
 
     private static var fileURL: URL {
