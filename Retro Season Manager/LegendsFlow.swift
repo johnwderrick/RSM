@@ -100,6 +100,7 @@ struct ExperienceSelectView: View {
 struct LegendsHomeView: View {
     let store: LegendsStore
     var onBack: () -> Void
+    @State private var showCollection = false
 
     private var crestColor: Color { Color(rgb: store.profile.crestColorRGB) }
 
@@ -131,7 +132,7 @@ struct LegendsHomeView: View {
                         tile(icon: "sportscourt.fill", title: "Play Match", phase: 7)
                         tile(icon: "person.3.fill", title: "Squad", phase: 5)
                         tile(icon: "shippingbox.fill", title: "Packs", phase: 4)
-                        tile(icon: "books.vertical.fill", title: "Collection", phase: 3)
+                        collectionTile
                         tile(icon: "flag.checkered", title: "Challenges", phase: 8)
                         tile(icon: "building.columns.fill", title: "Club", phase: 9)
                         tile(icon: "person.crop.rectangle.stack.fill", title: "Managers", phase: 9)
@@ -142,6 +143,9 @@ struct LegendsHomeView: View {
                     .padding(.bottom, 20)
                 }
             }
+        }
+        .fullScreenCover(isPresented: $showCollection) {
+            LegendsCollectionView(store: store) { showCollection = false }
         }
     }
 
@@ -190,6 +194,34 @@ struct LegendsHomeView: View {
         .padding(.vertical, 10)
         .background(Retro.panel.opacity(0.6))
         .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    private var collectionTile: some View {
+        Button {
+            Haptics.tap()
+            showCollection = true
+        } label: {
+            VStack(spacing: 8) {
+                Image(systemName: "books.vertical.fill")
+                    .font(.system(size: 22))
+                    .foregroundStyle(Retro.accent)
+                Text("Collection")
+                    .font(.system(.footnote, design: .monospaced).bold())
+                    .foregroundStyle(Retro.text)
+                Text("\(store.profile.ownedCardIDs.count) / \(LegendsCardDatabase.all.count) cards")
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(Retro.text.opacity(0.65))
+            }
+            .frame(maxWidth: .infinity, minHeight: 100)
+            .padding(10)
+            .background(
+                LinearGradient(colors: [Retro.panel.opacity(0.95), Retro.panel.opacity(0.7)],
+                               startPoint: .top, endPoint: .bottom)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Retro.accent.opacity(0.4), lineWidth: 1))
+        }
+        .buttonStyle(PressableButtonStyle())
     }
 
     private func tile(icon: String, title: String, phase: Int) -> some View {

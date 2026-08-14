@@ -17,6 +17,7 @@
 		B50662B944281CF78CD58A04 /* NegotiationFormulaTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58C8B31BA10D57B3BFD39DAC /* NegotiationFormulaTests.swift */; };
 		BD403C02CB0C5ABD7E617BFF /* AchievementThresholdTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EDC0B782BA6EAA77DABFC8F /* AchievementThresholdTests.swift */; };
 		BF9EE3B68FCD4BB2B3FA026D /* NewspaperClassifierTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 769FB8EEAB31FAE4809E87E9 /* NewspaperClassifierTests.swift */; };
+		C0D41EE6E559A561127D0FEE /* LegendsCardDatabaseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B660BAC2FA7DF71D3BADD886 /* LegendsCardDatabaseTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -41,12 +42,15 @@
 		769FB8EEAB31FAE4809E87E9 /* NewspaperClassifierTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NewspaperClassifierTests.swift; sourceTree = "<group>"; };
 		7F4E8DEDB4ADD31ECB559195 /* GameStoreTestSupport.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = GameStoreTestSupport.swift; sourceTree = "<group>"; };
 		9B121F6A9C9D225B23258477 /* CareerStoryGenerationTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CareerStoryGenerationTests.swift; sourceTree = "<group>"; };
+		B660BAC2FA7DF71D3BADD886 /* LegendsCardDatabaseTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendsCardDatabaseTests.swift; sourceTree = "<group>"; };
 		BF9FCA91756A4B1B9A1D75FC /* EconomyFormulaTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = EconomyFormulaTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		52EE5DA6302272C0002A9DDF /* Retro Season Manager */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = "Retro Season Manager";
 			sourceTree = "<group>";
 		};
@@ -83,6 +87,7 @@
 				9B121F6A9C9D225B23258477 /* CareerStoryGenerationTests.swift */,
 				769FB8EEAB31FAE4809E87E9 /* NewspaperClassifierTests.swift */,
 				2A739EF8ADAACAE333C948C4 /* TransferGeniusTests.swift */,
+				B660BAC2FA7DF71D3BADD886 /* LegendsCardDatabaseTests.swift */,
 			);
 			path = "Retro Season ManagerTests";
 			sourceTree = "<group>";
@@ -229,6 +234,7 @@
 				4FAC06DD7BE5C1E8423AD72B /* CareerStoryGenerationTests.swift in Sources */,
 				BF9EE3B68FCD4BB2B3FA026D /* NewspaperClassifierTests.swift in Sources */,
 				11302683010CCC0470AF64EF /* TransferGeniusTests.swift in Sources */,
+				C0D41EE6E559A561127D0FEE /* LegendsCardDatabaseTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

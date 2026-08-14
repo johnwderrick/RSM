@@ -32,6 +32,9 @@ struct LegendsProfile: Codable {
     var packTokens: Int
     var division: LegendsDivision
     var teamRating: Int
+    /// IDs into `LegendsCardDatabase.all` — empty until Phase 4 (Pack
+    /// Opening) gives a way to actually acquire cards.
+    var ownedCardIDs: Set<String> = []
 
     static func starter() -> LegendsProfile {
         LegendsProfile(clubName: "RSM Legends FC", crestShort: "RSM",
@@ -39,6 +42,43 @@ struct LegendsProfile: Codable {
                         managerLevel: 1, managerXP: 0,
                         coins: 500, packTokens: 3,
                         division: .division10, teamRating: 0)
+    }
+
+    // A custom, lenient decode — matching SaveState/LegacyCareer's own
+    // pattern — so a field added in a later phase never breaks loading
+    // an existing Legends save.
+    enum CodingKeys: String, CodingKey {
+        case clubName, crestShort, crestColorRGB, managerLevel, managerXP
+        case coins, packTokens, division, teamRating, ownedCardIDs
+    }
+
+    init(clubName: String, crestShort: String, crestColorRGB: [Double],
+         managerLevel: Int, managerXP: Int, coins: Int, packTokens: Int,
+         division: LegendsDivision, teamRating: Int, ownedCardIDs: Set<String> = []) {
+        self.clubName = clubName
+        self.crestShort = crestShort
+        self.crestColorRGB = crestColorRGB
+        self.managerLevel = managerLevel
+        self.managerXP = managerXP
+        self.coins = coins
+        self.packTokens = packTokens
+        self.division = division
+        self.teamRating = teamRating
+        self.ownedCardIDs = ownedCardIDs
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        clubName = try c.decodeIfPresent(String.self, forKey: .clubName) ?? "RSM Legends FC"
+        crestShort = try c.decodeIfPresent(String.self, forKey: .crestShort) ?? "RSM"
+        crestColorRGB = try c.decodeIfPresent([Double].self, forKey: .crestColorRGB) ?? [0.10, 0.76, 0.35]
+        managerLevel = try c.decodeIfPresent(Int.self, forKey: .managerLevel) ?? 1
+        managerXP = try c.decodeIfPresent(Int.self, forKey: .managerXP) ?? 0
+        coins = try c.decodeIfPresent(Int.self, forKey: .coins) ?? 0
+        packTokens = try c.decodeIfPresent(Int.self, forKey: .packTokens) ?? 0
+        division = try c.decodeIfPresent(LegendsDivision.self, forKey: .division) ?? .division10
+        teamRating = try c.decodeIfPresent(Int.self, forKey: .teamRating) ?? 0
+        ownedCardIDs = try c.decodeIfPresent(Set<String>.self, forKey: .ownedCardIDs) ?? []
     }
 }
 
