@@ -24,6 +24,8 @@
 		BF9EE3B68FCD4BB2B3FA026D /* NewspaperClassifierTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 769FB8EEAB31FAE4809E87E9 /* NewspaperClassifierTests.swift */; };
 		BFF886F86C980C1B1020CBF7 /* LegendsManagersAndStadiumsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 074F4A573ADF8B410DA73689 /* LegendsManagersAndStadiumsTests.swift */; };
 		C0D41EE6E559A561127D0FEE /* LegendsCardDatabaseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B660BAC2FA7DF71D3BADD886 /* LegendsCardDatabaseTests.swift */; };
+		C4D6B61A028D4BF8CCB66CD7 /* SaveStateRoundTripTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99F66221DBD753E2397F71B3 /* SaveStateRoundTripTests.swift */; };
+		1E072947D492BE27750A027B /* LegendsProfileRoundTripTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 630311A8820AD986CC73BA6D /* LegendsProfileRoundTripTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -56,6 +58,8 @@
 		C7E8513B66785D4FEF21768F /* LegendsChallengeTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendsChallengeTests.swift; sourceTree = "<group>"; };
 		E30D7225752E3B1942D844E5 /* LegendsPackTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendsPackTests.swift; sourceTree = "<group>"; };
 		F03BEE8FDDB675C4FEBF2BAA /* LegendsChemistryTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendsChemistryTests.swift; sourceTree = "<group>"; };
+		99F66221DBD753E2397F71B3 /* SaveStateRoundTripTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SaveStateRoundTripTests.swift; sourceTree = "<group>"; };
+		630311A8820AD986CC73BA6D /* LegendsProfileRoundTripTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendsProfileRoundTripTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -104,6 +108,8 @@
 				644C36E4BB719E46DC5F1BD4 /* LegendsMatchTests.swift */,
 				C7E8513B66785D4FEF21768F /* LegendsChallengeTests.swift */,
 				074F4A573ADF8B410DA73689 /* LegendsManagersAndStadiumsTests.swift */,
+				99F66221DBD753E2397F71B3 /* SaveStateRoundTripTests.swift */,
+				630311A8820AD986CC73BA6D /* LegendsProfileRoundTripTests.swift */,
 			);
 			path = "Retro Season ManagerTests";
 			sourceTree = "<group>";
@@ -257,6 +263,8 @@
 				6724AC3FB647B4BDD7E17012 /* LegendsMatchTests.swift in Sources */,
 				364413F3B62370F1A108B57F /* LegendsChallengeTests.swift in Sources */,
 				BFF886F86C980C1B1020CBF7 /* LegendsManagersAndStadiumsTests.swift in Sources */,
+				C4D6B61A028D4BF8CCB66CD7 /* SaveStateRoundTripTests.swift in Sources */,
+				1E072947D492BE27750A027B /* LegendsProfileRoundTripTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
