@@ -13,22 +13,57 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app
+      # GitHub's macos-15 image ships several Xcode versions side by side;
+      # `/Applications/Xcode.app` is a symlink to whichever one happens to
+      # be "default" on a given image snapshot, and that has changed
+      # between runs of this exact workflow — once landing on a version
+      # with no iOS Simulator runtime provisioned at all, failing every
+      # test with "Unable to find a device matching the provided
+      # destination specifier". Explicitly select the highest-numbered
+      # Xcode_*.app installed instead of trusting the symlink, since a
+      # newer Xcode is far more likely to have simulators ready.
+      - name: Select the newest available Xcode
+        run: |
+          LATEST=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$LATEST" ]; then LATEST=/Applications/Xcode.app; fi
+          echo "Selecting $LATEST"
+          sudo xcode-select -s "$LATEST"
 
       - name: Show Xcode version
         run: xcodebuild -version
 
-      # "iPhone 16" matches the simulators preinstalled on GitHub's macos-15
-      # image as of when this was written (confirmed working in the first
-      # run of this workflow) — if this job starts failing with "Unable to
-      # find a destination", run `xcrun simctl list devices` in a step here
-      # to see what's actually available and update the device name below.
+      # Pick whatever iPhone simulator is actually available at run time
+      # rather than hardcoding a device name — device catalogs shift
+      # between runner image updates (this is what broke the previous,
+      # hardcoded "iPhone 16" destination).
+      - name: Find an available iPhone simulator
+        id: sim
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)['devices']
+          for runtime, devices in data.items():
+              if 'iOS' not in runtime:
+                  continue
+              for d in devices:
+                  if d['name'].startswith('iPhone'):
+                      print(d['udid'])
+                      sys.exit(0)
+          sys.exit(1)
+          ")
+          if [ -z "$UDID" ]; then
+            echo "::error::No available iPhone simulator found on this runner."
+            xcrun simctl list devices available
+            exit 1
+          fi
+          echo "Using simulator $UDID"
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+
       - name: Run tests
         run: |
           xcodebuild test \
             -project "Retro Season Manager.xcodeproj" \
             -scheme "Retro Season Manager" \
-            -destination "platform=iOS Simulator,name=iPhone 16" \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
             -skipMacroValidation \
             CODE_SIGNING_ALLOWED=NO
