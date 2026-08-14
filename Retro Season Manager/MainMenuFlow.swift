@@ -123,6 +123,7 @@ struct SaveSlotListSheet: View {
 
 struct MainMenuView: View {
     let store: GameStore
+    var onSwitchExperience: (() -> Void)? = nil
     @State private var showClubSelect = false
     @State private var showSaveList = false
     @State private var showLegacyCareers = false
@@ -208,6 +209,24 @@ struct MainMenuView: View {
                     .padding(.bottom, 20)
             }
             .padding()
+        }
+        .overlay(alignment: .topTrailing) {
+            if let onSwitchExperience {
+                Button {
+                    Haptics.tap()
+                    onSwitchExperience()
+                } label: {
+                    Text("Switch Mode ›")
+                        .font(.system(.caption, design: .monospaced).bold())
+                        .foregroundStyle(Retro.text)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Retro.background.opacity(0.6))
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(PressableButtonStyle())
+                .padding()
+            }
         }
         .sheet(isPresented: $showSaveList) {
             SaveSlotListSheet(store: store)

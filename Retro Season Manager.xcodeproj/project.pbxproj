@@ -47,8 +47,6 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		52EE5DA6302272C0002A9DDF /* Retro Season Manager */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = "Retro Season Manager";
 			sourceTree = "<group>";
 		};
@@ -86,7 +84,6 @@
 				769FB8EEAB31FAE4809E87E9 /* NewspaperClassifierTests.swift */,
 				2A739EF8ADAACAE333C948C4 /* TransferGeniusTests.swift */,
 			);
-			name = "Retro Season ManagerTests";
 			path = "Retro Season ManagerTests";
 			sourceTree = "<group>";
 		};
@@ -377,7 +374,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = Z9WUBU7CDA;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -423,7 +420,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = Z9WUBU7CDA;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;

@@ -10,6 +10,8 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var store = GameStore()
+    @State private var legendsStore = LegendsStore()
+    @State private var experience: GameExperience? = nil
 
     var body: some View {
         ZStack {
@@ -24,8 +26,12 @@ struct ContentView: View {
                 SeasonReviewView(store: store)
             } else if store.hasStarted {
                 MainGameView(store: store)
+            } else if experience == .legends {
+                LegendsHomeView(store: legendsStore) { experience = nil }
+            } else if experience == .career {
+                MainMenuView(store: store, onSwitchExperience: { experience = nil })
             } else {
-                MainMenuView(store: store)
+                ExperienceSelectView(store: store, experience: $experience)
             }
             if store.isBusy {
                 LoadingOverlay(message: store.busyMessage)
