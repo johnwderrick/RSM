@@ -51,6 +51,9 @@ struct LegendsProfile: Codable {
     var startingXICardIDs: [String?] = Array(repeating: nil, count: 11)
     var benchCardIDs: [String?] = Array(repeating: nil, count: LegendsStore.benchSize)
     var captainCardID: String? = nil
+    /// Wins accumulated at the current division (Phase 7) — resets on
+    /// promotion. See `LegendsStore.winsToPromote`.
+    var divisionWins: Int = 0
 
     static func starter() -> LegendsProfile {
         LegendsProfile(clubName: "RSM Legends FC", crestShort: "RSM",
@@ -68,6 +71,7 @@ struct LegendsProfile: Codable {
         case coins, packTokens, division, teamRating, ownedCardIDs
         case duplicateProgress, cardUpgrades
         case formationName, startingXICardIDs, benchCardIDs, captainCardID
+        case divisionWins
     }
 
     init(clubName: String, crestShort: String, crestColorRGB: [Double],
@@ -76,7 +80,7 @@ struct LegendsProfile: Codable {
          duplicateProgress: [String: Int] = [:], cardUpgrades: [String: Int] = [:],
          formationName: String = "4-4-2", startingXICardIDs: [String?] = Array(repeating: nil, count: 11),
          benchCardIDs: [String?] = Array(repeating: nil, count: LegendsStore.benchSize),
-         captainCardID: String? = nil) {
+         captainCardID: String? = nil, divisionWins: Int = 0) {
         self.clubName = clubName
         self.crestShort = crestShort
         self.crestColorRGB = crestColorRGB
@@ -93,6 +97,7 @@ struct LegendsProfile: Codable {
         self.startingXICardIDs = startingXICardIDs
         self.benchCardIDs = benchCardIDs
         self.captainCardID = captainCardID
+        self.divisionWins = divisionWins
     }
 
     init(from decoder: Decoder) throws {
@@ -113,6 +118,7 @@ struct LegendsProfile: Codable {
         startingXICardIDs = try c.decodeIfPresent([String?].self, forKey: .startingXICardIDs) ?? Array(repeating: nil, count: 11)
         benchCardIDs = try c.decodeIfPresent([String?].self, forKey: .benchCardIDs) ?? Array(repeating: nil, count: LegendsStore.benchSize)
         captainCardID = try c.decodeIfPresent(String.self, forKey: .captainCardID)
+        divisionWins = try c.decodeIfPresent(Int.self, forKey: .divisionWins) ?? 0
     }
 }
 
@@ -131,6 +137,8 @@ final class LegendsStore {
     static let duplicatesPerUpgrade = 3
     /// Starting XI (11) + Bench = 18, matching Career Mode's own squad size.
     static let benchSize = 7
+    /// Wins needed at a division before promotion (Phase 7).
+    static let winsToPromote = 3
 
     init() {
         profile = Self.load() ?? .starter()

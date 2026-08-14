@@ -103,6 +103,7 @@ struct LegendsHomeView: View {
     @State private var showCollection = false
     @State private var showPacks = false
     @State private var showSquad = false
+    @State private var showMatch = false
 
     private var crestColor: Color { Color(rgb: store.profile.crestColorRGB) }
 
@@ -131,7 +132,7 @@ struct LegendsHomeView: View {
 
                 ScrollView {
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                        tile(icon: "sportscourt.fill", title: "Play Match", phase: 7)
+                        playMatchTile
                         squadTile
                         packsTile
                         collectionTile
@@ -154,6 +155,9 @@ struct LegendsHomeView: View {
         }
         .fullScreenCover(isPresented: $showSquad) {
             LegendsSquadView(store: store) { showSquad = false }
+        }
+        .fullScreenCover(isPresented: $showMatch) {
+            LegendsMatchView(store: store) { showMatch = false }
         }
     }
 
@@ -202,6 +206,34 @@ struct LegendsHomeView: View {
         .padding(.vertical, 10)
         .background(Retro.panel.opacity(0.6))
         .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    private var playMatchTile: some View {
+        Button {
+            Haptics.tap()
+            showMatch = true
+        } label: {
+            VStack(spacing: 8) {
+                Image(systemName: "sportscourt.fill")
+                    .font(.system(size: 22))
+                    .foregroundStyle(Retro.accent)
+                Text("Play Match")
+                    .font(.system(.footnote, design: .monospaced).bold())
+                    .foregroundStyle(Retro.text)
+                Text(store.profile.division.displayName)
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(Retro.text.opacity(0.65))
+            }
+            .frame(maxWidth: .infinity, minHeight: 100)
+            .padding(10)
+            .background(
+                LinearGradient(colors: [Retro.panel.opacity(0.95), Retro.panel.opacity(0.7)],
+                               startPoint: .top, endPoint: .bottom)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Retro.accent.opacity(0.4), lineWidth: 1))
+        }
+        .buttonStyle(PressableButtonStyle())
     }
 
     private var squadTile: some View {

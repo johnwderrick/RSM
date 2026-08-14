@@ -14,6 +14,7 @@
 		3206C4960AED715B18175B0C /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4EA2B70D878918DA4CFE4BBE /* Foundation.framework */; };
 		3ED8FD5AA963F391C9598BD1 /* LegendsChemistryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F03BEE8FDDB675C4FEBF2BAA /* LegendsChemistryTests.swift */; };
 		4FAC06DD7BE5C1E8423AD72B /* CareerStoryGenerationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B121F6A9C9D225B23258477 /* CareerStoryGenerationTests.swift */; };
+		6724AC3FB647B4BDD7E17012 /* LegendsMatchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 644C36E4BB719E46DC5F1BD4 /* LegendsMatchTests.swift */; };
 		85860B1451564F9A551C3598 /* EconomyFormulaTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF9FCA91756A4B1B9A1D75FC /* EconomyFormulaTests.swift */; };
 		86AF834781278C3BB37443B3 /* LegacyScoringTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73FF9AB27737BE67B844606D /* LegacyScoringTests.swift */; };
 		958C4447B5D00D45411E467F /* SquadDataIntegrityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E2ED9DB1F880147D9C6F684 /* SquadDataIntegrityTests.swift */; };
@@ -42,6 +43,7 @@
 		4EA2B70D878918DA4CFE4BBE /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		52EE5DA4302272C0002A9DDF /* Retro Season Manager.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Retro Season Manager.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		58C8B31BA10D57B3BFD39DAC /* NegotiationFormulaTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NegotiationFormulaTests.swift; sourceTree = "<group>"; };
+		644C36E4BB719E46DC5F1BD4 /* LegendsMatchTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendsMatchTests.swift; sourceTree = "<group>"; };
 		73FF9AB27737BE67B844606D /* LegacyScoringTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegacyScoringTests.swift; sourceTree = "<group>"; };
 		769FB8EEAB31FAE4809E87E9 /* NewspaperClassifierTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NewspaperClassifierTests.swift; sourceTree = "<group>"; };
 		7F4E8DEDB4ADD31ECB559195 /* GameStoreTestSupport.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = GameStoreTestSupport.swift; sourceTree = "<group>"; };
@@ -97,6 +99,7 @@
 				E30D7225752E3B1942D844E5 /* LegendsPackTests.swift */,
 				2167ED2F990D56D684B0E673 /* LegendsSquadTests.swift */,
 				F03BEE8FDDB675C4FEBF2BAA /* LegendsChemistryTests.swift */,
+				644C36E4BB719E46DC5F1BD4 /* LegendsMatchTests.swift */,
 			);
 			path = "Retro Season ManagerTests";
 			sourceTree = "<group>";
@@ -247,6 +250,7 @@
 				00662B6C39544AA6851F522C /* LegendsPackTests.swift in Sources */,
 				255D12E4E73B3F1FD532841A /* LegendsSquadTests.swift in Sources */,
 				3ED8FD5AA963F391C9598BD1 /* LegendsChemistryTests.swift in Sources */,
+				6724AC3FB647B4BDD7E17012 /* LegendsMatchTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
