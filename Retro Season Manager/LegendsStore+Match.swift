@@ -4,11 +4,10 @@
 //
 //  Play Match orchestration (Phase 7): generates a division-scaled
 //  opponent, runs LegendsMatchEngine, and applies Rewards (Coins, Pack
-//  Tokens, Manager XP) plus Division promotion. "Special Packs",
-//  "Manager Cards" and "Stadium Cards" from the doc's Rewards list
-//  aren't given — Managers and Stadiums don't exist until Phase 9, so
-//  rewarding cards for systems that can't display or use them yet
-//  would just be dead currency.
+//  Tokens, Manager XP, Manager/Stadium Cards — Phase 9) plus Division
+//  promotion. "Special Packs" from the doc's Rewards list still isn't
+//  given: there's no separate "special" pack tier distinct from the
+//  Phase 4 catalog to draw from.
 //
 
 import Foundation
@@ -28,6 +27,8 @@ struct LegendsMatchOutcomeSummary {
     let promoted: Bool
     let newDivision: LegendsDivision
     var completedChallenges: [LegendsChallengeCompletion] = []
+    var newManager: LegendsManagerCard? = nil
+    var newStadium: LegendsStadiumCard? = nil
 }
 
 extension LegendsStore {
@@ -57,7 +58,7 @@ extension LegendsStore {
         guard currentTeamRating > 0 else { return nil }
 
         let opponent = generateOpponent()
-        let chemistryBonus = Double(totalChemistry) * 0.3
+        let chemistryBonus = Double(totalChemistry) * 0.3 + matchStrengthBonus
         let result = LegendsMatchEngine.simulate(teamRating: currentTeamRating, opponentRating: opponent.rating,
                                                    chemistryBonus: chemistryBonus)
 
@@ -82,6 +83,8 @@ extension LegendsStore {
         }
 
         var promoted = false
+        var newManager: LegendsManagerCard? = nil
+        var newStadium: LegendsStadiumCard? = nil
         if result.outcome == .win {
             profile.divisionWins += 1
             if profile.divisionWins >= Self.winsToPromote, profile.division != .worldLeague {
@@ -89,10 +92,25 @@ extension LegendsStore {
                 profile.division = LegendsDivision(rawValue: profile.division.rawValue - 1) ?? .worldLeague
                 promoted = true
             }
+
+            // Manager/Stadium Cards from the doc's Rewards list — a
+            // modest independent chance per win, only from cards not
+            // already owned.
+            if let manager = LegendsManagerDatabase.all.filter({ !profile.ownedManagerIDs.contains($0.id) }).randomElement(),
+               Double.random(in: 0...1) < 0.2 {
+                profile.ownedManagerIDs.insert(manager.id)
+                newManager = manager
+            }
+            if let stadium = LegendsStadiumDatabase.all.filter({ !profile.ownedStadiumIDs.contains($0.id) }).randomElement(),
+               Double.random(in: 0...1) < 0.2 {
+                profile.ownedStadiumIDs.insert(stadium.id)
+                newStadium = stadium
+            }
         }
 
         var summary = LegendsMatchOutcomeSummary(opponent: opponent, result: result, coinsEarned: coins, tokensEarned: tokens,
-                                                  xpEarned: xp, leveledUp: leveledUp, promoted: promoted, newDivision: profile.division)
+                                                  xpEarned: xp, leveledUp: leveledUp, promoted: promoted, newDivision: profile.division,
+                                                  newManager: newManager, newStadium: newStadium)
         // recordMatchResult persists — it runs last so it sees every
         // stat this match just updated (division, manager level, etc.)
         summary.completedChallenges = recordMatchResult(summary)

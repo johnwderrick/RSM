@@ -160,6 +160,16 @@ struct LegendsMatchView: View {
                 .frame(maxWidth: 380)
             }
 
+            if let newManager = summary.newManager {
+                Text("NEW MANAGER: \(newManager.name.uppercased())")
+                    .font(.system(.caption, design: .monospaced).bold())
+                    .foregroundStyle(Retro.gold)
+            }
+            if let newStadium = summary.newStadium {
+                Text("NEW STADIUM: \(newStadium.name.uppercased())")
+                    .font(.system(.caption, design: .monospaced).bold())
+                    .foregroundStyle(Retro.gold)
+            }
             if summary.leveledUp {
                 Text("MANAGER LEVEL UP → \(store.profile.managerLevel)")
                     .font(.system(.caption, design: .monospaced).bold())

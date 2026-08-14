@@ -68,6 +68,12 @@ struct LegendsProfile: Codable {
     var completedPermanentChallengeIDs: Set<String> = []
     var completedDailyChallengeIDs: Set<String> = []
     var completedWeeklyChallengeIDs: Set<String> = []
+    /// Managers & Stadiums (Phase 9). Only one of each can be active at
+    /// a time — a manager/stadium not in the owned set can't be set active.
+    var ownedManagerIDs: Set<String> = []
+    var activeManagerID: String? = nil
+    var ownedStadiumIDs: Set<String> = []
+    var activeStadiumID: String? = nil
 
     static func starter() -> LegendsProfile {
         LegendsProfile(clubName: "RSM Legends FC", crestShort: "RSM",
@@ -89,6 +95,7 @@ struct LegendsProfile: Codable {
         case totalWins, currentWinStreak, matchesToday, winsToday, winsThisWeek, goalsThisWeek
         case lastDailyReset, lastWeeklyReset
         case completedPermanentChallengeIDs, completedDailyChallengeIDs, completedWeeklyChallengeIDs
+        case ownedManagerIDs, activeManagerID, ownedStadiumIDs, activeStadiumID
     }
 
     init(clubName: String, crestShort: String, crestColorRGB: [Double],
@@ -102,7 +109,9 @@ struct LegendsProfile: Codable {
          winsThisWeek: Int = 0, goalsThisWeek: Int = 0,
          lastDailyReset: Date = .distantPast, lastWeeklyReset: Date = .distantPast,
          completedPermanentChallengeIDs: Set<String> = [], completedDailyChallengeIDs: Set<String> = [],
-         completedWeeklyChallengeIDs: Set<String> = []) {
+         completedWeeklyChallengeIDs: Set<String> = [],
+         ownedManagerIDs: Set<String> = [], activeManagerID: String? = nil,
+         ownedStadiumIDs: Set<String> = [], activeStadiumID: String? = nil) {
         self.clubName = clubName
         self.crestShort = crestShort
         self.crestColorRGB = crestColorRGB
@@ -131,6 +140,10 @@ struct LegendsProfile: Codable {
         self.completedPermanentChallengeIDs = completedPermanentChallengeIDs
         self.completedDailyChallengeIDs = completedDailyChallengeIDs
         self.completedWeeklyChallengeIDs = completedWeeklyChallengeIDs
+        self.ownedManagerIDs = ownedManagerIDs
+        self.activeManagerID = activeManagerID
+        self.ownedStadiumIDs = ownedStadiumIDs
+        self.activeStadiumID = activeStadiumID
     }
 
     init(from decoder: Decoder) throws {
@@ -163,6 +176,10 @@ struct LegendsProfile: Codable {
         completedPermanentChallengeIDs = try c.decodeIfPresent(Set<String>.self, forKey: .completedPermanentChallengeIDs) ?? []
         completedDailyChallengeIDs = try c.decodeIfPresent(Set<String>.self, forKey: .completedDailyChallengeIDs) ?? []
         completedWeeklyChallengeIDs = try c.decodeIfPresent(Set<String>.self, forKey: .completedWeeklyChallengeIDs) ?? []
+        ownedManagerIDs = try c.decodeIfPresent(Set<String>.self, forKey: .ownedManagerIDs) ?? []
+        activeManagerID = try c.decodeIfPresent(String.self, forKey: .activeManagerID)
+        ownedStadiumIDs = try c.decodeIfPresent(Set<String>.self, forKey: .ownedStadiumIDs) ?? []
+        activeStadiumID = try c.decodeIfPresent(String.self, forKey: .activeStadiumID)
     }
 }
 

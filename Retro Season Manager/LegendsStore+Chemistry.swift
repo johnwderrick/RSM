@@ -3,14 +3,13 @@
 //  Retro Season Manager
 //
 //  Chemistry (Phase 6) — bonuses from Same Club, Same Nation, Same
-//  League, Same Era and Formation Fit. "Same Manager" from the doc is
-//  deliberately not scored yet: there's no way to assign a manager to
-//  the squad until Managers (Phase 9) exists, so it always contributes
-//  zero rather than being faked. "Same League" doesn't use real league
-//  names (same trademark reasoning as dropping the real-league packs in
-//  Phase 4) — it's derived from which fictional country each club
-//  belongs to, using the same club universe Career Mode's historical
-//  squads already established.
+//  League, Same Era, Same Manager and Formation Fit. "Same Manager"
+//  (Phase 9): a player from the active manager's affinity club gets a
+//  link bonus, same weight as a Same Club teammate link. "Same League"
+//  doesn't use real league names (same trademark reasoning as dropping
+//  the real-league packs in Phase 4) — it's derived from which
+//  fictional country each club belongs to, using the same club universe
+//  Career Mode's historical squads already established.
 //
 
 import Foundation
@@ -52,6 +51,7 @@ extension LegendsStore {
             if teammate.nation == card.nation { linkScore += 1 }
             if teammate.era == card.era { linkScore += 1 }
         }
+        if let manager = activeManager, manager.affinityClub == card.club { linkScore += 3 }
 
         let stars: Int
         switch linkScore {

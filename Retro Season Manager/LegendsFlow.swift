@@ -105,6 +105,8 @@ struct LegendsHomeView: View {
     @State private var showSquad = false
     @State private var showMatch = false
     @State private var showChallenges = false
+    @State private var showManagers = false
+    @State private var showStadiums = false
 
     private var crestColor: Color { Color(rgb: store.profile.crestColorRGB) }
 
@@ -138,9 +140,9 @@ struct LegendsHomeView: View {
                         packsTile
                         collectionTile
                         challengesTile
-                        tile(icon: "building.columns.fill", title: "Club", phase: 9)
-                        tile(icon: "person.crop.rectangle.stack.fill", title: "Managers", phase: 9)
-                        tile(icon: "building.2.fill", title: "Stadiums", phase: 9)
+                        tile(icon: "building.columns.fill", title: "Club", phase: 10)
+                        managersTile
+                        stadiumsTile
                         tile(icon: "gearshape.fill", title: "Settings", phase: 10)
                     }
                     .padding(.horizontal)
@@ -162,6 +164,12 @@ struct LegendsHomeView: View {
         }
         .fullScreenCover(isPresented: $showChallenges) {
             LegendsChallengesView(store: store) { showChallenges = false }
+        }
+        .fullScreenCover(isPresented: $showManagers) {
+            LegendsManagersView(store: store) { showManagers = false }
+        }
+        .fullScreenCover(isPresented: $showStadiums) {
+            LegendsStadiumsView(store: store) { showStadiums = false }
         }
     }
 
@@ -254,6 +262,62 @@ struct LegendsHomeView: View {
                     .font(.system(.footnote, design: .monospaced).bold())
                     .foregroundStyle(Retro.text)
                 Text("\(completed)/\(LegendsChallengeDatabase.all.count) done")
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(Retro.text.opacity(0.65))
+            }
+            .frame(maxWidth: .infinity, minHeight: 100)
+            .padding(10)
+            .background(
+                LinearGradient(colors: [Retro.panel.opacity(0.95), Retro.panel.opacity(0.7)],
+                               startPoint: .top, endPoint: .bottom)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Retro.accent.opacity(0.4), lineWidth: 1))
+        }
+        .buttonStyle(PressableButtonStyle())
+    }
+
+    private var managersTile: some View {
+        Button {
+            Haptics.tap()
+            showManagers = true
+        } label: {
+            VStack(spacing: 8) {
+                Image(systemName: "person.crop.rectangle.stack.fill")
+                    .font(.system(size: 22))
+                    .foregroundStyle(Retro.accent)
+                Text("Managers")
+                    .font(.system(.footnote, design: .monospaced).bold())
+                    .foregroundStyle(Retro.text)
+                Text("\(store.profile.ownedManagerIDs.count)/\(LegendsManagerDatabase.all.count) owned")
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(Retro.text.opacity(0.65))
+            }
+            .frame(maxWidth: .infinity, minHeight: 100)
+            .padding(10)
+            .background(
+                LinearGradient(colors: [Retro.panel.opacity(0.95), Retro.panel.opacity(0.7)],
+                               startPoint: .top, endPoint: .bottom)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Retro.accent.opacity(0.4), lineWidth: 1))
+        }
+        .buttonStyle(PressableButtonStyle())
+    }
+
+    private var stadiumsTile: some View {
+        Button {
+            Haptics.tap()
+            showStadiums = true
+        } label: {
+            VStack(spacing: 8) {
+                Image(systemName: "building.2.fill")
+                    .font(.system(size: 22))
+                    .foregroundStyle(Retro.accent)
+                Text("Stadiums")
+                    .font(.system(.footnote, design: .monospaced).bold())
+                    .foregroundStyle(Retro.text)
+                Text("\(store.profile.ownedStadiumIDs.count)/\(LegendsStadiumDatabase.all.count) owned")
                     .font(.system(.caption2, design: .monospaced))
                     .foregroundStyle(Retro.text.opacity(0.65))
             }
