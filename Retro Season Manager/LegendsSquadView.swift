@@ -92,7 +92,7 @@ struct LegendsSquadView: View {
                 .font(.system(.title2, design: .monospaced).bold())
                 .foregroundStyle(Retro.accent)
 
-            Text(store.currentTeamRating > 0 ? "TEAM RATING \(store.currentTeamRating)" : "SET YOUR STARTING XI")
+            Text(store.currentTeamRating > 0 ? "TEAM RATING \(store.currentTeamRating)  ·  CHEMISTRY \(store.totalChemistry)/33" : "SET YOUR STARTING XI")
                 .font(.system(.caption, design: .monospaced).bold())
                 .foregroundStyle(Retro.highlight)
                 .tracking(1)
@@ -152,6 +152,10 @@ struct LegendsSquadView: View {
             }
             .buttonStyle(PressableButtonStyle())
 
+            if card != nil {
+                chemistryDots(store.chemistryStars(forXISlot: index))
+            }
+
             if let card {
                 Button {
                     Haptics.tap()
@@ -162,6 +166,27 @@ struct LegendsSquadView: View {
                 }
                 .buttonStyle(.plain)
             }
+        }
+    }
+
+    /// Three pips — a compact stand-in for the doc's chemistry stars —
+    /// coloured red/amber/green by how much of the 0...3 scale is filled.
+    private func chemistryDots(_ stars: Int) -> some View {
+        HStack(spacing: 2) {
+            ForEach(0..<3, id: \.self) { i in
+                Circle()
+                    .fill(i < stars ? chemistryColor(stars) : Retro.text.opacity(0.2))
+                    .frame(width: 6, height: 6)
+            }
+        }
+    }
+
+    private func chemistryColor(_ stars: Int) -> Color {
+        switch stars {
+        case 3: return Retro.emerald
+        case 2: return Retro.gold
+        case 1: return Retro.warning
+        default: return Retro.text.opacity(0.2)
         }
     }
 
