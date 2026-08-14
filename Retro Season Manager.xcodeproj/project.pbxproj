@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		0BA5CDDF24DC0BA9798F2DCB /* GameStoreTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F4E8DEDB4ADD31ECB559195 /* GameStoreTestSupport.swift */; };
+		11302683010CCC0470AF64EF /* TransferGeniusTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A739EF8ADAACAE333C948C4 /* TransferGeniusTests.swift */; };
 		3206C4960AED715B18175B0C /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4EA2B70D878918DA4CFE4BBE /* Foundation.framework */; };
 		4FAC06DD7BE5C1E8423AD72B /* CareerStoryGenerationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B121F6A9C9D225B23258477 /* CareerStoryGenerationTests.swift */; };
 		85860B1451564F9A551C3598 /* EconomyFormulaTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF9FCA91756A4B1B9A1D75FC /* EconomyFormulaTests.swift */; };
@@ -15,6 +16,7 @@
 		958C4447B5D00D45411E467F /* SquadDataIntegrityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E2ED9DB1F880147D9C6F684 /* SquadDataIntegrityTests.swift */; };
 		B50662B944281CF78CD58A04 /* NegotiationFormulaTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58C8B31BA10D57B3BFD39DAC /* NegotiationFormulaTests.swift */; };
 		BD403C02CB0C5ABD7E617BFF /* AchievementThresholdTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EDC0B782BA6EAA77DABFC8F /* AchievementThresholdTests.swift */; };
+		BF9EE3B68FCD4BB2B3FA026D /* NewspaperClassifierTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 769FB8EEAB31FAE4809E87E9 /* NewspaperClassifierTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -30,11 +32,13 @@
 /* Begin PBXFileReference section */
 		1D1DE01F6AE1531551548017 /* Retro Season ManagerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Retro Season ManagerTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		1E2ED9DB1F880147D9C6F684 /* SquadDataIntegrityTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SquadDataIntegrityTests.swift; sourceTree = "<group>"; };
+		2A739EF8ADAACAE333C948C4 /* TransferGeniusTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TransferGeniusTests.swift; sourceTree = "<group>"; };
 		2EDC0B782BA6EAA77DABFC8F /* AchievementThresholdTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AchievementThresholdTests.swift; sourceTree = "<group>"; };
 		4EA2B70D878918DA4CFE4BBE /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		52EE5DA4302272C0002A9DDF /* Retro Season Manager.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Retro Season Manager.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		58C8B31BA10D57B3BFD39DAC /* NegotiationFormulaTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NegotiationFormulaTests.swift; sourceTree = "<group>"; };
 		73FF9AB27737BE67B844606D /* LegacyScoringTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegacyScoringTests.swift; sourceTree = "<group>"; };
+		769FB8EEAB31FAE4809E87E9 /* NewspaperClassifierTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NewspaperClassifierTests.swift; sourceTree = "<group>"; };
 		7F4E8DEDB4ADD31ECB559195 /* GameStoreTestSupport.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = GameStoreTestSupport.swift; sourceTree = "<group>"; };
 		9B121F6A9C9D225B23258477 /* CareerStoryGenerationTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CareerStoryGenerationTests.swift; sourceTree = "<group>"; };
 		BF9FCA91756A4B1B9A1D75FC /* EconomyFormulaTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = EconomyFormulaTests.swift; sourceTree = "<group>"; };
@@ -79,6 +83,8 @@
 				2EDC0B782BA6EAA77DABFC8F /* AchievementThresholdTests.swift */,
 				58C8B31BA10D57B3BFD39DAC /* NegotiationFormulaTests.swift */,
 				9B121F6A9C9D225B23258477 /* CareerStoryGenerationTests.swift */,
+				769FB8EEAB31FAE4809E87E9 /* NewspaperClassifierTests.swift */,
+				2A739EF8ADAACAE333C948C4 /* TransferGeniusTests.swift */,
 			);
 			name = "Retro Season ManagerTests";
 			path = "Retro Season ManagerTests";
@@ -224,6 +230,8 @@
 				BD403C02CB0C5ABD7E617BFF /* AchievementThresholdTests.swift in Sources */,
 				B50662B944281CF78CD58A04 /* NegotiationFormulaTests.swift in Sources */,
 				4FAC06DD7BE5C1E8423AD72B /* CareerStoryGenerationTests.swift in Sources */,
+				BF9EE3B68FCD4BB2B3FA026D /* NewspaperClassifierTests.swift in Sources */,
+				11302683010CCC0470AF64EF /* TransferGeniusTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

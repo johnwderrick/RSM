@@ -1,0 +1,33 @@
+# Xcode
+build/
+DerivedData/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+*.xcuserstate
+*.xcscmblueprint
+
+# Swift Package Manager
+.swiftpm/
+.build/
+
+# CocoaPods / Carthage (unused today, ignored defensively)
+Pods/
+Carthage/Build/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+__MACOSX/
+
+# Simulator / device logs
+*.ips
+
+# Temporary / editor files
+*.swp
+*~
+.vscode/
+
+# Local-only Claude Code settings (permissions, machine-specific)
+.claude/settings.local.json
