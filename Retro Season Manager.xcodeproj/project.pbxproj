@@ -10,6 +10,7 @@
 		00662B6C39544AA6851F522C /* LegendsPackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E30D7225752E3B1942D844E5 /* LegendsPackTests.swift */; };
 		0BA5CDDF24DC0BA9798F2DCB /* GameStoreTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F4E8DEDB4ADD31ECB559195 /* GameStoreTestSupport.swift */; };
 		11302683010CCC0470AF64EF /* TransferGeniusTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A739EF8ADAACAE333C948C4 /* TransferGeniusTests.swift */; };
+		255D12E4E73B3F1FD532841A /* LegendsSquadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2167ED2F990D56D684B0E673 /* LegendsSquadTests.swift */; };
 		3206C4960AED715B18175B0C /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4EA2B70D878918DA4CFE4BBE /* Foundation.framework */; };
 		4FAC06DD7BE5C1E8423AD72B /* CareerStoryGenerationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B121F6A9C9D225B23258477 /* CareerStoryGenerationTests.swift */; };
 		85860B1451564F9A551C3598 /* EconomyFormulaTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF9FCA91756A4B1B9A1D75FC /* EconomyFormulaTests.swift */; };
@@ -34,6 +35,7 @@
 /* Begin PBXFileReference section */
 		1D1DE01F6AE1531551548017 /* Retro Season ManagerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Retro Season ManagerTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		1E2ED9DB1F880147D9C6F684 /* SquadDataIntegrityTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SquadDataIntegrityTests.swift; sourceTree = "<group>"; };
+		2167ED2F990D56D684B0E673 /* LegendsSquadTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendsSquadTests.swift; sourceTree = "<group>"; };
 		2A739EF8ADAACAE333C948C4 /* TransferGeniusTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TransferGeniusTests.swift; sourceTree = "<group>"; };
 		2EDC0B782BA6EAA77DABFC8F /* AchievementThresholdTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AchievementThresholdTests.swift; sourceTree = "<group>"; };
 		4EA2B70D878918DA4CFE4BBE /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
@@ -91,6 +93,7 @@
 				2A739EF8ADAACAE333C948C4 /* TransferGeniusTests.swift */,
 				B660BAC2FA7DF71D3BADD886 /* LegendsCardDatabaseTests.swift */,
 				E30D7225752E3B1942D844E5 /* LegendsPackTests.swift */,
+				2167ED2F990D56D684B0E673 /* LegendsSquadTests.swift */,
 			);
 			path = "Retro Season ManagerTests";
 			sourceTree = "<group>";
@@ -239,6 +242,7 @@
 				11302683010CCC0470AF64EF /* TransferGeniusTests.swift in Sources */,
 				C0D41EE6E559A561127D0FEE /* LegendsCardDatabaseTests.swift in Sources */,
 				00662B6C39544AA6851F522C /* LegendsPackTests.swift in Sources */,
+				255D12E4E73B3F1FD532841A /* LegendsSquadTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

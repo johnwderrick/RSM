@@ -102,6 +102,7 @@ struct LegendsHomeView: View {
     var onBack: () -> Void
     @State private var showCollection = false
     @State private var showPacks = false
+    @State private var showSquad = false
 
     private var crestColor: Color { Color(rgb: store.profile.crestColorRGB) }
 
@@ -131,7 +132,7 @@ struct LegendsHomeView: View {
                 ScrollView {
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
                         tile(icon: "sportscourt.fill", title: "Play Match", phase: 7)
-                        tile(icon: "person.3.fill", title: "Squad", phase: 5)
+                        squadTile
                         packsTile
                         collectionTile
                         tile(icon: "flag.checkered", title: "Challenges", phase: 8)
@@ -150,6 +151,9 @@ struct LegendsHomeView: View {
         }
         .fullScreenCover(isPresented: $showPacks) {
             LegendsPacksView(store: store) { showPacks = false }
+        }
+        .fullScreenCover(isPresented: $showSquad) {
+            LegendsSquadView(store: store) { showSquad = false }
         }
     }
 
@@ -174,7 +178,7 @@ struct LegendsHomeView: View {
         HStack(spacing: 10) {
             stat(icon: "dollarsign.circle.fill", value: "\(store.profile.coins)", label: "COINS")
             stat(icon: "shippingbox.fill", value: "\(store.profile.packTokens)", label: "TOKENS")
-            stat(icon: "star.fill", value: store.profile.teamRating > 0 ? "\(store.profile.teamRating)" : "—", label: "RATING")
+            stat(icon: "star.fill", value: store.currentTeamRating > 0 ? "\(store.currentTeamRating)" : "—", label: "RATING")
             stat(icon: "trophy.fill", value: store.profile.division.displayName, label: "DIVISION")
         }
         .padding(.horizontal)
@@ -198,6 +202,34 @@ struct LegendsHomeView: View {
         .padding(.vertical, 10)
         .background(Retro.panel.opacity(0.6))
         .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    private var squadTile: some View {
+        Button {
+            Haptics.tap()
+            showSquad = true
+        } label: {
+            VStack(spacing: 8) {
+                Image(systemName: "person.3.fill")
+                    .font(.system(size: 22))
+                    .foregroundStyle(Retro.accent)
+                Text("Squad")
+                    .font(.system(.footnote, design: .monospaced).bold())
+                    .foregroundStyle(Retro.text)
+                Text(store.currentTeamRating > 0 ? "Rating \(store.currentTeamRating)" : "Not set")
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(Retro.text.opacity(0.65))
+            }
+            .frame(maxWidth: .infinity, minHeight: 100)
+            .padding(10)
+            .background(
+                LinearGradient(colors: [Retro.panel.opacity(0.95), Retro.panel.opacity(0.7)],
+                               startPoint: .top, endPoint: .bottom)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Retro.accent.opacity(0.4), lineWidth: 1))
+        }
+        .buttonStyle(PressableButtonStyle())
     }
 
     private var packsTile: some View {

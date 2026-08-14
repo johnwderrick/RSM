@@ -42,6 +42,15 @@ struct LegendsProfile: Codable {
     /// `LegendsStore.maxCardUpgrade` to keep the doc's "maximum rating
     /// capped to maintain realism" rule.
     var cardUpgrades: [String: Int] = [:]
+    /// Squad Builder (Phase 5). `startingXICardIDs` is indexed the same
+    /// way as `LegendsStore.startingXISlots` for the current formation
+    /// (GK, then defenders/midfielders/forwards rows); `nil` = empty
+    /// slot. Resized by `LegendsStore.setFormation(_:)` when the
+    /// formation changes.
+    var formationName: String = "4-4-2"
+    var startingXICardIDs: [String?] = Array(repeating: nil, count: 11)
+    var benchCardIDs: [String?] = Array(repeating: nil, count: LegendsStore.benchSize)
+    var captainCardID: String? = nil
 
     static func starter() -> LegendsProfile {
         LegendsProfile(clubName: "RSM Legends FC", crestShort: "RSM",
@@ -58,12 +67,16 @@ struct LegendsProfile: Codable {
         case clubName, crestShort, crestColorRGB, managerLevel, managerXP
         case coins, packTokens, division, teamRating, ownedCardIDs
         case duplicateProgress, cardUpgrades
+        case formationName, startingXICardIDs, benchCardIDs, captainCardID
     }
 
     init(clubName: String, crestShort: String, crestColorRGB: [Double],
          managerLevel: Int, managerXP: Int, coins: Int, packTokens: Int,
          division: LegendsDivision, teamRating: Int, ownedCardIDs: Set<String> = [],
-         duplicateProgress: [String: Int] = [:], cardUpgrades: [String: Int] = [:]) {
+         duplicateProgress: [String: Int] = [:], cardUpgrades: [String: Int] = [:],
+         formationName: String = "4-4-2", startingXICardIDs: [String?] = Array(repeating: nil, count: 11),
+         benchCardIDs: [String?] = Array(repeating: nil, count: LegendsStore.benchSize),
+         captainCardID: String? = nil) {
         self.clubName = clubName
         self.crestShort = crestShort
         self.crestColorRGB = crestColorRGB
@@ -76,6 +89,10 @@ struct LegendsProfile: Codable {
         self.ownedCardIDs = ownedCardIDs
         self.duplicateProgress = duplicateProgress
         self.cardUpgrades = cardUpgrades
+        self.formationName = formationName
+        self.startingXICardIDs = startingXICardIDs
+        self.benchCardIDs = benchCardIDs
+        self.captainCardID = captainCardID
     }
 
     init(from decoder: Decoder) throws {
@@ -92,6 +109,10 @@ struct LegendsProfile: Codable {
         ownedCardIDs = try c.decodeIfPresent(Set<String>.self, forKey: .ownedCardIDs) ?? []
         duplicateProgress = try c.decodeIfPresent([String: Int].self, forKey: .duplicateProgress) ?? [:]
         cardUpgrades = try c.decodeIfPresent([String: Int].self, forKey: .cardUpgrades) ?? [:]
+        formationName = try c.decodeIfPresent(String.self, forKey: .formationName) ?? "4-4-2"
+        startingXICardIDs = try c.decodeIfPresent([String?].self, forKey: .startingXICardIDs) ?? Array(repeating: nil, count: 11)
+        benchCardIDs = try c.decodeIfPresent([String?].self, forKey: .benchCardIDs) ?? Array(repeating: nil, count: LegendsStore.benchSize)
+        captainCardID = try c.decodeIfPresent(String.self, forKey: .captainCardID)
     }
 }
 
@@ -108,6 +129,8 @@ final class LegendsStore {
     /// — keeps the doc's "maximum rating capped to maintain realism" rule.
     static let maxCardUpgrade = 3
     static let duplicatesPerUpgrade = 3
+    /// Starting XI (11) + Bench = 18, matching Career Mode's own squad size.
+    static let benchSize = 7
 
     init() {
         profile = Self.load() ?? .starter()
