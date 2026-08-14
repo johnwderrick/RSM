@@ -206,6 +206,7 @@ private struct LegendsPackOpeningView: View {
             if result.card.rarity.tier >= 5 {
                 burstIndex = index
                 Haptics.success()
+                SoundManager.shared.play(.trophyLift)
             }
         }
     }

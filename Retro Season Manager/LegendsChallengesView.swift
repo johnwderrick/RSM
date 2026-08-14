@@ -75,6 +75,7 @@ struct LegendsChallengesView: View {
             Image(systemName: completed ? "checkmark.seal.fill" : "circle")
                 .font(.system(size: 20))
                 .foregroundStyle(completed ? Retro.emerald : Retro.text.opacity(0.3))
+                .animation(.spring(duration: 0.4), value: completed)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(challenge.title)

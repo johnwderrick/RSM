@@ -62,7 +62,9 @@ struct LegendsManagersView: View {
         return Button {
             guard owned else { return }
             Haptics.tap()
-            store.setActiveManager(active ? nil : manager.id)
+            withAnimation(.spring(duration: 0.3)) {
+                store.setActiveManager(active ? nil : manager.id)
+            }
         } label: {
             HStack(spacing: 12) {
                 Image(systemName: "person.crop.rectangle.stack.fill")
@@ -100,6 +102,7 @@ struct LegendsManagersView: View {
                         Text("ACTIVE")
                             .font(.system(size: 9, design: .monospaced).bold())
                             .foregroundStyle(Retro.emerald)
+                            .transition(.scale.combined(with: .opacity))
                     }
                 }
             }

@@ -61,8 +61,6 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		52EE5DA6302272C0002A9DDF /* Retro Season Manager */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = "Retro Season Manager";
 			sourceTree = "<group>";
 		};

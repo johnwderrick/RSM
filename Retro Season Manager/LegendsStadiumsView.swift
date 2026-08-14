@@ -63,7 +63,9 @@ struct LegendsStadiumsView: View {
         return Button {
             guard owned else { return }
             Haptics.tap()
-            store.setActiveStadium(active ? nil : stadium.id)
+            withAnimation(.spring(duration: 0.3)) {
+                store.setActiveStadium(active ? nil : stadium.id)
+            }
         } label: {
             HStack(spacing: 12) {
                 Circle()
@@ -98,6 +100,7 @@ struct LegendsStadiumsView: View {
                         Text("HOME")
                             .font(.system(size: 9, design: .monospaced).bold())
                             .foregroundStyle(Retro.emerald)
+                            .transition(.scale.combined(with: .opacity))
                     }
                 }
             }

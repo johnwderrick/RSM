@@ -177,6 +177,7 @@ struct LegendsSquadView: View {
                 Circle()
                     .fill(i < stars ? chemistryColor(stars) : Retro.text.opacity(0.2))
                     .frame(width: 6, height: 6)
+                    .animation(.easeInOut(duration: 0.3), value: stars)
             }
         }
     }

@@ -6,6 +6,11 @@
 //  doc ("Shorter presentation. Faster progression."): no live
 //  minute-by-minute ticker, just a brief search beat and the result.
 //
+//  Phase 10 polish: reuses LiveMatch's own sound-cue vocabulary
+//  (whistleKickOff/whistleFullTime/goalCrowd/promotion/trophyLift)
+//  rather than inventing new cues, and adds an entrance animation plus
+//  outcome-specific haptics for the result reveal.
+//
 
 import SwiftUI
 
@@ -24,6 +29,7 @@ struct LegendsMatchView: View {
                 Spacer()
                 if let summary {
                     resultPanel(summary)
+                        .transition(.scale(scale: 0.9).combined(with: .opacity))
                 } else if isSimulating {
                     searchingPanel
                 } else if store.currentTeamRating > 0 {
@@ -96,10 +102,15 @@ struct LegendsMatchView: View {
 
             Button {
                 Haptics.tap()
+                SoundManager.shared.play(.whistleKickOff)
                 isSimulating = true
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
-                    summary = store.playMatch()
-                    isSimulating = false
+                    let result = store.playMatch()
+                    announceResult(result)
+                    withAnimation(.spring(duration: 0.5)) {
+                        summary = result
+                        isSimulating = false
+                    }
                 }
             } label: {
                 Text("KICK OFF")
@@ -111,6 +122,24 @@ struct LegendsMatchView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 10))
             }
             .buttonStyle(PressableButtonStyle())
+        }
+    }
+
+    /// Sound + haptic cues for a just-finished match, played once right
+    /// as the result becomes available — mirrors LiveMatch's own
+    /// full-time/goal cues rather than a new vocabulary.
+    private func announceResult(_ summary: LegendsMatchOutcomeSummary?) {
+        guard let summary else { return }
+        if summary.result.teamGoals > 0 { SoundManager.shared.play(.goalCrowd) }
+        SoundManager.shared.play(.whistleFullTime)
+        switch summary.result.outcome {
+        case .win: Haptics.success()
+        case .draw: Haptics.tap()
+        case .loss: Haptics.warning()
+        }
+        if summary.promoted { SoundManager.shared.play(.promotion) }
+        if summary.leveledUp || summary.newManager != nil || summary.newStadium != nil || !summary.completedChallenges.isEmpty {
+            SoundManager.shared.play(.trophyLift)
         }
     }
 
@@ -184,7 +213,7 @@ struct LegendsMatchView: View {
             HStack(spacing: 12) {
                 Button {
                     Haptics.tap()
-                    self.summary = nil
+                    withAnimation(.easeInOut(duration: 0.25)) { self.summary = nil }
                 } label: {
                     Text("Play Again")
                         .font(.system(.footnote, design: .monospaced).bold())

@@ -107,6 +107,7 @@ struct LegendsHomeView: View {
     @State private var showChallenges = false
     @State private var showManagers = false
     @State private var showStadiums = false
+    @State private var showSettings = false
 
     private var crestColor: Color { Color(rgb: store.profile.crestColorRGB) }
 
@@ -140,10 +141,10 @@ struct LegendsHomeView: View {
                         packsTile
                         collectionTile
                         challengesTile
-                        tile(icon: "building.columns.fill", title: "Club", phase: 10)
+                        tile(icon: "building.columns.fill", title: "Club")
                         managersTile
                         stadiumsTile
-                        tile(icon: "gearshape.fill", title: "Settings", phase: 10)
+                        settingsTile
                     }
                     .padding(.horizontal)
                     .padding(.bottom, 20)
@@ -170,6 +171,9 @@ struct LegendsHomeView: View {
         }
         .fullScreenCover(isPresented: $showStadiums) {
             LegendsStadiumsView(store: store) { showStadiums = false }
+        }
+        .fullScreenCover(isPresented: $showSettings) {
+            LegendsSettingsView { showSettings = false }
         }
     }
 
@@ -210,6 +214,8 @@ struct LegendsHomeView: View {
                 .foregroundStyle(Retro.text)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
+                .contentTransition(.numericText())
+                .animation(.spring(duration: 0.4), value: value)
             Text(label)
                 .font(.system(.caption2, design: .monospaced))
                 .foregroundStyle(Retro.text.opacity(0.6))
@@ -333,6 +339,34 @@ struct LegendsHomeView: View {
         .buttonStyle(PressableButtonStyle())
     }
 
+    private var settingsTile: some View {
+        Button {
+            Haptics.tap()
+            showSettings = true
+        } label: {
+            VStack(spacing: 8) {
+                Image(systemName: "gearshape.fill")
+                    .font(.system(size: 22))
+                    .foregroundStyle(Retro.accent)
+                Text("Settings")
+                    .font(.system(.footnote, design: .monospaced).bold())
+                    .foregroundStyle(Retro.text)
+                Text("Sound & more")
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(Retro.text.opacity(0.65))
+            }
+            .frame(maxWidth: .infinity, minHeight: 100)
+            .padding(10)
+            .background(
+                LinearGradient(colors: [Retro.panel.opacity(0.95), Retro.panel.opacity(0.7)],
+                               startPoint: .top, endPoint: .bottom)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Retro.accent.opacity(0.4), lineWidth: 1))
+        }
+        .buttonStyle(PressableButtonStyle())
+    }
+
     private var squadTile: some View {
         Button {
             Haptics.tap()
@@ -417,7 +451,10 @@ struct LegendsHomeView: View {
         .buttonStyle(PressableButtonStyle())
     }
 
-    private func tile(icon: String, title: String, phase: Int) -> some View {
+    /// `phase` is nil for tiles that were never given a roadmap phase in
+    /// the design doc (just "Club" now — every phase 1-10 tile has a
+    /// real screen behind it).
+    private func tile(icon: String, title: String, phase: Int? = nil) -> some View {
         VStack(spacing: 8) {
             Image(systemName: icon)
                 .font(.system(size: 22))
@@ -425,7 +462,7 @@ struct LegendsHomeView: View {
             Text(title)
                 .font(.system(.footnote, design: .monospaced).bold())
                 .foregroundStyle(Retro.text.opacity(0.5))
-            Text("Coming in Phase \(phase)")
+            Text(phase.map { "Coming in Phase \($0)" } ?? "Coming soon")
                 .font(.system(.caption2, design: .monospaced))
                 .foregroundStyle(Retro.text.opacity(0.4))
                 .multilineTextAlignment(.center)

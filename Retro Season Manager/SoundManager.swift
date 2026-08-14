@@ -29,11 +29,18 @@ enum SoundCue: String {
 @MainActor
 final class SoundManager {
     static let shared = SoundManager()
-    private init() {}
+    private static let mutedDefaultsKey = "SoundManager.isMuted"
+    private init() {
+        isMuted = UserDefaults.standard.bool(forKey: Self.mutedDefaultsKey)
+    }
 
-    /// Master mute — not wired to a Settings toggle yet, but the hook
-    /// exists so adding one later is a one-line change at the call site.
-    var isMuted = false
+    /// Master mute — an app-wide device preference (both Career Mode and
+    /// RSM Legends share the one SoundManager), persisted in
+    /// UserDefaults rather than either mode's own save data. Wired to a
+    /// real toggle in RSM Legends' Settings screen (Phase 10).
+    var isMuted: Bool {
+        didSet { UserDefaults.standard.set(isMuted, forKey: Self.mutedDefaultsKey) }
+    }
 
     private var player: AVAudioPlayer?
 
