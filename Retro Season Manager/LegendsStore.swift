@@ -54,6 +54,20 @@ struct LegendsProfile: Codable {
     /// Wins accumulated at the current division (Phase 7) — resets on
     /// promotion. See `LegendsStore.winsToPromote`.
     var divisionWins: Int = 0
+    /// Challenges (Phase 8). Permanent stats plus daily/weekly windows
+    /// that reset on a calendar boundary — see
+    /// `LegendsStore.refreshChallengeCadences()`.
+    var totalWins: Int = 0
+    var currentWinStreak: Int = 0
+    var matchesToday: Int = 0
+    var winsToday: Int = 0
+    var winsThisWeek: Int = 0
+    var goalsThisWeek: Int = 0
+    var lastDailyReset: Date = .distantPast
+    var lastWeeklyReset: Date = .distantPast
+    var completedPermanentChallengeIDs: Set<String> = []
+    var completedDailyChallengeIDs: Set<String> = []
+    var completedWeeklyChallengeIDs: Set<String> = []
 
     static func starter() -> LegendsProfile {
         LegendsProfile(clubName: "RSM Legends FC", crestShort: "RSM",
@@ -72,6 +86,9 @@ struct LegendsProfile: Codable {
         case duplicateProgress, cardUpgrades
         case formationName, startingXICardIDs, benchCardIDs, captainCardID
         case divisionWins
+        case totalWins, currentWinStreak, matchesToday, winsToday, winsThisWeek, goalsThisWeek
+        case lastDailyReset, lastWeeklyReset
+        case completedPermanentChallengeIDs, completedDailyChallengeIDs, completedWeeklyChallengeIDs
     }
 
     init(clubName: String, crestShort: String, crestColorRGB: [Double],
@@ -80,7 +97,12 @@ struct LegendsProfile: Codable {
          duplicateProgress: [String: Int] = [:], cardUpgrades: [String: Int] = [:],
          formationName: String = "4-4-2", startingXICardIDs: [String?] = Array(repeating: nil, count: 11),
          benchCardIDs: [String?] = Array(repeating: nil, count: LegendsStore.benchSize),
-         captainCardID: String? = nil, divisionWins: Int = 0) {
+         captainCardID: String? = nil, divisionWins: Int = 0,
+         totalWins: Int = 0, currentWinStreak: Int = 0, matchesToday: Int = 0, winsToday: Int = 0,
+         winsThisWeek: Int = 0, goalsThisWeek: Int = 0,
+         lastDailyReset: Date = .distantPast, lastWeeklyReset: Date = .distantPast,
+         completedPermanentChallengeIDs: Set<String> = [], completedDailyChallengeIDs: Set<String> = [],
+         completedWeeklyChallengeIDs: Set<String> = []) {
         self.clubName = clubName
         self.crestShort = crestShort
         self.crestColorRGB = crestColorRGB
@@ -98,6 +120,17 @@ struct LegendsProfile: Codable {
         self.benchCardIDs = benchCardIDs
         self.captainCardID = captainCardID
         self.divisionWins = divisionWins
+        self.totalWins = totalWins
+        self.currentWinStreak = currentWinStreak
+        self.matchesToday = matchesToday
+        self.winsToday = winsToday
+        self.winsThisWeek = winsThisWeek
+        self.goalsThisWeek = goalsThisWeek
+        self.lastDailyReset = lastDailyReset
+        self.lastWeeklyReset = lastWeeklyReset
+        self.completedPermanentChallengeIDs = completedPermanentChallengeIDs
+        self.completedDailyChallengeIDs = completedDailyChallengeIDs
+        self.completedWeeklyChallengeIDs = completedWeeklyChallengeIDs
     }
 
     init(from decoder: Decoder) throws {
@@ -119,6 +152,17 @@ struct LegendsProfile: Codable {
         benchCardIDs = try c.decodeIfPresent([String?].self, forKey: .benchCardIDs) ?? Array(repeating: nil, count: LegendsStore.benchSize)
         captainCardID = try c.decodeIfPresent(String.self, forKey: .captainCardID)
         divisionWins = try c.decodeIfPresent(Int.self, forKey: .divisionWins) ?? 0
+        totalWins = try c.decodeIfPresent(Int.self, forKey: .totalWins) ?? 0
+        currentWinStreak = try c.decodeIfPresent(Int.self, forKey: .currentWinStreak) ?? 0
+        matchesToday = try c.decodeIfPresent(Int.self, forKey: .matchesToday) ?? 0
+        winsToday = try c.decodeIfPresent(Int.self, forKey: .winsToday) ?? 0
+        winsThisWeek = try c.decodeIfPresent(Int.self, forKey: .winsThisWeek) ?? 0
+        goalsThisWeek = try c.decodeIfPresent(Int.self, forKey: .goalsThisWeek) ?? 0
+        lastDailyReset = try c.decodeIfPresent(Date.self, forKey: .lastDailyReset) ?? .distantPast
+        lastWeeklyReset = try c.decodeIfPresent(Date.self, forKey: .lastWeeklyReset) ?? .distantPast
+        completedPermanentChallengeIDs = try c.decodeIfPresent(Set<String>.self, forKey: .completedPermanentChallengeIDs) ?? []
+        completedDailyChallengeIDs = try c.decodeIfPresent(Set<String>.self, forKey: .completedDailyChallengeIDs) ?? []
+        completedWeeklyChallengeIDs = try c.decodeIfPresent(Set<String>.self, forKey: .completedWeeklyChallengeIDs) ?? []
     }
 }
 
@@ -139,6 +183,9 @@ final class LegendsStore {
     static let benchSize = 7
     /// Wins needed at a division before promotion (Phase 7).
     static let winsToPromote = 3
+    /// How many Starting XI players must share a nation/era/club for the
+    /// "core XI" challenges (Phase 8) — see LegendsStore+Challenges.swift.
+    static let xiShareThreshold = 6
 
     init() {
         profile = Self.load() ?? .starter()

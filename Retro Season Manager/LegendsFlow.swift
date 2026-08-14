@@ -104,6 +104,7 @@ struct LegendsHomeView: View {
     @State private var showPacks = false
     @State private var showSquad = false
     @State private var showMatch = false
+    @State private var showChallenges = false
 
     private var crestColor: Color { Color(rgb: store.profile.crestColorRGB) }
 
@@ -136,7 +137,7 @@ struct LegendsHomeView: View {
                         squadTile
                         packsTile
                         collectionTile
-                        tile(icon: "flag.checkered", title: "Challenges", phase: 8)
+                        challengesTile
                         tile(icon: "building.columns.fill", title: "Club", phase: 9)
                         tile(icon: "person.crop.rectangle.stack.fill", title: "Managers", phase: 9)
                         tile(icon: "building.2.fill", title: "Stadiums", phase: 9)
@@ -158,6 +159,9 @@ struct LegendsHomeView: View {
         }
         .fullScreenCover(isPresented: $showMatch) {
             LegendsMatchView(store: store) { showMatch = false }
+        }
+        .fullScreenCover(isPresented: $showChallenges) {
+            LegendsChallengesView(store: store) { showChallenges = false }
         }
     }
 
@@ -221,6 +225,35 @@ struct LegendsHomeView: View {
                     .font(.system(.footnote, design: .monospaced).bold())
                     .foregroundStyle(Retro.text)
                 Text(store.profile.division.displayName)
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(Retro.text.opacity(0.65))
+            }
+            .frame(maxWidth: .infinity, minHeight: 100)
+            .padding(10)
+            .background(
+                LinearGradient(colors: [Retro.panel.opacity(0.95), Retro.panel.opacity(0.7)],
+                               startPoint: .top, endPoint: .bottom)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Retro.accent.opacity(0.4), lineWidth: 1))
+        }
+        .buttonStyle(PressableButtonStyle())
+    }
+
+    private var challengesTile: some View {
+        let completed = LegendsChallengeDatabase.all.filter { store.isCompleted($0) }.count
+        return Button {
+            Haptics.tap()
+            showChallenges = true
+        } label: {
+            VStack(spacing: 8) {
+                Image(systemName: "flag.checkered")
+                    .font(.system(size: 22))
+                    .foregroundStyle(Retro.accent)
+                Text("Challenges")
+                    .font(.system(.footnote, design: .monospaced).bold())
+                    .foregroundStyle(Retro.text)
+                Text("\(completed)/\(LegendsChallengeDatabase.all.count) done")
                     .font(.system(.caption2, design: .monospaced))
                     .foregroundStyle(Retro.text.opacity(0.65))
             }

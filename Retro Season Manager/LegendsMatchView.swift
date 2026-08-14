@@ -147,6 +147,19 @@ struct LegendsMatchView: View {
             }
             .frame(maxWidth: 380)
 
+            if !summary.completedChallenges.isEmpty {
+                Panel(title: "CHALLENGES COMPLETE") {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(summary.completedChallenges, id: \.challenge.id) { completion in
+                            Text("✓ \(completion.challenge.title)")
+                                .font(.system(.footnote, design: .monospaced).bold())
+                                .foregroundStyle(Retro.emerald)
+                        }
+                    }
+                }
+                .frame(maxWidth: 380)
+            }
+
             if summary.leveledUp {
                 Text("MANAGER LEVEL UP → \(store.profile.managerLevel)")
                     .font(.system(.caption, design: .monospaced).bold())

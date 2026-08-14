@@ -27,6 +27,7 @@ struct LegendsMatchOutcomeSummary {
     let leveledUp: Bool
     let promoted: Bool
     let newDivision: LegendsDivision
+    var completedChallenges: [LegendsChallengeCompletion] = []
 }
 
 extension LegendsStore {
@@ -90,8 +91,11 @@ extension LegendsStore {
             }
         }
 
-        persist()
-        return LegendsMatchOutcomeSummary(opponent: opponent, result: result, coinsEarned: coins, tokensEarned: tokens,
-                                           xpEarned: xp, leveledUp: leveledUp, promoted: promoted, newDivision: profile.division)
+        var summary = LegendsMatchOutcomeSummary(opponent: opponent, result: result, coinsEarned: coins, tokensEarned: tokens,
+                                                  xpEarned: xp, leveledUp: leveledUp, promoted: promoted, newDivision: profile.division)
+        // recordMatchResult persists — it runs last so it sees every
+        // stat this match just updated (division, manager level, etc.)
+        summary.completedChallenges = recordMatchResult(summary)
+        return summary
     }
 }
