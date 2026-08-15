@@ -38,4 +38,17 @@ final class LegendsCardDatabaseTests: XCTestCase {
         let coveredEras = Set(LegendsCardDatabase.all.map(\.era))
         XCTAssertEqual(coveredEras, Set(LegendsEra.allCases), "Missing cards for: \(Set(LegendsEra.allCases).subtracting(coveredEras))")
     }
+
+    /// Regression guard for a real gap: the original 40-card pass had 14
+    /// strikers and exactly 1 goalkeeper, 0 left-backs and 0 right-backs
+    /// — impossible to field a realistic XI in any formation. Every
+    /// `DetailedPosition` a Starting XI slot can actually ask for needs
+    /// real depth, not just one token card.
+    func testEveryFieldedPositionHasRealDepth() {
+        let minimumPerPosition = 2
+        for position in DetailedPosition.allCases {
+            let count = LegendsCardDatabase.all.filter { $0.position == position }.count
+            XCTAssertGreaterThanOrEqual(count, minimumPerPosition, "\(position.rawValue) only has \(count) card(s)")
+        }
+    }
 }

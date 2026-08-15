@@ -52,6 +52,13 @@ final class LegendsStoreMatchTests: XCTestCase {
         store.profile.managerXP = 0
         store.profile.division = .division10
         store.profile.divisionWins = 0
+        // LegendsStore() loads whatever's actually on disk (e.g. from a
+        // manual Simulator run) — season state isn't reset by any of the
+        // fields above, so a real playthrough's currentSeason/
+        // matchesPlayedThisSeason otherwise leaks into season-advance tests.
+        store.profile.currentSeason = 1
+        store.profile.matchesPlayedThisSeason = 0
+        store.profile.cardAgeOffsets = [:]
         return store
     }
 
@@ -61,7 +68,15 @@ final class LegendsStoreMatchTests: XCTestCase {
     /// seeded RNG.
     private func fillStrongXI(_ store: LegendsStore) {
         let slots = store.startingXISlots
-        let sorted = LegendsCardDatabase.all.sorted { store.effectiveOverall(for: $0) > store.effectiveOverall(for: $1) }
+        // Only one card per real-ish player is allowed in the squad at
+        // once (LegendsStore+Squad.swift's name-based dedup) — several of
+        // the highest-overall cards are different seasons of the same
+        // player (e.g. two "E. Nascimento" cards), so sort first and then
+        // take the first card per distinct name, not just the top N ids.
+        var seenNames = Set<String>()
+        let sorted = LegendsCardDatabase.all
+            .sorted { store.effectiveOverall(for: $0) > store.effectiveOverall(for: $1) }
+            .filter { seenNames.insert($0.name).inserted }
         for (index, _) in slots.enumerated() {
             store.assign(cardID: sorted[index].id, toXISlot: index)
         }
@@ -127,5 +142,31 @@ final class LegendsStoreMatchTests: XCTestCase {
         let avgWorld = Double(worldLeagueRatings.reduce(0, +)) / Double(worldLeagueRatings.count)
         let avgDiv10 = Double(division10Ratings.reduce(0, +)) / Double(division10Ratings.count)
         XCTAssertGreaterThan(avgWorld, avgDiv10)
+    }
+
+    // MARK: - applyMatchOutcome (the seam a live match's finish calls into)
+
+    func testApplyMatchOutcomeGrantsTheSameRewardsAsPlayMatchForAnEquivalentResult() async {
+        let store = await freshStore()
+        let opponent = LegendsOpponent(name: "Rival XI", rating: 50)
+        let win = LegendsMatchEngine.Result(teamGoals: 2, opponentGoals: 0)
+        let summary = store.applyMatchOutcome(opponent: opponent, result: win)
+
+        XCTAssertEqual(summary.coinsEarned, 50)
+        XCTAssertEqual(summary.tokensEarned, 1)
+        XCTAssertEqual(summary.xpEarned, 30)
+        XCTAssertEqual(store.profile.coins, 50)
+        XCTAssertEqual(store.profile.packTokens, 1)
+        XCTAssertEqual(store.profile.divisionWins, 1)
+    }
+
+    func testApplyMatchOutcomeAdvancesSeasonExactlyOnceRegardlessOfCaller() async {
+        let store = await freshStore()
+        let opponent = LegendsOpponent(name: "Rival XI", rating: 50)
+        let draw = LegendsMatchEngine.Result(teamGoals: 1, opponentGoals: 1)
+        for _ in 0..<LegendsStore.matchesPerSeason {
+            _ = store.applyMatchOutcome(opponent: opponent, result: draw)
+        }
+        XCTAssertEqual(store.profile.currentSeason, 2, "Exactly one season advance per matchesPerSeason calls, not per tick")
     }
 }

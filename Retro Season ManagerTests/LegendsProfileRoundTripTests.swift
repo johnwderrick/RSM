@@ -40,6 +40,7 @@ final class LegendsProfileRoundTripTests: XCTestCase {
         store.profile.ownedCardIDs = ["ronaldo-2004", "messi-2011"]
         store.profile.totalWins = 17
         store.profile.clubName = "Round Trip FC"
+        store.profile.preferredMentality = .attacking
         store.persist()
 
         let reloaded = await Task { @MainActor in LegendsStore() }.value
@@ -50,6 +51,7 @@ final class LegendsProfileRoundTripTests: XCTestCase {
         XCTAssertEqual(reloaded.profile.ownedCardIDs, ["ronaldo-2004", "messi-2011"])
         XCTAssertEqual(reloaded.profile.totalWins, 17)
         XCTAssertEqual(reloaded.profile.clubName, "Round Trip FC")
+        XCTAssertEqual(reloaded.profile.preferredMentality, .attacking)
     }
 
     /// Exercises `LegendsProfile.init(from:)` directly against a hand-built
@@ -101,5 +103,6 @@ final class LegendsProfileRoundTripTests: XCTestCase {
         XCTAssertNil(profile.activeManagerID)
         XCTAssertEqual(profile.ownedStadiumIDs, [])
         XCTAssertNil(profile.activeStadiumID)
+        XCTAssertEqual(profile.preferredMentality, .balanced, "preferredMentality should default to .balanced when absent")
     }
 }

@@ -14,7 +14,14 @@ import XCTest
 final class LegendsSquadTests: XCTestCase {
     private func freshStore() async -> LegendsStore {
         let store = await Task { @MainActor in LegendsStore() }.value
-        store.profile.ownedCardIDs = Set(LegendsCardDatabase.all.prefix(20).map(\.id))
+        // Unique by name, not just the first 20 ids — several early cards
+        // in the database are different seasons of the same player (e.g.
+        // two "E. Cantina" cards), and only one card per player is allowed
+        // in the squad at once (LegendsStore+Squad.swift), so a handful of
+        // these tests fill multiple slots at a time and need real variety.
+        var seenNames = Set<String>()
+        let uniqueCards = LegendsCardDatabase.all.filter { seenNames.insert($0.name).inserted }
+        store.profile.ownedCardIDs = Set(uniqueCards.prefix(20).map(\.id))
         store.profile.startingXICardIDs = Array(repeating: nil, count: 11)
         store.profile.benchCardIDs = Array(repeating: nil, count: LegendsStore.benchSize)
         store.profile.captainCardID = nil
@@ -97,6 +104,70 @@ final class LegendsSquadTests: XCTestCase {
         let expected = Int((Double((0..<slots.count).reduce(0) { $0 + store.effectiveOverall(for: ownedCards[$1 % ownedCards.count]) }) / Double(slots.count)).rounded())
         XCTAssertEqual(store.currentTeamRating, expected)
         XCTAssertGreaterThan(store.currentTeamRating, 0)
+    }
+
+    func testAttackAndDefenceRatingAreZeroUntilTheWholeXIIsFilled() async {
+        let store = await freshStore()
+        let card = LegendsCardDatabase.all.first { store.profile.ownedCardIDs.contains($0.id) }!
+        store.assign(cardID: card.id, toXISlot: 0)
+        XCTAssertEqual(store.attackRating, 0)
+        XCTAssertEqual(store.defenceRating, 0)
+    }
+
+    func testAttackRatingOnlyCountsMidfieldAndForwardSlots() async {
+        let store = await freshStore()
+        let ownedCards = LegendsCardDatabase.all.filter { store.profile.ownedCardIDs.contains($0.id) }
+        let slots = store.startingXISlots
+        for i in 0..<slots.count {
+            store.assign(cardID: ownedCards[i % ownedCards.count].id, toXISlot: i)
+        }
+        let attackIndices = slots.indices.filter { slots[$0].broad == .midfielder || slots[$0].broad == .forward }
+        XCTAssertFalse(attackIndices.isEmpty, "4-4-2 should have at least one midfield/forward slot")
+        let expected = Int((Double(attackIndices.reduce(0) { $0 + store.effectiveOverall(for: ownedCards[$1 % ownedCards.count]) })
+                             / Double(attackIndices.count)).rounded())
+        XCTAssertEqual(store.attackRating, expected)
+    }
+
+    func testDefenceRatingOnlyCountsGoalkeeperAndDefenderSlots() async {
+        let store = await freshStore()
+        let ownedCards = LegendsCardDatabase.all.filter { store.profile.ownedCardIDs.contains($0.id) }
+        let slots = store.startingXISlots
+        for i in 0..<slots.count {
+            store.assign(cardID: ownedCards[i % ownedCards.count].id, toXISlot: i)
+        }
+        let defenceIndices = slots.indices.filter { slots[$0] == .goalkeeper || slots[$0].broad == .defender }
+        XCTAssertFalse(defenceIndices.isEmpty, "4-4-2 should have at least one goalkeeper/defender slot")
+        let expected = Int((Double(defenceIndices.reduce(0) { $0 + store.effectiveOverall(for: ownedCards[$1 % ownedCards.count]) })
+                             / Double(defenceIndices.count)).rounded())
+        XCTAssertEqual(store.defenceRating, expected)
+    }
+
+    func testOnlyOneCardPerPlayerAllowedInTheSquadAtOnce() async {
+        let store = await freshStore()
+        // Two different seasons of the same person — same `name`.
+        let young = LegendsCardDatabase.all.first { $0.id == "miessi-0506" }!
+        let peak = LegendsCardDatabase.all.first { $0.id == "miessi-1112" }!
+        XCTAssertEqual(young.name, peak.name)
+        store.profile.ownedCardIDs.insert(peak.id)
+
+        store.assign(cardID: young.id, toXISlot: 0)
+        store.assign(cardID: peak.id, toBenchSlot: 0)
+        XCTAssertNil(store.profile.startingXICardIDs[0], "Fielding a second version of the same player should bump the first out of the XI")
+        XCTAssertEqual(store.profile.benchCardIDs[0], peak.id)
+    }
+
+    func testFieldingASecondVersionOfTheCaptainClearsCaptaincy() async {
+        let store = await freshStore()
+        let young = LegendsCardDatabase.all.first { $0.id == "miessi-0506" }!
+        let peak = LegendsCardDatabase.all.first { $0.id == "miessi-1112" }!
+        store.profile.ownedCardIDs.insert(peak.id)
+
+        store.assign(cardID: young.id, toXISlot: 0)
+        store.setCaptain(cardID: young.id)
+        store.assign(cardID: peak.id, toXISlot: 1)
+
+        XCTAssertNil(store.profile.captainCardID, "The old version's captaincy shouldn't survive it being bumped from the XI")
+        XCTAssertEqual(store.profile.startingXICardIDs[1], peak.id)
     }
 
     func testShrinkingFormationMovesOverflowToBenchInsteadOfDroppingIt() async {

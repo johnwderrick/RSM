@@ -55,6 +55,11 @@ final class LegendsStoreManagersAndStadiumsTests: XCTestCase {
         store.profile.activeManagerID = nil
         store.profile.ownedStadiumIDs = []
         store.profile.activeStadiumID = nil
+        // LegendsStore() loads whatever's actually on disk — the
+        // near-certain-win fillStrongXI-style sort below uses
+        // effectiveOverall(), which also subtracts an aging penalty, so a
+        // real playthrough's cardAgeOffsets otherwise leaks in here.
+        store.profile.cardAgeOffsets = [:]
         return store
     }
 
@@ -113,7 +118,12 @@ final class LegendsStoreManagersAndStadiumsTests: XCTestCase {
     func testWinningEnoughMatchesEventuallyGrantsAManagerOrStadium() async {
         let store = await freshStore()
         let slots = store.startingXISlots
-        let sorted = LegendsCardDatabase.all.sorted { store.effectiveOverall(for: $0) > store.effectiveOverall(for: $1) }
+        // Only one card per real-ish player at once (LegendsStore+Squad.swift's
+        // name-based dedup) — dedupe by name before taking the top N.
+        var seenNames = Set<String>()
+        let sorted = LegendsCardDatabase.all
+            .sorted { store.effectiveOverall(for: $0) > store.effectiveOverall(for: $1) }
+            .filter { seenNames.insert($0.name).inserted }
         for (index, _) in slots.enumerated() {
             store.assign(cardID: sorted[index].id, toXISlot: index)
         }

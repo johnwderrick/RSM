@@ -133,9 +133,14 @@ final class LegendsStoreChallengeTests: XCTestCase {
 
     func testCoreXIChallengeCompletesWhenEnoughShareANation() async {
         let store = await freshStore()
-        let frenchCards = LegendsCardDatabase.all.filter { $0.nation == "France" }
+        // Unique by name — several cards are different seasons of the
+        // same player (LegendsStore+Squad.swift only allows one card per
+        // player in the squad at once), so a naive filter can include a
+        // pair that dedups down mid-assignment and leaves a slot empty.
+        var seenNames = Set<String>()
+        let frenchCards = LegendsCardDatabase.all.filter { $0.nation == "France" && seenNames.insert($0.name).inserted }
         XCTAssertGreaterThanOrEqual(frenchCards.count, LegendsStore.xiShareThreshold)
-        let others = LegendsCardDatabase.all.filter { $0.nation != "France" }
+        let others = LegendsCardDatabase.all.filter { $0.nation != "France" && seenNames.insert($0.name).inserted }
         let slots = store.startingXISlots
         for i in 0..<slots.count {
             let card = i < frenchCards.count ? frenchCards[i] : others[i - frenchCards.count]

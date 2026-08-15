@@ -82,6 +82,10 @@ struct LegendsProfile: Codable {
     /// Years aged on top of a card's own printed `age`, keyed by card ID
     /// — only present once a card has actually aged past its base age.
     var cardAgeOffsets: [String: Int] = [:]
+    /// Chosen pre-match on the Squad screen, seeds each live match's
+    /// starting mentality — reuses Career Mode's own `Mentality` type
+    /// (Models.swift), which has zero GameStore coupling.
+    var preferredMentality: Mentality = .balanced
 
     static func starter() -> LegendsProfile {
         LegendsProfile(clubName: "RSM Legends FC", crestShort: "RSM",
@@ -105,6 +109,7 @@ struct LegendsProfile: Codable {
         case completedPermanentChallengeIDs, completedDailyChallengeIDs, completedWeeklyChallengeIDs
         case ownedManagerIDs, activeManagerID, ownedStadiumIDs, activeStadiumID
         case currentSeason, matchesPlayedThisSeason, cardAgeOffsets
+        case preferredMentality
     }
 
     init(clubName: String, crestShort: String, crestColorRGB: [Double],
@@ -121,7 +126,8 @@ struct LegendsProfile: Codable {
          completedWeeklyChallengeIDs: Set<String> = [],
          ownedManagerIDs: Set<String> = [], activeManagerID: String? = nil,
          ownedStadiumIDs: Set<String> = [], activeStadiumID: String? = nil,
-         currentSeason: Int = 1, matchesPlayedThisSeason: Int = 0, cardAgeOffsets: [String: Int] = [:]) {
+         currentSeason: Int = 1, matchesPlayedThisSeason: Int = 0, cardAgeOffsets: [String: Int] = [:],
+         preferredMentality: Mentality = .balanced) {
         self.clubName = clubName
         self.crestShort = crestShort
         self.crestColorRGB = crestColorRGB
@@ -157,6 +163,7 @@ struct LegendsProfile: Codable {
         self.currentSeason = currentSeason
         self.matchesPlayedThisSeason = matchesPlayedThisSeason
         self.cardAgeOffsets = cardAgeOffsets
+        self.preferredMentality = preferredMentality
     }
 
     init(from decoder: Decoder) throws {
@@ -196,6 +203,7 @@ struct LegendsProfile: Codable {
         currentSeason = try c.decodeIfPresent(Int.self, forKey: .currentSeason) ?? 1
         matchesPlayedThisSeason = try c.decodeIfPresent(Int.self, forKey: .matchesPlayedThisSeason) ?? 0
         cardAgeOffsets = try c.decodeIfPresent([String: Int].self, forKey: .cardAgeOffsets) ?? [:]
+        preferredMentality = try c.decodeIfPresent(Mentality.self, forKey: .preferredMentality) ?? .balanced
     }
 }
 
@@ -213,7 +221,10 @@ final class LegendsStore {
     static let maxCardUpgrade = 3
     static let duplicatesPerUpgrade = 3
     /// Starting XI (11) + Bench = 18, matching Career Mode's own squad size.
-    static let benchSize = 7
+    // `nonisolated` so it can be referenced from LegendsProfile's init
+    // default-parameter expressions, which evaluate outside MainActor
+    // isolation — safe, it's just a compile-time constant.
+    nonisolated static let benchSize = 7
     /// Wins needed at a division before promotion (Phase 7).
     static let winsToPromote = 6
     /// How many Starting XI players must share a nation/era/club for the
@@ -233,6 +244,13 @@ final class LegendsStore {
     func effectiveOverall(for card: LegendsCard) -> Int {
         let upgraded = card.overall + (profile.cardUpgrades[card.id] ?? 0)
         return min(99, max(1, upgraded - agingPenalty(for: card)))
+    }
+
+    /// Sets the mentality the next live match seeds from — chosen on the
+    /// Squad screen, editable again mid-match on the live match screen.
+    func setPreferredMentality(_ mentality: Mentality) {
+        profile.preferredMentality = mentality
+        persist()
     }
 
     private static var fileURL: URL {

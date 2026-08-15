@@ -2,9 +2,16 @@
 //  LegendsSquadView.swift
 //  Retro Season Manager
 //
-//  Squad Builder (Phase 5) — Starting XI, Bench, Captain and Formation.
-//  Chemistry (Phase 6) isn't computed here; the doc keeps them as
-//  separate roadmap phases.
+//  Squad Builder — a true pitch-diagram layout: circular tokens
+//  positioned in formation-shaped rows (adapting PitchView.swift's own
+//  row-stacking technique, which already proves this look doesn't need
+//  coordinate-based placement), a bench grid, and a stat row. Landscape
+//  layout (the app is landscape-locked; the reference screenshot the
+//  user shared was portrait, so pitch/bench sit side by side here
+//  rather than stacked). All store-layer logic (assign/clear/captain/
+//  formation, the one-card-per-player and retired-card rules) and
+//  LegendsCardPickerSheet are reused unchanged from the original list
+//  version — only the visual layer changed.
 //
 
 import SwiftUI
@@ -29,25 +36,21 @@ struct LegendsSquadView: View {
     var body: some View {
         ZStack {
             Retro.background.ignoresSafeArea()
-            VStack(spacing: 12) {
+            VStack(spacing: 10) {
                 header
-                formationPicker
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        squadSection(title: "STARTING XI (\(filledXICount)/\(store.startingXISlots.count))") {
-                            ForEach(Array(store.startingXISlots.enumerated()), id: \.offset) { index, slot in
-                                xiRow(index: index, slot: slot)
-                            }
-                        }
-                        squadSection(title: "BENCH (\(filledBenchCount)/\(LegendsStore.benchSize))") {
-                            ForEach(0..<LegendsStore.benchSize, id: \.self) { index in
-                                benchRow(index: index)
-                            }
-                        }
+                pickerStrip
+                HStack(alignment: .top, spacing: 12) {
+                    LegendsPitchView(store: store) { index in
+                        Haptics.tap()
+                        pickerTarget = PickerTarget(kind: .xi(index))
                     }
-                    .padding(.horizontal)
-                    .padding(.bottom, 24)
+                    .frame(maxWidth: .infinity)
+
+                    sidePanel
+                        .frame(width: 190)
                 }
+                .padding(.horizontal)
+                .padding(.bottom, 12)
             }
         }
         .sheet(item: $pickerTarget) { target in
@@ -68,11 +71,8 @@ struct LegendsSquadView: View {
         }
     }
 
-    private var filledXICount: Int { store.profile.startingXICardIDs.compactMap { $0 }.count }
-    private var filledBenchCount: Int { store.profile.benchCardIDs.compactMap { $0 }.count }
-
     private var header: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 6) {
             HStack {
                 Button {
                     Haptics.tap()
@@ -91,15 +91,10 @@ struct LegendsSquadView: View {
             Text("SQUAD")
                 .font(.system(.title2, design: .monospaced).bold())
                 .foregroundStyle(Retro.accent)
-
-            Text(store.currentTeamRating > 0 ? "TEAM RATING \(store.currentTeamRating)  ·  CHEMISTRY \(store.totalChemistry)/33" : "SET YOUR STARTING XI")
-                .font(.system(.caption, design: .monospaced).bold())
-                .foregroundStyle(Retro.highlight)
-                .tracking(1)
         }
     }
 
-    private var formationPicker: some View {
+    private var pickerStrip: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 ForEach(Formation.all) { formation in
@@ -117,129 +112,221 @@ struct LegendsSquadView: View {
                     }
                     .buttonStyle(PressableButtonStyle())
                 }
+
+                Divider().frame(height: 20)
+
+                Picker("Mentality", selection: Binding(
+                    get: { store.profile.preferredMentality },
+                    set: { store.setPreferredMentality($0) }
+                )) {
+                    ForEach(Mentality.allCases) { mentality in
+                        Text(mentality.rawValue).tag(mentality)
+                    }
+                }
+                .pickerStyle(.menu)
+                .tint(Retro.highlight)
             }
             .padding(.horizontal)
         }
     }
 
-    private func squadSection<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.system(.subheadline, design: .monospaced).bold())
+    private var sidePanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("BENCH (\(filledBenchCount)/\(LegendsStore.benchSize))")
+                .font(.system(.caption, design: .monospaced).bold())
                 .foregroundStyle(Retro.accent)
-            VStack(spacing: 6) { content() }
+
+            ScrollView {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                    ForEach(0..<LegendsStore.benchSize, id: \.self) { index in
+                        benchToken(index)
+                    }
+                }
+            }
+            .frame(maxHeight: 260)
+
+            Divider()
+
+            statRow
         }
     }
 
-    private func xiRow(index: Int, slot: DetailedPosition) -> some View {
+    private func benchToken(_ index: Int) -> some View {
+        let cardID = store.profile.benchCardIDs[index]
+        let card = cardID.flatMap { id in LegendsCardDatabase.all.first { $0.id == id } }
+        return LegendsPlayerToken(card: card, role: card?.position ?? .centralMid,
+                                   overall: card.map { store.effectiveOverall(for: $0) },
+                                   chemistryStars: 0, isCaptain: false, diameter: 42) {
+            Haptics.tap()
+            pickerTarget = PickerTarget(kind: .bench(index))
+        }
+    }
+
+    private var filledBenchCount: Int { store.profile.benchCardIDs.compactMap { $0 }.count }
+
+    private var statRow: some View {
+        VStack(spacing: 6) {
+            statLine("OTR", store.currentTeamRating)
+            statLine("ATK", store.attackRating)
+            statLine("DEF", store.defenceRating)
+            statLine("CHM", store.totalChemistry, suffix: "/33")
+        }
+    }
+
+    private func statLine(_ label: String, _ value: Int, suffix: String = "") -> some View {
+        HStack {
+            Text(label)
+                .font(.system(.caption2, design: .monospaced).bold())
+                .foregroundStyle(Retro.text.opacity(0.6))
+            Spacer()
+            Text(value > 0 ? "\(value)\(suffix)" : "—")
+                .font(.system(.caption, design: .monospaced).bold())
+                .foregroundStyle(Retro.highlight)
+        }
+    }
+}
+
+// MARK: - Pitch diagram
+
+struct LegendsPitchView: View {
+    let store: LegendsStore
+    let onTapSlot: (Int) -> Void
+
+    /// Attack-first, GK-last row order (matches Career's own pitch
+    /// convention) — `startingXISlots` itself is stored GK-first, so
+    /// this only reorders which range renders on top, not the indices.
+    private var rowRanges: [Range<Int>] {
+        let f = store.formation
+        let gk = 0..<1
+        let def = 1..<(1 + f.defenders)
+        let mid = (1 + f.defenders)..<(1 + f.defenders + f.midfielders)
+        let fwd = (1 + f.defenders + f.midfielders)..<(1 + f.defenders + f.midfielders + f.forwards)
+        return [fwd, mid, def, gk]
+    }
+
+    var body: some View {
+        ZStack {
+            PitchBackground()
+            PitchGridDots()
+            VStack(spacing: 10) {
+                ForEach(Array(rowRanges.enumerated()), id: \.offset) { _, range in
+                    HStack(spacing: 6) {
+                        ForEach(Array(range), id: \.self) { index in
+                            slotToken(index)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+            .padding(16)
+        }
+    }
+
+    private func slotToken(_ index: Int) -> some View {
+        let role = store.startingXISlots[index]
         let cardID = store.profile.startingXICardIDs[index]
         let card = cardID.flatMap { id in LegendsCardDatabase.all.first { $0.id == id } }
         let isCaptain = cardID != nil && cardID == store.profile.captainCardID
+        return LegendsPlayerToken(card: card, role: role,
+                                   overall: card.map { store.effectiveOverall(for: $0) },
+                                   chemistryStars: cardID != nil ? store.chemistryStars(forXISlot: index) : 0,
+                                   isCaptain: isCaptain) {
+            onTapSlot(index)
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
 
-        return HStack(spacing: 10) {
-            Text(slot.rawValue)
-                .font(.system(.caption2, design: .monospaced).bold())
-                .foregroundStyle(Retro.background)
-                .frame(width: 40, height: 24)
-                .background(Retro.accent.opacity(0.8))
-                .clipShape(RoundedRectangle(cornerRadius: 6))
+/// A circular token — role abbreviation, big rating, name, a role-colour
+/// ring, and the existing chemistry dots in place of the reference
+/// screenshot's condition bar (Legends has no persisted fitness stat to
+/// back a real one — chemistry is the real, already-computed substitute).
+struct LegendsPlayerToken: View {
+    let card: LegendsCard?
+    let role: DetailedPosition
+    let overall: Int?
+    let chemistryStars: Int
+    let isCaptain: Bool
+    var diameter: CGFloat = 60
+    let onTap: () -> Void
 
-            Button {
-                Haptics.tap()
-                pickerTarget = PickerTarget(kind: .xi(index))
-            } label: {
-                slotContent(card: card, fallback: "Empty — tap to assign")
-            }
-            .buttonStyle(PressableButtonStyle())
-
-            if card != nil {
-                chemistryDots(store.chemistryStars(forXISlot: index))
-            }
-
-            if let card {
-                Button {
-                    Haptics.tap()
-                    store.setCaptain(cardID: isCaptain ? nil : card.id)
-                } label: {
-                    Image(systemName: isCaptain ? "star.fill" : "star")
-                        .foregroundStyle(isCaptain ? Retro.gold : Retro.text.opacity(0.4))
-                }
-                .buttonStyle(.plain)
-            }
+    private var ringColor: Color {
+        switch role.broad {
+        case .goalkeeper, .defender: return Retro.royalBlue
+        case .midfielder: return Retro.emerald
+        case .forward: return Retro.warning
         }
     }
 
-    /// Three pips — a compact stand-in for the doc's chemistry stars —
-    /// coloured red/amber/green by how much of the 0...3 scale is filled.
-    private func chemistryDots(_ stars: Int) -> some View {
+    var body: some View {
+        Button(action: onTap) {
+            VStack(spacing: 3) {
+                ZStack {
+                    Circle()
+                        .fill(Retro.panel.opacity(card == nil ? 0.4 : 0.95))
+                        .frame(width: diameter, height: diameter)
+                        .overlay(Circle().stroke(ringColor.opacity(card == nil ? 0.3 : 0.9), lineWidth: 2))
+                    VStack(spacing: 0) {
+                        Text(role.rawValue)
+                            .font(.system(size: diameter * 0.14, weight: .bold, design: .monospaced))
+                            .foregroundStyle(ringColor)
+                        if let overall {
+                            Text("\(overall)")
+                                .font(.system(size: diameter * 0.28, weight: .bold, design: .monospaced))
+                                .foregroundStyle(Retro.text)
+                        } else {
+                            Image(systemName: "plus")
+                                .font(.system(size: diameter * 0.22))
+                                .foregroundStyle(Retro.text.opacity(0.4))
+                        }
+                    }
+                    if isCaptain {
+                        Text("C")
+                            .font(.system(size: 8, weight: .bold, design: .monospaced))
+                            .foregroundStyle(Retro.background)
+                            .frame(width: 14, height: 14)
+                            .background(Circle().fill(Retro.gold))
+                            .offset(x: diameter / 2 - 6, y: -diameter / 2 + 6)
+                    }
+                }
+                if let card {
+                    Text(card.name)
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundStyle(Retro.text)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                    chemistryDots
+                } else {
+                    Text("Empty")
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(Retro.text.opacity(0.4))
+                }
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var chemistryDots: some View {
         HStack(spacing: 2) {
             ForEach(0..<3, id: \.self) { i in
                 Circle()
-                    .fill(i < stars ? chemistryColor(stars) : Retro.text.opacity(0.2))
-                    .frame(width: 6, height: 6)
-                    .animation(.easeInOut(duration: 0.3), value: stars)
+                    .fill(i < chemistryStars ? chemistryColor : Retro.text.opacity(0.2))
+                    .frame(width: 5, height: 5)
             }
         }
     }
 
-    private func chemistryColor(_ stars: Int) -> Color {
-        switch stars {
+    private var chemistryColor: Color {
+        switch chemistryStars {
         case 3: return Retro.emerald
         case 2: return Retro.gold
         case 1: return Retro.warning
         default: return Retro.text.opacity(0.2)
         }
     }
-
-    private func benchRow(index: Int) -> some View {
-        let cardID = store.profile.benchCardIDs[index]
-        let card = cardID.flatMap { id in LegendsCardDatabase.all.first { $0.id == id } }
-
-        return HStack(spacing: 10) {
-            Text("SUB")
-                .font(.system(.caption2, design: .monospaced).bold())
-                .foregroundStyle(Retro.background)
-                .frame(width: 40, height: 24)
-                .background(Retro.text.opacity(0.4))
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-
-            Button {
-                Haptics.tap()
-                pickerTarget = PickerTarget(kind: .bench(index))
-            } label: {
-                slotContent(card: card, fallback: "Empty — tap to assign")
-            }
-            .buttonStyle(PressableButtonStyle())
-        }
-    }
-
-    private func slotContent(card: LegendsCard?, fallback: String) -> some View {
-        HStack {
-            if let card {
-                Circle().fill(card.rarity.tint).frame(width: 10, height: 10)
-                Text(card.name)
-                    .font(.system(.footnote, design: .monospaced).bold())
-                    .foregroundStyle(Retro.text)
-                Text("age \(store.effectiveAge(for: card))")
-                    .font(.system(.caption2, design: .monospaced))
-                    .foregroundStyle(Retro.text.opacity(0.5))
-                Spacer()
-                Text("\(store.effectiveOverall(for: card))")
-                    .font(.system(.footnote, design: .monospaced).bold())
-                    .foregroundStyle(card.rarity.tint)
-            } else {
-                Text(fallback)
-                    .font(.system(.footnote, design: .monospaced))
-                    .foregroundStyle(Retro.text.opacity(0.5))
-                Spacer()
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(Retro.panel.opacity(0.6))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-    }
 }
+
+// MARK: - Card picker (unchanged from the list version)
 
 private struct LegendsCardPickerSheet: View {
     let store: LegendsStore

@@ -52,17 +52,26 @@ extension LegendsStore {
         return LegendsOpponent(name: name, rating: rating)
     }
 
-    /// Plays one match against a freshly generated opponent. Requires a
+    /// Plays one match instantly against a freshly generated opponent —
+    /// the pre-live-match-engine path, kept for anything that still wants
+    /// an immediate result rather than watching it play out. Requires a
     /// complete Starting XI (mirrors the home screen's own "—" rating
     /// placeholder for an unset squad) — returns nil otherwise.
     func playMatch() -> LegendsMatchOutcomeSummary? {
         guard currentTeamRating > 0 else { return nil }
-
         let opponent = generateOpponent()
         let chemistryBonus = Double(totalChemistry) * 0.3 + matchStrengthBonus
         let result = LegendsMatchEngine.simulate(teamRating: currentTeamRating, opponentRating: opponent.rating,
                                                    chemistryBonus: chemistryBonus)
+        return applyMatchOutcome(opponent: opponent, result: result)
+    }
 
+    /// Runs the reward/promotion/challenge/manager-stadium/aging pipeline
+    /// for a completed result, however it was produced — the instant
+    /// `playMatch()` above, or a `LegendsLiveMatch` that's just finished.
+    /// Call this exactly once per completed match; `advanceSeasonIfNeeded()`
+    /// inside it assumes one call == one match played.
+    func applyMatchOutcome(opponent: LegendsOpponent, result: LegendsMatchEngine.Result) -> LegendsMatchOutcomeSummary {
         let coins: Int
         let tokens: Int
         let xp: Int

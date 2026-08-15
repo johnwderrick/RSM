@@ -49,6 +49,11 @@ final class LegendsStorePackOpeningTests: XCTestCase {
         store.profile.ownedCardIDs = []
         store.profile.duplicateProgress = [:]
         store.profile.cardUpgrades = [:]
+        // LegendsStore() loads whatever's actually on disk (e.g. from a
+        // manual Simulator run) — effectiveOverall() also subtracts an
+        // aging penalty, so a real playthrough's cardAgeOffsets otherwise
+        // leaks into "does effectiveOverall equal overall+upgrade" checks.
+        store.profile.cardAgeOffsets = [:]
         return store
     }
 

@@ -2,9 +2,11 @@
 //  LegendsMatchView.swift
 //  Retro Season Manager
 //
-//  Play Match (Phase 7) — a deliberately short presentation per the
-//  doc ("Shorter presentation. Faster progression."): no live
-//  minute-by-minute ticker, just a brief search beat and the result.
+//  Play Match — kicks off a real live match (LegendsLiveMatch.swift /
+//  LegendsLiveMatchView.swift): minute-by-minute, commentary, mid-match
+//  mentality/instruction/substitutions. The pre-match "ready" panel and
+//  the post-match result panel below are unchanged from the original
+//  instant-result version; only what happens in between changed.
 //
 //  Phase 10 polish: reuses LiveMatch's own sound-cue vocabulary
 //  (whistleKickOff/whistleFullTime/goalCrowd/promotion/trophyLift)
@@ -18,28 +20,37 @@ struct LegendsMatchView: View {
     let store: LegendsStore
     var onBack: () -> Void
 
-    @State private var isSimulating = false
+    @State private var liveMatch: LegendsLiveMatch? = nil
     @State private var summary: LegendsMatchOutcomeSummary? = nil
 
     var body: some View {
         ZStack {
             Retro.background.ignoresSafeArea()
-            VStack(spacing: 18) {
-                header
-                Spacer()
-                if let summary {
-                    resultPanel(summary)
-                        .transition(.scale(scale: 0.9).combined(with: .opacity))
-                } else if isSimulating {
-                    searchingPanel
-                } else if store.currentTeamRating > 0 {
-                    readyPanel
-                } else {
-                    notReadyPanel
+            if let liveMatch {
+                LegendsLiveMatchView(store: store, live: liveMatch) {
+                    let result = store.applyMatchOutcome(opponent: liveMatch.opponent, result: liveMatch.result)
+                    announceResult(result)
+                    withAnimation(.spring(duration: 0.5)) {
+                        summary = result
+                        self.liveMatch = nil
+                    }
                 }
-                Spacer()
+            } else {
+                VStack(spacing: 18) {
+                    header
+                    Spacer()
+                    if let summary {
+                        resultPanel(summary)
+                            .transition(.scale(scale: 0.9).combined(with: .opacity))
+                    } else if store.currentTeamRating > 0 {
+                        readyPanel
+                    } else {
+                        notReadyPanel
+                    }
+                    Spacer()
+                }
+                .padding()
             }
-            .padding()
         }
     }
 
@@ -102,16 +113,7 @@ struct LegendsMatchView: View {
 
             Button {
                 Haptics.tap()
-                SoundManager.shared.play(.whistleKickOff)
-                isSimulating = true
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
-                    let result = store.playMatch()
-                    announceResult(result)
-                    withAnimation(.spring(duration: 0.5)) {
-                        summary = result
-                        isSimulating = false
-                    }
-                }
+                liveMatch = LegendsLiveMatch(store: store, opponent: store.generateOpponent())
             } label: {
                 Text("KICK OFF")
                     .font(.system(.headline, design: .monospaced).bold())
@@ -126,12 +128,11 @@ struct LegendsMatchView: View {
     }
 
     /// Sound + haptic cues for a just-finished match, played once right
-    /// as the result becomes available — mirrors LiveMatch's own
-    /// full-time/goal cues rather than a new vocabulary.
-    private func announceResult(_ summary: LegendsMatchOutcomeSummary?) {
-        guard let summary else { return }
-        if summary.result.teamGoals > 0 { SoundManager.shared.play(.goalCrowd) }
-        SoundManager.shared.play(.whistleFullTime)
+    /// as the result becomes available. The in-match whistle/goal cues
+    /// already played live during `LegendsLiveMatchView` — this only
+    /// covers what's genuinely new information at this point: the
+    /// outcome haptic and any reward/promotion/retirement flourishes.
+    private func announceResult(_ summary: LegendsMatchOutcomeSummary) {
         switch summary.result.outcome {
         case .win: Haptics.success()
         case .draw: Haptics.tap()
@@ -146,14 +147,6 @@ struct LegendsMatchView: View {
         }
     }
 
-    private var searchingPanel: some View {
-        VStack(spacing: 14) {
-            ProgressView().tint(Retro.accent)
-            Text("Finding an opponent…")
-                .font(.system(.footnote, design: .monospaced))
-                .foregroundStyle(Retro.text.opacity(0.7))
-        }
-    }
 
     private func resultPanel(_ summary: LegendsMatchOutcomeSummary) -> some View {
         VStack(spacing: 16) {

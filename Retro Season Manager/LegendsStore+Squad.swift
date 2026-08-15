@@ -59,12 +59,25 @@ extension LegendsStore {
 
     /// Removes a card from wherever it currently sits in the squad (XI
     /// or bench) — every assignment goes through this first so the same
-    /// card can never occupy two slots at once.
+    /// card can never occupy two slots at once. Also clears out any
+    /// *other* card that shares this one's `name`: several cards in the
+    /// database are different seasons of the same real-ish player (e.g.
+    /// "L. Miessi" 2005/06 and 2011/12), and only one version of a given
+    /// player is allowed in the squad at once, same as any collectible
+    /// card game — you can't field two seasons of the same person.
     private func removeFromSquad(_ cardID: String) {
-        for i in profile.startingXICardIDs.indices where profile.startingXICardIDs[i] == cardID {
+        let name = LegendsCardDatabase.all.first { $0.id == cardID }?.name
+        func matches(_ otherID: String?) -> Bool {
+            guard let otherID else { return false }
+            if otherID == cardID { return true }
+            guard let name else { return false }
+            return LegendsCardDatabase.all.first { $0.id == otherID }?.name == name
+        }
+        for i in profile.startingXICardIDs.indices where matches(profile.startingXICardIDs[i]) {
+            if profile.startingXICardIDs[i] == profile.captainCardID { profile.captainCardID = nil }
             profile.startingXICardIDs[i] = nil
         }
-        for i in profile.benchCardIDs.indices where profile.benchCardIDs[i] == cardID {
+        for i in profile.benchCardIDs.indices where matches(profile.benchCardIDs[i]) {
             profile.benchCardIDs[i] = nil
         }
     }
@@ -122,5 +135,38 @@ extension LegendsStore {
         guard cards.count == ids.count else { return 0 }
         let total = cards.reduce(0) { $0 + effectiveOverall(for: $1) }
         return Int((Double(total) / Double(cards.count)).rounded())
+    }
+
+    /// Average effective overall across the Starting XI's midfield and
+    /// forward slots — counts by where a card is actually fielded, not
+    /// its own printed position, so a striker played out of position at
+    /// CB doesn't inflate this. 0 until the whole XI is filled, same
+    /// convention as `currentTeamRating`. Feeds both the Squad screen's
+    /// stat row and the live match engine's per-minute strength calc.
+    var attackRating: Int {
+        averageRating { $0.broad == .midfielder || $0.broad == .forward }
+    }
+
+    /// Average effective overall across the Starting XI's goalkeeper and
+    /// defender slots.
+    var defenceRating: Int {
+        averageRating { $0 == .goalkeeper || $0.broad == .defender }
+    }
+
+    private func averageRating(where matchesSlot: (DetailedPosition) -> Bool) -> Int {
+        let slots = startingXISlots
+        let ids = profile.startingXICardIDs
+        guard ids.count == slots.count, ids.allSatisfy({ $0 != nil }) else { return 0 }
+        let cards = ids.compactMap { $0 }.compactMap { id in LegendsCardDatabase.all.first { $0.id == id } }
+        guard cards.count == ids.count else { return 0 }
+
+        var total = 0
+        var count = 0
+        for (index, slot) in slots.enumerated() where matchesSlot(slot) {
+            total += effectiveOverall(for: cards[index])
+            count += 1
+        }
+        guard count > 0 else { return 0 }
+        return Int((Double(total) / Double(count)).rounded())
     }
 }
