@@ -47,15 +47,7 @@ struct LegendsCollectionView: View {
     private var header: some View {
         VStack(spacing: 10) {
             HStack {
-                Button {
-                    Haptics.tap()
-                    onBack()
-                } label: {
-                    Text("‹ Back")
-                        .font(.system(.callout, design: .monospaced).bold())
-                        .foregroundStyle(Retro.text)
-                }
-                .buttonStyle(PressableButtonStyle())
+                LegendsBackButton(action: onBack)
                 Spacer()
             }
             .padding(.horizontal)

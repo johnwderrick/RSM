@@ -19,9 +19,12 @@ struct LegendsPackPullResult: Identifiable {
     var id: String { card.id + (isNewCard ? "-new" : "-dup") }
 }
 
-enum LegendsPackError: Error {
+enum LegendsPackError: Error, Equatable {
     case insufficientFunds
     case emptyPool
+    /// The free Starter Pack — cost 0, so `insufficientFunds` can never
+    /// naturally gate a second open — has already been claimed this save.
+    case alreadyClaimed
 }
 
 extension LegendsStore {
@@ -31,6 +34,10 @@ extension LegendsStore {
     /// for the reveal animation.
     @discardableResult
     func openPack(_ pack: LegendsPack) throws -> [LegendsPackPullResult] {
+        if pack.id == "starter" {
+            guard !profile.hasClaimedStarterPack else { throw LegendsPackError.alreadyClaimed }
+        }
+
         switch pack.currency {
         case .coins:
             guard profile.coins >= pack.cost else { throw LegendsPackError.insufficientFunds }
@@ -74,6 +81,8 @@ extension LegendsStore {
                 return LegendsPackPullResult(card: card, isNewCard: true, grantedUpgrade: false)
             }
         }
+
+        if pack.id == "starter" { profile.hasClaimedStarterPack = true }
 
         persist()
         return results

@@ -15,6 +15,32 @@ enum GameExperience {
     case legends
 }
 
+/// A back/dismiss control shared by every Legends screen. Previously each
+/// screen wrote its own `Text("‹ Back")` button, whose tap target was just
+/// the text glyphs' own bounding box — easy to miss. This gives every
+/// screen the same look plus a real 44×44pt minimum tap target.
+struct LegendsBackButton: View {
+    var label: String = "Back"
+    let action: () -> Void
+
+    var body: some View {
+        Button {
+            Haptics.tap()
+            action()
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "chevron.left")
+                Text(label)
+            }
+            .font(.system(.callout, design: .monospaced).bold())
+            .foregroundStyle(Retro.text)
+            .frame(minWidth: 44, minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PressableButtonStyle())
+    }
+}
+
 struct ExperienceSelectView: View {
     let store: GameStore
     @Binding var experience: GameExperience?
@@ -116,15 +142,7 @@ struct LegendsHomeView: View {
             Retro.background.ignoresSafeArea()
             VStack(spacing: 18) {
                 HStack {
-                    Button {
-                        Haptics.tap()
-                        onBack()
-                    } label: {
-                        Text("‹ Switch Mode")
-                            .font(.system(.callout, design: .monospaced).bold())
-                            .foregroundStyle(Retro.text)
-                    }
-                    .buttonStyle(PressableButtonStyle())
+                    LegendsBackButton(label: "Switch Mode", action: onBack)
                     Spacer()
                 }
                 .padding(.horizontal)
@@ -173,7 +191,7 @@ struct LegendsHomeView: View {
             LegendsStadiumsView(store: store) { showStadiums = false }
         }
         .fullScreenCover(isPresented: $showSettings) {
-            LegendsSettingsView { showSettings = false }
+            LegendsSettingsView(store: store) { showSettings = false }
         }
     }
 

@@ -186,4 +186,63 @@ final class LegendsSquadTests: XCTestCase {
         let stillAssigned = Set(store.profile.startingXICardIDs.compactMap { $0 } + store.profile.benchCardIDs.compactMap { $0 })
         XCTAssertEqual(allAssignedBefore, stillAssigned, "Every card should still be in the squad (XI or bench) after shrinking the formation")
     }
+
+    // MARK: - swapSquadSlots (the Squad screen's drag-and-drop)
+
+    func testSwappingTwoXISlotsExchangesTheirCards() async {
+        let store = await freshStore()
+        let cards = LegendsCardDatabase.all.filter { store.profile.ownedCardIDs.contains($0.id) }
+        store.assign(cardID: cards[0].id, toXISlot: 0)
+        store.assign(cardID: cards[1].id, toXISlot: 1)
+
+        store.swapSquadSlots(.xi(0), .xi(1))
+
+        XCTAssertEqual(store.profile.startingXICardIDs[0], cards[1].id)
+        XCTAssertEqual(store.profile.startingXICardIDs[1], cards[0].id)
+    }
+
+    func testSwappingAnXISlotWithABenchSlotMovesBothCards() async {
+        let store = await freshStore()
+        let cards = LegendsCardDatabase.all.filter { store.profile.ownedCardIDs.contains($0.id) }
+        store.assign(cardID: cards[0].id, toXISlot: 0)
+        store.assign(cardID: cards[1].id, toBenchSlot: 0)
+
+        store.swapSquadSlots(.xi(0), .bench(0))
+
+        XCTAssertEqual(store.profile.startingXICardIDs[0], cards[1].id)
+        XCTAssertEqual(store.profile.benchCardIDs[0], cards[0].id)
+    }
+
+    func testSwappingWithAnEmptySlotBehavesLikeAMove() async {
+        let store = await freshStore()
+        let card = LegendsCardDatabase.all.first { store.profile.ownedCardIDs.contains($0.id) }!
+        store.assign(cardID: card.id, toXISlot: 0)
+
+        store.swapSquadSlots(.xi(0), .bench(0))
+
+        XCTAssertNil(store.profile.startingXICardIDs[0])
+        XCTAssertEqual(store.profile.benchCardIDs[0], card.id)
+    }
+
+    func testSwappingTheCaptainOutOfTheXIClearsCaptaincy() async {
+        let store = await freshStore()
+        let cards = LegendsCardDatabase.all.filter { store.profile.ownedCardIDs.contains($0.id) }
+        store.assign(cardID: cards[0].id, toXISlot: 0)
+        store.setCaptain(cardID: cards[0].id)
+        XCTAssertNotNil(store.profile.captainCardID)
+
+        store.swapSquadSlots(.xi(0), .bench(0))
+
+        XCTAssertNil(store.profile.captainCardID, "Captaincy shouldn't survive the captain's card leaving the XI")
+    }
+
+    func testSwappingASlotWithItselfIsANoOp() async {
+        let store = await freshStore()
+        let card = LegendsCardDatabase.all.first { store.profile.ownedCardIDs.contains($0.id) }!
+        store.assign(cardID: card.id, toXISlot: 0)
+
+        store.swapSquadSlots(.xi(0), .xi(0))
+
+        XCTAssertEqual(store.profile.startingXICardIDs[0], card.id)
+    }
 }

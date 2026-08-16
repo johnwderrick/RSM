@@ -18,6 +18,7 @@
 		3ED8FD5AA963F391C9598BD1 /* LegendsChemistryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F03BEE8FDDB675C4FEBF2BAA /* LegendsChemistryTests.swift */; };
 		4FAC06DD7BE5C1E8423AD72B /* CareerStoryGenerationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B121F6A9C9D225B23258477 /* CareerStoryGenerationTests.swift */; };
 		6724AC3FB647B4BDD7E17012 /* LegendsMatchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 644C36E4BB719E46DC5F1BD4 /* LegendsMatchTests.swift */; };
+		73674766596121488D7E4700 /* LegendsSeasonSoakTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F559507B7448E55181B33E7F /* LegendsSeasonSoakTests.swift */; };
 		85860B1451564F9A551C3598 /* EconomyFormulaTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF9FCA91756A4B1B9A1D75FC /* EconomyFormulaTests.swift */; };
 		86AF834781278C3BB37443B3 /* LegacyScoringTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73FF9AB27737BE67B844606D /* LegacyScoringTests.swift */; };
 		8AB00ED2DF9E30109F724942 /* LegendsAgingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAA9AD75FBD3A892539947D4 /* LegendsAgingTests.swift */; };
@@ -63,12 +64,15 @@
 		C7E8513B66785D4FEF21768F /* LegendsChallengeTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendsChallengeTests.swift; sourceTree = "<group>"; };
 		E30D7225752E3B1942D844E5 /* LegendsPackTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendsPackTests.swift; sourceTree = "<group>"; };
 		F03BEE8FDDB675C4FEBF2BAA /* LegendsChemistryTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendsChemistryTests.swift; sourceTree = "<group>"; };
+		F559507B7448E55181B33E7F /* LegendsSeasonSoakTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendsSeasonSoakTests.swift; sourceTree = "<group>"; };
 		FAA9AD75FBD3A892539947D4 /* LegendsAgingTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendsAgingTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		52EE5DA6302272C0002A9DDF /* Retro Season Manager */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = "Retro Season Manager";
 			sourceTree = "<group>";
 		};
@@ -116,6 +120,7 @@
 				630311A8820AD986CC73BA6D /* LegendsProfileRoundTripTests.swift */,
 				FAA9AD75FBD3A892539947D4 /* LegendsAgingTests.swift */,
 				7B58DAAE268FF435CCAB8ACB /* LegendsLiveMatchTests.swift */,
+				F559507B7448E55181B33E7F /* LegendsSeasonSoakTests.swift */,
 			);
 			path = "Retro Season ManagerTests";
 			sourceTree = "<group>";
@@ -273,6 +278,7 @@
 				1E072947D492BE27750A027B /* LegendsProfileRoundTripTests.swift in Sources */,
 				8AB00ED2DF9E30109F724942 /* LegendsAgingTests.swift in Sources */,
 				223624989D3B1426429EBD23 /* LegendsLiveMatchTests.swift in Sources */,
+				73674766596121488D7E4700 /* LegendsSeasonSoakTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -430,8 +436,7 @@
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
-				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
-				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -476,8 +481,7 @@
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
-				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
-				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";

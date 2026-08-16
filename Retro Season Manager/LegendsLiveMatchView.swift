@@ -6,8 +6,13 @@
 //  engine (LegendsLiveMatch.swift) — mirrors MatchDayView.swift's
 //  MatchView/SubsSheet composition (fixed score bar, flexible
 //  commentary feed, fixed control bar) restyled with Legends' own Retro
-//  chrome. No stadium background art and no animated pitch — explicitly
-//  descoped, Legends stays text/UI-based per the design doc.
+//  chrome. Reuses Career Mode's stadium background art and match "flash
+//  screen" overlays (MatchFlashOverlay, PixelConfettiBurst,
+//  CRTScanlineOverlay, matchShake) directly — all pure views with zero
+//  GameStore coupling. Penalty/red-card flashes are intentionally not
+//  ported: this engine only ever produces goal/half-time/full-time/sub
+//  events, so there's no trigger for them. No animated 2D/3D pitch —
+//  explicitly descoped, Legends stays text/UI-based per the design doc.
 //
 
 import SwiftUI
@@ -20,9 +25,28 @@ struct LegendsLiveMatchView: View {
     @State private var showSubs = false
     @State private var hasFinishedHandoff = false
 
+    @State private var goalFlash = false
+    @State private var isUserGoalFlash = true
+    @State private var goalFlashText = "GOAL!"
+    @State private var eventFlash: MatchFlashKind? = nil
+    @State private var shakeTrigger = 0
+    @State private var showConfetti = false
+    @State private var confettiColors: [Color] = []
+
+    private var userColor: Color { Color(rgb: store.profile.crestColorRGB) }
+
     var body: some View {
         ZStack {
-            Retro.background.ignoresSafeArea()
+            GeometryReader { geo in
+                Image("StadiumBackground")
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    .clipped()
+            }
+            .ignoresSafeArea()
+            Retro.background.opacity(0.82).ignoresSafeArea()
+
             VStack(spacing: 0) {
                 scoreBar
                 commentaryFeed
@@ -30,14 +54,90 @@ struct LegendsLiveMatchView: View {
                 controlBar
             }
 
-            if live.isFinished {
-                fullTimeOverlay
-            }
+            if goalFlash { goalFlashOverlay }
+            if let eventFlash { MatchFlashOverlay(kind: eventFlash) }
+            if showConfetti { PixelConfettiBurst(colors: confettiColors) }
+            if live.isFinished { fullTimeOverlay }
+            CRTScanlineOverlay()
         }
+        .matchShake(trigger: shakeTrigger)
         .onAppear { live.start() }
+        .onChange(of: live.teamGoals) { _, _ in triggerGoalFlash(isUser: true) }
+        .onChange(of: live.opponentGoals) { _, _ in triggerGoalFlash(isUser: false) }
+        .onChange(of: live.isHalfTime) { _, isHalfTime in if isHalfTime { triggerHalfTimeFlash() } }
+        .onChange(of: live.isFinished) { _, finished in if finished { triggerFullTimeConfettiIfWon() } }
         .sheet(isPresented: $showSubs) {
             LegendsSubsSheet(live: live)
         }
+    }
+
+    // MARK: - Flash overlays (goal / half-time / confetti / scanline)
+
+    private func triggerGoalFlash(isUser: Bool) {
+        isUserGoalFlash = isUser
+        goalFlashText = isUser ? "GOAL!!!" : "GOAL AGAINST"
+        if isUser {
+            Haptics.success()
+            shakeTrigger += 1
+            confettiColors = [userColor, Retro.gold, Retro.accent]
+            withAnimation(.easeIn(duration: 0.1)) { showConfetti = true }
+        } else {
+            Haptics.error()
+        }
+        withAnimation(.easeIn(duration: 0.15)) { goalFlash = true }
+        Task {
+            try? await Task.sleep(for: .milliseconds(1400))
+            withAnimation(.easeOut(duration: 0.4)) { goalFlash = false }
+            if isUser {
+                try? await Task.sleep(for: .milliseconds(200))
+                withAnimation { showConfetti = false }
+            }
+        }
+    }
+
+    private var goalFlashOverlay: some View {
+        ZStack {
+            Image(isUserGoalFlash ? "GoalCelebration" : "GoalAgainst")
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .ignoresSafeArea()
+            (isUserGoalFlash ? Retro.background : Color.black).opacity(0.30).ignoresSafeArea()
+            VStack(spacing: 6) {
+                Text("⚽︎").font(.system(size: 40))
+                Text(goalFlashText)
+                    .font(.system(.title, design: .monospaced).bold())
+                    .foregroundStyle(.white)
+                if let last = live.commentary.last {
+                    Text(last.text)
+                        .font(.system(.footnote, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.9))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 30)
+                }
+            }
+        }
+        .scaleEffect(goalFlash ? 1.0 : 0.6)
+        .allowsHitTesting(false)
+        .transition(.opacity)
+    }
+
+    private func triggerHalfTimeFlash() {
+        let awayShort = String(live.opponent.name.prefix(3)).uppercased()
+        let kind = MatchFlashKind.halfTime(homeShort: store.profile.crestShort, homeGoals: live.teamGoals,
+                                            awayGoals: live.opponentGoals, awayShort: awayShort)
+        Haptics.tap()
+        withAnimation(.easeIn(duration: 0.15)) { eventFlash = kind }
+        Task {
+            try? await Task.sleep(for: .milliseconds(1200))
+            withAnimation(.easeOut(duration: 0.3)) { eventFlash = nil }
+        }
+    }
+
+    private func triggerFullTimeConfettiIfWon() {
+        guard live.teamGoals > live.opponentGoals else { return }
+        Haptics.success()
+        confettiColors = [userColor, Retro.gold, Retro.accent]
+        withAnimation(.easeIn(duration: 0.1)) { showConfetti = true }
     }
 
     // MARK: - Score bar

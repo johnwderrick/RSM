@@ -105,4 +105,33 @@ final class LegendsProfileRoundTripTests: XCTestCase {
         XCTAssertNil(profile.activeStadiumID)
         XCTAssertEqual(profile.preferredMentality, .balanced, "preferredMentality should default to .balanced when absent")
     }
+
+    /// A brand-new club (`.starter()` — used both on first launch and by
+    /// Delete Club) should be playable immediately: a full, legal Starting
+    /// XI and bench, not an empty squad the player has to build from packs
+    /// before they can play a single match.
+    func testStarterProfileHasAFullLegalStartingSquadOfLowRatedCards() {
+        let profile = LegendsProfile.starter()
+
+        XCTAssertEqual(profile.startingXICardIDs.count, 11)
+        XCTAssertTrue(profile.startingXICardIDs.allSatisfy { $0 != nil }, "Every Starting XI slot should be filled")
+        XCTAssertEqual(profile.benchCardIDs.count, LegendsStore.benchSize)
+        XCTAssertTrue(profile.benchCardIDs.allSatisfy { $0 != nil }, "Every bench slot should be filled")
+
+        let xiIDs = profile.startingXICardIDs.compactMap { $0 }
+        let benchIDs = profile.benchCardIDs.compactMap { $0 }
+        XCTAssertEqual(Set(xiIDs).count, xiIDs.count, "No card should be double-booked in the XI")
+        XCTAssertTrue(Set(xiIDs).isDisjoint(with: Set(benchIDs)), "No card should be in both the XI and the bench")
+
+        let squadCards = (xiIDs + benchIDs).compactMap { id in LegendsCardDatabase.all.first { $0.id == id } }
+        XCTAssertEqual(squadCards.count, 18)
+        XCTAssertEqual(Set(squadCards.map(\.name)).count, 18, "One card per real player, matching the squad's own uniqueness rule")
+        XCTAssertTrue(squadCards.allSatisfy { $0.rarity.tier <= 2 }, "Starter cards should be Common/Rare/Elite — genuinely bad, not a free head start")
+        XCTAssertEqual(profile.ownedCardIDs, Set(xiIDs + benchIDs))
+
+        // A goalkeeper must actually be fielded in goal, matching the
+        // Squad screen's own expectation that slot 0 is always the GK.
+        let goalkeeper = squadCards.first { profile.startingXICardIDs[0] == $0.id }
+        XCTAssertEqual(goalkeeper?.position, .goalkeeper)
+    }
 }

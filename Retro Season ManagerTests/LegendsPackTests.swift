@@ -54,6 +54,7 @@ final class LegendsStorePackOpeningTests: XCTestCase {
         // aging penalty, so a real playthrough's cardAgeOffsets otherwise
         // leaks into "does effectiveOverall equal overall+upgrade" checks.
         store.profile.cardAgeOffsets = [:]
+        store.profile.hasClaimedStarterPack = false
         return store
     }
 
@@ -97,5 +98,26 @@ final class LegendsStorePackOpeningTests: XCTestCase {
         let card = LegendsCardDatabase.all.first!
         store.profile.cardUpgrades[card.id] = LegendsStore.maxCardUpgrade
         XCTAssertEqual(store.effectiveOverall(for: card), min(99, card.overall + LegendsStore.maxCardUpgrade))
+    }
+
+    func testStarterPackCanOnlyBeClaimedOnce() async throws {
+        let store = await freshStore()
+        let starter = LegendsPackDatabase.all.first { $0.id == "starter" }!
+        XCTAssertFalse(store.profile.hasClaimedStarterPack)
+
+        _ = try store.openPack(starter)
+        XCTAssertTrue(store.profile.hasClaimedStarterPack)
+
+        XCTAssertThrowsError(try store.openPack(starter)) { error in
+            XCTAssertEqual(error as? LegendsPackError, .alreadyClaimed)
+        }
+    }
+
+    func testClaimingTheStarterPackDoesNotBlockOtherPacks() async throws {
+        let store = await freshStore()
+        let starter = LegendsPackDatabase.all.first { $0.id == "starter" }!
+        let bronze = LegendsPackDatabase.all.first { $0.id == "bronze" }!
+        _ = try store.openPack(starter)
+        XCTAssertNoThrow(try store.openPack(bronze))
     }
 }

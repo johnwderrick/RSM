@@ -15,6 +15,7 @@
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct LegendsSquadView: View {
     let store: LegendsStore
@@ -34,23 +35,28 @@ struct LegendsSquadView: View {
     }
 
     var body: some View {
-        ZStack {
-            Retro.background.ignoresSafeArea()
-            VStack(spacing: 10) {
-                header
-                pickerStrip
-                HStack(alignment: .top, spacing: 12) {
-                    LegendsPitchView(store: store) { index in
-                        Haptics.tap()
-                        pickerTarget = PickerTarget(kind: .xi(index))
-                    }
-                    .frame(maxWidth: .infinity)
+        GeometryReader { geo in
+            ZStack {
+                Retro.background.ignoresSafeArea()
+                VStack(spacing: 6) {
+                    header
+                    pickerStrip
+                    HStack(alignment: .top, spacing: 12) {
+                        LegendsPitchView(store: store) { index in
+                            Haptics.tap()
+                            pickerTarget = PickerTarget(kind: .xi(index))
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                    sidePanel
-                        .frame(width: 190)
+                        sidePanel
+                            .frame(width: 190)
+                            .frame(maxHeight: .infinity)
+                    }
+                    .frame(maxHeight: .infinity)
+                    .padding(.horizontal)
+                    .padding(.bottom, 8)
                 }
-                .padding(.horizontal)
-                .padding(.bottom, 12)
+                .frame(width: geo.size.width, height: geo.size.height)
             }
         }
         .sheet(item: $pickerTarget) { target in
@@ -74,15 +80,7 @@ struct LegendsSquadView: View {
     private var header: some View {
         VStack(spacing: 6) {
             HStack {
-                Button {
-                    Haptics.tap()
-                    onBack()
-                } label: {
-                    Text("‹ Back")
-                        .font(.system(.callout, design: .monospaced).bold())
-                        .foregroundStyle(Retro.text)
-                }
-                .buttonStyle(PressableButtonStyle())
+                LegendsBackButton(action: onBack)
                 Spacer()
             }
             .padding(.horizontal)
@@ -131,19 +129,19 @@ struct LegendsSquadView: View {
     }
 
     private var sidePanel: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 6) {
             Text("BENCH (\(filledBenchCount)/\(LegendsStore.benchSize))")
                 .font(.system(.caption, design: .monospaced).bold())
                 .foregroundStyle(Retro.accent)
 
             ScrollView {
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
                     ForEach(0..<LegendsStore.benchSize, id: \.self) { index in
                         benchToken(index)
                     }
                 }
             }
-            .frame(maxHeight: 260)
+            .frame(maxHeight: .infinity)
 
             Divider()
 
@@ -154,9 +152,11 @@ struct LegendsSquadView: View {
     private func benchToken(_ index: Int) -> some View {
         let cardID = store.profile.benchCardIDs[index]
         let card = cardID.flatMap { id in LegendsCardDatabase.all.first { $0.id == id } }
+        let slot = LegendsSquadSlot.bench(index)
         return LegendsPlayerToken(card: card, role: card?.position ?? .centralMid,
                                    overall: card.map { store.effectiveOverall(for: $0) },
-                                   chemistryStars: 0, isCaptain: false, diameter: 42) {
+                                   chemistryStars: 0, isCaptain: false, diameter: 40,
+                                   slot: slot, onSwap: { store.swapSquadSlots($0, $1) }) {
             Haptics.tap()
             pickerTarget = PickerTarget(kind: .bench(index))
         }
@@ -204,33 +204,53 @@ struct LegendsPitchView: View {
         return [fwd, mid, def, gk]
     }
 
+    /// The default 60pt token doesn't fit 4 rows in a landscape phone's
+    /// height budget (see the Squad screen's own header/picker-strip
+    /// chrome above it) — so instead of a fixed size, the pitch measures
+    /// its own allotted height and sizes tokens to actually fit it,
+    /// rather than assuming a portrait-sized budget it never gets.
+    private func diameter(for availableHeight: CGFloat) -> CGFloat {
+        let rowCount = CGFloat(rowRanges.count)
+        let rowSpacing: CGFloat = 6
+        let verticalPadding: CGFloat = 8
+        let rowHeight = (availableHeight - verticalPadding * 2 - rowSpacing * (rowCount - 1)) / rowCount
+        // Budget beyond the circle itself for the name label + chemistry dots.
+        return max(32, min(60, rowHeight - 22))
+    }
+
     var body: some View {
-        ZStack {
-            PitchBackground()
-            PitchGridDots()
-            VStack(spacing: 10) {
-                ForEach(Array(rowRanges.enumerated()), id: \.offset) { _, range in
-                    HStack(spacing: 6) {
-                        ForEach(Array(range), id: \.self) { index in
-                            slotToken(index)
+        GeometryReader { geo in
+            let tokenDiameter = diameter(for: geo.size.height)
+            ZStack {
+                PitchBackground()
+                PitchGridDots()
+                VStack(spacing: 6) {
+                    ForEach(Array(rowRanges.enumerated()), id: \.offset) { _, range in
+                        HStack(spacing: 6) {
+                            ForEach(Array(range), id: \.self) { index in
+                                slotToken(index, diameter: tokenDiameter)
+                            }
                         }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
             }
-            .padding(16)
         }
     }
 
-    private func slotToken(_ index: Int) -> some View {
+    private func slotToken(_ index: Int, diameter: CGFloat) -> some View {
         let role = store.startingXISlots[index]
         let cardID = store.profile.startingXICardIDs[index]
         let card = cardID.flatMap { id in LegendsCardDatabase.all.first { $0.id == id } }
         let isCaptain = cardID != nil && cardID == store.profile.captainCardID
+        let slot = LegendsSquadSlot.xi(index)
         return LegendsPlayerToken(card: card, role: role,
                                    overall: card.map { store.effectiveOverall(for: $0) },
                                    chemistryStars: cardID != nil ? store.chemistryStars(forXISlot: index) : 0,
-                                   isCaptain: isCaptain) {
+                                   isCaptain: isCaptain, diameter: diameter,
+                                   slot: slot, onSwap: { store.swapSquadSlots($0, $1) }) {
             onTapSlot(index)
         }
         .frame(maxWidth: .infinity)
@@ -248,6 +268,14 @@ struct LegendsPlayerToken: View {
     let chemistryStars: Int
     let isCaptain: Bool
     var diameter: CGFloat = 60
+    var showChemistry: Bool = true
+    /// This token's own squad position and a swap callback — when both
+    /// are supplied, the token becomes a drag source *and* drop target,
+    /// so dragging one token onto another swaps the two players. Left
+    /// nil for non-squad contexts (e.g. the card picker sheet), where a
+    /// token is just a tap-to-pick tile.
+    var slot: LegendsSquadSlot? = nil
+    var onSwap: ((LegendsSquadSlot, LegendsSquadSlot) -> Void)? = nil
     let onTap: () -> Void
 
     private var ringColor: Color {
@@ -259,6 +287,25 @@ struct LegendsPlayerToken: View {
     }
 
     var body: some View {
+        Group {
+            if let slot, let onSwap {
+                tokenButton
+                    .onDrag { NSItemProvider(object: slot.dragString as NSString) }
+                    .onDrop(of: [.text], isTargeted: nil) { providers in
+                        guard let provider = providers.first else { return false }
+                        _ = provider.loadObject(ofClass: NSString.self) { reading, _ in
+                            guard let string = reading as? String, let sourceSlot = LegendsSquadSlot(dragString: string) else { return }
+                            DispatchQueue.main.async { onSwap(sourceSlot, slot) }
+                        }
+                        return true
+                    }
+            } else {
+                tokenButton
+            }
+        }
+    }
+
+    private var tokenButton: some View {
         Button(action: onTap) {
             VStack(spacing: 3) {
                 ZStack {
@@ -295,7 +342,7 @@ struct LegendsPlayerToken: View {
                         .foregroundStyle(Retro.text)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
-                    chemistryDots
+                    if showChemistry { chemistryDots }
                 } else {
                     Text("Empty")
                         .font(.system(size: 9, design: .monospaced))
@@ -335,14 +382,21 @@ private struct LegendsCardPickerSheet: View {
     let onSelect: (String?) -> Void
     @Environment(\.dismiss) private var dismiss
 
-    private var placedElsewhere: Set<String> {
-        Set((store.profile.startingXICardIDs + store.profile.benchCardIDs).compactMap { $0 })
+    /// Names, not IDs — `LegendsStore+Squad.swift`'s `removeFromSquad`
+    /// evicts a slot by matching *name* (only one version of a real
+    /// player allowed in the squad at once), so the picker has to filter
+    /// the same way. Filtering by ID alone let the list offer a card that
+    /// would silently evict a *different* slot holding another season of
+    /// the same person the moment it was picked.
+    private var namesPlacedElsewhere: Set<String> {
+        let idsElsewhere = Set((store.profile.startingXICardIDs + store.profile.benchCardIDs).compactMap { $0 })
             .subtracting(currentCardID.map { [$0] } ?? [])
+        return Set(idsElsewhere.compactMap { id in LegendsCardDatabase.all.first { $0.id == id }?.name })
     }
 
     private var availableCards: [LegendsCard] {
         let owned = LegendsCardDatabase.all.filter {
-            store.profile.ownedCardIDs.contains($0.id) && !placedElsewhere.contains($0.id) && !store.isRetired($0)
+            store.profile.ownedCardIDs.contains($0.id) && !namesPlacedElsewhere.contains($0.name) && !store.isRetired($0)
         }
         guard let slotPosition else { return owned.sorted { store.effectiveOverall(for: $0) > store.effectiveOverall(for: $1) } }
         return owned.sorted { a, b in
@@ -393,33 +447,16 @@ private struct LegendsCardPickerSheet: View {
                     Spacer()
                 } else {
                     ScrollView {
-                        VStack(spacing: 8) {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 72, maximum: 92), spacing: 14)], spacing: 16) {
                             ForEach(availableCards) { card in
-                                Button {
+                                LegendsPlayerToken(card: card, role: card.position,
+                                                    overall: store.effectiveOverall(for: card),
+                                                    chemistryStars: 0, isCaptain: false, diameter: 56,
+                                                    showChemistry: false) {
                                     Haptics.tap()
                                     onSelect(card.id)
                                     dismiss()
-                                } label: {
-                                    HStack {
-                                        Circle().fill(card.rarity.tint).frame(width: 10, height: 10)
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text(card.name)
-                                                .font(.system(.footnote, design: .monospaced).bold())
-                                                .foregroundStyle(Retro.text)
-                                            Text("\(card.position.rawValue) · \(card.rarity.rawValue) · age \(store.effectiveAge(for: card))")
-                                                .font(.system(.caption2, design: .monospaced))
-                                                .foregroundStyle(Retro.text.opacity(0.6))
-                                        }
-                                        Spacer()
-                                        Text("\(store.effectiveOverall(for: card))")
-                                            .font(.system(.callout, design: .monospaced).bold())
-                                            .foregroundStyle(card.rarity.tint)
-                                    }
-                                    .padding(12)
-                                    .background(Retro.panel.opacity(0.6))
-                                    .clipShape(RoundedRectangle(cornerRadius: 10))
                                 }
-                                .buttonStyle(PressableButtonStyle())
                             }
                         }
                         .padding(.horizontal)

@@ -39,15 +39,7 @@ struct LegendsPacksView: View {
     private var header: some View {
         VStack(spacing: 10) {
             HStack {
-                Button {
-                    Haptics.tap()
-                    onBack()
-                } label: {
-                    Text("‹ Back")
-                        .font(.system(.callout, design: .monospaced).bold())
-                        .foregroundStyle(Retro.text)
-                }
-                .buttonStyle(PressableButtonStyle())
+                LegendsBackButton(action: onBack)
                 Spacer()
             }
             .padding(.horizontal)
@@ -67,7 +59,8 @@ struct LegendsPacksView: View {
     }
 
     private func packTile(_ pack: LegendsPack) -> some View {
-        let affordable = pack.currency == .coins ? store.profile.coins >= pack.cost : store.profile.packTokens >= pack.cost
+        let claimed = pack.id == "starter" && store.profile.hasClaimedStarterPack
+        let affordable = !claimed && (pack.currency == .coins ? store.profile.coins >= pack.cost : store.profile.packTokens >= pack.cost)
         return Button {
             Haptics.tap()
             openingPack = pack
@@ -88,12 +81,14 @@ struct LegendsPacksView: View {
                     .font(.system(size: 9, design: .monospaced).bold())
                     .foregroundStyle(Retro.gold.opacity(0.85))
                 HStack(spacing: 4) {
-                    Image(systemName: pack.currency == .coins ? "dollarsign.circle.fill" : "shippingbox.fill")
-                        .font(.system(size: 11))
-                    Text(pack.cost == 0 ? "FREE" : "\(pack.cost)")
+                    if !claimed {
+                        Image(systemName: pack.currency == .coins ? "dollarsign.circle.fill" : "shippingbox.fill")
+                            .font(.system(size: 11))
+                    }
+                    Text(claimed ? "CLAIMED" : (pack.cost == 0 ? "FREE" : "\(pack.cost)"))
                         .font(.system(.caption, design: .monospaced).bold())
                 }
-                .foregroundStyle(affordable ? Retro.highlight : Retro.warning)
+                .foregroundStyle(claimed ? Retro.text.opacity(0.4) : (affordable ? Retro.highlight : Retro.warning))
             }
             .frame(maxWidth: .infinity, minHeight: 140)
             .padding(12)
@@ -124,10 +119,16 @@ private struct LegendsPackOpeningView: View {
         ZStack {
             Retro.background.ignoresSafeArea()
             VStack(spacing: 24) {
+                HStack {
+                    LegendsBackButton(label: "Close", action: onDone)
+                    Spacer()
+                }
+                .padding(.horizontal)
+                .padding(.top, 12)
+
                 Text(pack.name.uppercased())
                     .font(.system(.title2, design: .monospaced).bold())
                     .foregroundStyle(Retro.accent)
-                    .padding(.top, 20)
 
                 if results.isEmpty && errorMessage == nil {
                     Spacer()

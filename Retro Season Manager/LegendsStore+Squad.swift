@@ -10,6 +10,33 @@
 
 import Foundation
 
+/// A single position in the squad — either a Starting XI index or a bench
+/// index — used to identify the two sides of a drag-and-drop swap on the
+/// Squad screen.
+enum LegendsSquadSlot: Hashable {
+    case xi(Int)
+    case bench(Int)
+
+    /// A plain string encoding for drag payloads (`.onDrag`/`.onDrop` move
+    /// data as `NSItemProvider` text, not typed Swift values).
+    var dragString: String {
+        switch self {
+        case .xi(let i): return "xi:\(i)"
+        case .bench(let i): return "bench:\(i)"
+        }
+    }
+
+    init?(dragString: String) {
+        let parts = dragString.split(separator: ":")
+        guard parts.count == 2, let index = Int(parts[1]) else { return nil }
+        switch parts[0] {
+        case "xi": self = .xi(index)
+        case "bench": self = .bench(index)
+        default: return nil
+        }
+    }
+}
+
 extension LegendsStore {
     var formation: Formation {
         Formation.all.first { $0.name == profile.formationName } ?? Formation.all[0]
@@ -114,6 +141,44 @@ extension LegendsStore {
     func clearBenchSlot(_ index: Int) {
         guard profile.benchCardIDs.indices.contains(index) else { return }
         profile.benchCardIDs[index] = nil
+        persist()
+    }
+
+    /// Exchanges whatever's in two squad slots (XI or bench, any
+    /// combination) — the drag-and-drop swap on the Squad screen.
+    /// Deliberately bypasses `assign(cardID:...)`: that method's
+    /// same-name duplicate-removal exists for introducing a *new* card
+    /// into the squad, and would wrongly clear the other slot involved
+    /// in a swap between two cards already legally fielded. A swap
+    /// against an empty slot behaves like a plain move.
+    func swapSquadSlots(_ a: LegendsSquadSlot, _ b: LegendsSquadSlot) {
+        guard a != b else { return }
+
+        func read(_ slot: LegendsSquadSlot) -> String? {
+            switch slot {
+            case .xi(let i): return profile.startingXICardIDs.indices.contains(i) ? profile.startingXICardIDs[i] : nil
+            case .bench(let i): return profile.benchCardIDs.indices.contains(i) ? profile.benchCardIDs[i] : nil
+            }
+        }
+        func write(_ slot: LegendsSquadSlot, _ cardID: String?) {
+            switch slot {
+            case .xi(let i): if profile.startingXICardIDs.indices.contains(i) { profile.startingXICardIDs[i] = cardID }
+            case .bench(let i): if profile.benchCardIDs.indices.contains(i) { profile.benchCardIDs[i] = cardID }
+            }
+        }
+
+        let cardA = read(a)
+        let cardB = read(b)
+        write(a, cardB)
+        write(b, cardA)
+
+        // The captain follows their card ID, not a slot — but if this
+        // swap moved the captain out of the XI onto the bench, the
+        // "captain must be a Starting XI player" invariant (see
+        // setCaptain) needs re-enforcing, same as clearXISlot already does.
+        if let captain = profile.captainCardID, !profile.startingXICardIDs.contains(captain) {
+            profile.captainCardID = nil
+        }
         persist()
     }
 

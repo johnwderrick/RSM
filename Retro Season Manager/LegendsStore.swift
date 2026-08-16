@@ -86,13 +86,71 @@ struct LegendsProfile: Codable {
     /// starting mentality — reuses Career Mode's own `Mentality` type
     /// (Models.swift), which has zero GameStore coupling.
     var preferredMentality: Mentality = .balanced
+    /// The free Starter Pack (LegendsPacks.swift, id "starter") can only
+    /// ever be opened once per club — its cost is 0, so without this flag
+    /// it would otherwise be an infinitely-repeatable free pack.
+    var hasClaimedStarterPack: Bool = false
 
     static func starter() -> LegendsProfile {
-        LegendsProfile(clubName: "RSM Legends FC", crestShort: "RSM",
-                        crestColorRGB: [0.10, 0.76, 0.35],
-                        managerLevel: 1, managerXP: 0,
-                        coins: 500, packTokens: 3,
-                        division: .division10, teamRating: 0)
+        let squad = starterSquad()
+        return LegendsProfile(clubName: "RSM Legends FC", crestShort: "RSM",
+                               crestColorRGB: [0.10, 0.76, 0.35],
+                               managerLevel: 1, managerXP: 0,
+                               coins: 500, packTokens: 3,
+                               division: .division10, teamRating: 0,
+                               ownedCardIDs: squad.owned,
+                               startingXICardIDs: squad.xi,
+                               benchCardIDs: squad.bench)
+    }
+
+    /// Picks one low-rated (Common/Rare/Elite) card per real player so a
+    /// brand-new club fields a full, legal — but genuinely bad — Starting
+    /// XI and bench from minute one, instead of an empty squad that's
+    /// unplayable until packs are opened. Reuses the same name-dedup rule
+    /// as `LegendsStore+Squad.swift` (one card per person) and derives the
+    /// default "4-4-2" slot geometry the same way that file's
+    /// `startingXISlots` does — evaluated directly here since a brand-new
+    /// profile has no `LegendsStore` instance yet to ask.
+    private static func starterSquad() -> (owned: Set<String>, xi: [String?], bench: [String?]) {
+        let formation = Formation.all.first { $0.name == "4-4-2" } ?? Formation.all[0]
+        var slots: [DetailedPosition] = [.goalkeeper]
+        for i in 0..<formation.defenders {
+            slots.append(.expected(for: .defender, indexInRow: i, rowCount: formation.defenders))
+        }
+        for i in 0..<formation.midfielders {
+            slots.append(.expected(for: .midfielder, indexInRow: i, rowCount: formation.midfielders, wideIsWinger: formation.wideMidfieldersAreWingers))
+        }
+        for i in 0..<formation.forwards {
+            slots.append(.expected(for: .forward, indexInRow: i, rowCount: formation.forwards))
+        }
+
+        // Common/Rare/Elite only (tier <= 2, the same cutoff the Bronze
+        // Pack's own pool already uses) — sorted weakest-first so both the
+        // exact-slot picks and the "whatever's left" fallback stay bad.
+        var seenNames = Set<String>()
+        var pool = LegendsCardDatabase.all
+            .filter { $0.rarity.tier <= 2 }
+            .sorted { $0.overall < $1.overall }
+            .filter { seenNames.insert($0.name).inserted }
+
+        func take(where predicate: (LegendsCard) -> Bool) -> LegendsCard? {
+            guard let index = pool.firstIndex(where: predicate) else { return nil }
+            return pool.remove(at: index)
+        }
+
+        let xi: [String?] = slots.map { slot in
+            let card = take { $0.position == slot }
+                ?? take { $0.position.broad == slot.broad }
+                ?? (pool.isEmpty ? nil : pool.removeFirst())
+            return card?.id
+        }
+
+        let bench: [String?] = (0..<LegendsStore.benchSize).map { _ in
+            pool.isEmpty ? nil : pool.removeFirst().id
+        }
+
+        let owned = Set((xi + bench).compactMap { $0 })
+        return (owned, xi, bench)
     }
 
     // A custom, lenient decode — matching SaveState/LegacyCareer's own
@@ -110,6 +168,7 @@ struct LegendsProfile: Codable {
         case ownedManagerIDs, activeManagerID, ownedStadiumIDs, activeStadiumID
         case currentSeason, matchesPlayedThisSeason, cardAgeOffsets
         case preferredMentality
+        case hasClaimedStarterPack
     }
 
     init(clubName: String, crestShort: String, crestColorRGB: [Double],
@@ -127,7 +186,7 @@ struct LegendsProfile: Codable {
          ownedManagerIDs: Set<String> = [], activeManagerID: String? = nil,
          ownedStadiumIDs: Set<String> = [], activeStadiumID: String? = nil,
          currentSeason: Int = 1, matchesPlayedThisSeason: Int = 0, cardAgeOffsets: [String: Int] = [:],
-         preferredMentality: Mentality = .balanced) {
+         preferredMentality: Mentality = .balanced, hasClaimedStarterPack: Bool = false) {
         self.clubName = clubName
         self.crestShort = crestShort
         self.crestColorRGB = crestColorRGB
@@ -164,6 +223,7 @@ struct LegendsProfile: Codable {
         self.matchesPlayedThisSeason = matchesPlayedThisSeason
         self.cardAgeOffsets = cardAgeOffsets
         self.preferredMentality = preferredMentality
+        self.hasClaimedStarterPack = hasClaimedStarterPack
     }
 
     init(from decoder: Decoder) throws {
@@ -204,6 +264,7 @@ struct LegendsProfile: Codable {
         matchesPlayedThisSeason = try c.decodeIfPresent(Int.self, forKey: .matchesPlayedThisSeason) ?? 0
         cardAgeOffsets = try c.decodeIfPresent([String: Int].self, forKey: .cardAgeOffsets) ?? [:]
         preferredMentality = try c.decodeIfPresent(Mentality.self, forKey: .preferredMentality) ?? .balanced
+        hasClaimedStarterPack = try c.decodeIfPresent(Bool.self, forKey: .hasClaimedStarterPack) ?? false
     }
 }
 
@@ -266,5 +327,14 @@ final class LegendsStore {
     func persist() {
         guard let data = try? JSONEncoder().encode(profile) else { return }
         try? data.write(to: Self.fileURL)
+    }
+
+    /// Wipes the save file and resets in-memory state back to a fresh
+    /// starter club — Legends has just one save slot, so "delete" is a
+    /// full reset rather than removing one of several files.
+    func deleteClub() {
+        try? FileManager.default.removeItem(at: Self.fileURL)
+        profile = .starter()
+        persist()
     }
 }

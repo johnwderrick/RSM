@@ -56,15 +56,7 @@ struct LegendsMatchView: View {
 
     private var header: some View {
         HStack {
-            Button {
-                Haptics.tap()
-                onBack()
-            } label: {
-                Text("‹ Back")
-                    .font(.system(.callout, design: .monospaced).bold())
-                    .foregroundStyle(Retro.text)
-            }
-            .buttonStyle(PressableButtonStyle())
+            LegendsBackButton(action: onBack)
             Spacer()
             Text("PLAY MATCH")
                 .font(.system(.headline, design: .monospaced).bold())
@@ -176,9 +168,15 @@ struct LegendsMatchView: View {
                 Panel(title: "CHALLENGES COMPLETE") {
                     VStack(alignment: .leading, spacing: 6) {
                         ForEach(summary.completedChallenges, id: \.challenge.id) { completion in
-                            Text("✓ \(completion.challenge.title)")
-                                .font(.system(.footnote, design: .monospaced).bold())
-                                .foregroundStyle(Retro.emerald)
+                            HStack {
+                                Text("✓ \(completion.challenge.title)")
+                                    .font(.system(.footnote, design: .monospaced).bold())
+                                    .foregroundStyle(Retro.emerald)
+                                Spacer()
+                                Text(challengeRewardText(completion.challenge))
+                                    .font(.system(.caption2, design: .monospaced).bold())
+                                    .foregroundStyle(Retro.highlight)
+                            }
                         }
                     }
                 }
@@ -228,35 +226,19 @@ struct LegendsMatchView: View {
                     .foregroundStyle(Retro.emerald)
             }
 
-            HStack(spacing: 12) {
-                Button {
-                    Haptics.tap()
-                    withAnimation(.easeInOut(duration: 0.25)) { self.summary = nil }
-                } label: {
-                    Text("Play Again")
-                        .font(.system(.footnote, design: .monospaced).bold())
-                        .foregroundStyle(Retro.background)
-                        .padding(.horizontal, 18)
-                        .padding(.vertical, 10)
-                        .background(Retro.accent)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                }
-                .buttonStyle(PressableButtonStyle())
-
-                Button {
-                    Haptics.tap()
-                    onBack()
-                } label: {
-                    Text("Back to Home")
-                        .font(.system(.footnote, design: .monospaced).bold())
-                        .foregroundStyle(Retro.text)
-                        .padding(.horizontal, 18)
-                        .padding(.vertical, 10)
-                        .background(Retro.panel)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                }
-                .buttonStyle(PressableButtonStyle())
+            Button {
+                Haptics.tap()
+                onBack()
+            } label: {
+                Text("Back to Home")
+                    .font(.system(.footnote, design: .monospaced).bold())
+                    .foregroundStyle(Retro.background)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 10)
+                    .background(Retro.accent)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
             }
+            .buttonStyle(PressableButtonStyle())
         }
     }
 
@@ -270,6 +252,18 @@ struct LegendsMatchView: View {
                 .font(.system(.footnote, design: .monospaced).bold())
                 .foregroundStyle(Retro.highlight)
         }
+    }
+
+    /// Challenge coin/token payouts land straight in `profile.coins`/
+    /// `packTokens` (`LegendsStore+Challenges.swift`'s `grant(_:)`) — not
+    /// folded into `summary.coinsEarned`/`tokensEarned`, which only cover
+    /// the base match-outcome reward. Surfacing them here so the total on
+    /// screen actually matches what the player's balance just gained.
+    private func challengeRewardText(_ challenge: LegendsChallenge) -> String {
+        var parts: [String] = []
+        if challenge.coinReward > 0 { parts.append("+\(challenge.coinReward) coins") }
+        if challenge.tokenReward > 0 { parts.append("+\(challenge.tokenReward) tokens") }
+        return parts.joined(separator: ", ")
     }
 
     private func outcomeColor(_ outcome: LegendsMatchOutcome) -> Color {

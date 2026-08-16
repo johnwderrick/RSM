@@ -11,9 +11,11 @@
 import SwiftUI
 
 struct LegendsSettingsView: View {
+    var store: LegendsStore
     var onBack: () -> Void
 
     @State private var soundEnabled = !SoundManager.shared.isMuted
+    @State private var confirmingDelete = false
 
     var body: some View {
         ZStack {
@@ -35,6 +37,30 @@ struct LegendsSettingsView: View {
                 .frame(maxWidth: 420)
                 .padding(.horizontal)
 
+                Panel(title: "DANGER ZONE") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Deletes your club, collection and progress. This can't be undone.")
+                            .font(.system(.caption2, design: .monospaced))
+                            .foregroundStyle(Retro.text.opacity(0.7))
+
+                        Button {
+                            Haptics.tap()
+                            confirmingDelete = true
+                        } label: {
+                            Text("Delete Club")
+                                .font(.system(.footnote, design: .monospaced).bold())
+                                .foregroundStyle(Retro.pureWhite)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .background(Retro.warning)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                        }
+                        .buttonStyle(PressableButtonStyle())
+                    }
+                }
+                .frame(maxWidth: 420)
+                .padding(.horizontal)
+
                 Spacer()
 
                 Text("RSM Legends is an offline card-collecting mode built alongside Career Mode.")
@@ -45,20 +71,22 @@ struct LegendsSettingsView: View {
                     .padding(.bottom, 20)
             }
         }
+        .alert("Delete this club?", isPresented: $confirmingDelete) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive) {
+                Haptics.tap()
+                store.deleteClub()
+                onBack()
+            }
+        } message: {
+            Text("This can't be undone.")
+        }
     }
 
     private var header: some View {
         VStack(spacing: 8) {
             HStack {
-                Button {
-                    Haptics.tap()
-                    onBack()
-                } label: {
-                    Text("‹ Back")
-                        .font(.system(.callout, design: .monospaced).bold())
-                        .foregroundStyle(Retro.text)
-                }
-                .buttonStyle(PressableButtonStyle())
+                LegendsBackButton(action: onBack)
                 Spacer()
             }
             .padding(.horizontal)
