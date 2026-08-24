@@ -381,12 +381,21 @@ extension GameStore {
         // that's grown used to winning starts expecting more than the raw
         // squad strength alone would suggest.
         let escalation = managerReputation >= 90 ? 2 : (managerReputation >= 75 ? 1 : 0)
-        let index = min(ladder.count - 1, baseIndex + escalation)
+        // A Historic Giant's board wants silverware even from a modest
+        // current position; a Community Club's stays content even at a
+        // strong one — the club's own character, not just table position.
+        let identityEscalation: Int
+        switch clubIdentity(forClubIndex: userClubIndex) {
+        case .historicGiant: identityEscalation = 1
+        case .communityClub: identityEscalation = -1
+        default:              identityEscalation = 0
+        }
+        let index = min(ladder.count - 1, max(0, baseIndex + escalation + identityEscalation))
         boardObjective = ladder[index]
         boardConfidence = 60
     }
 
-    func updateBoard(userWon: Bool, draw: Bool, isHome: Bool) {
+    func updateBoard(userWon: Bool, draw: Bool, isHome: Bool, opponentIndex: Int? = nil) {
         // A good assistant manager softens how badly a defeat lands with
         // both the board and the fans, without blunting the credit for a win.
         let assistantCushion = 1.0 - Double(staffLevel(.assistantManager)) * 0.12
@@ -397,6 +406,10 @@ extension GameStore {
         let beforeFan = fanConfidence
         fanConfidence = min(100, max(0, fanConfidence + fanDelta))
         fanConfidenceTrend = fanConfidence - beforeFan
+        // Patience lags confidence deliberately — only a small fraction
+        // of each swing carries over, so patience only really moves over
+        // a sustained run of results, not one match either way.
+        fanPatience = min(100, max(0, fanPatience + fanConfidenceTrend / 8))
         // The fans' own mood feeds back into the board's, on top of
         // whatever the result itself already earned or cost.
         boardConfidence = min(100, max(0, boardConfidence + fanInfluenceOnBoard()))
@@ -410,6 +423,14 @@ extension GameStore {
             if userWon { record.awayWins += 1 } else if draw { record.awayDraws += 1 } else { record.awayLosses += 1 }
         }
         careerRecordByClub[userClub.name] = record
+
+        if isHome {
+            homeUnbeatenStreak = userWon || draw ? homeUnbeatenStreak + 1 : 0
+        }
+        if userWon, let opponentIndex, opponentIndex == rivalClubIndex {
+            rivalWinThisSeason = true
+        }
+        checkSeasonObjectives()
     }
 
     /// A board verdict on the window's business, once it closes — net

@@ -106,6 +106,8 @@ extension GameStore {
             let revenue = attendance * pricePerHead(forClubIndex: clubIndex) / 1000   // in £000s
             clubs[clubIndex].transferBudget += revenue
             logLedger("Gate receipts", amount: revenue, "\(attendance.formatted()) attendance vs \(clubs[opponentIndex].shortName)")
+            seasonAttendanceTotal += attendance
+            seasonHomeMatchesPlayed += 1
             // Executive boxes and corporate hospitality — a second matchday
             // income stream on top of ticket sales, scaling with both the
             // hospitality level and how full the ground actually is.
@@ -347,6 +349,7 @@ extension GameStore {
             live = LiveMatch(store: self, fixture: fixture)
         }
         live?.userMentality = preferredMentality
+        checkYouthBlooding()
     }
 
     /// Commits a finished live match, simulates the rest of the round,
@@ -462,8 +465,9 @@ extension GameStore {
             }
         }
         updateSquadMorale(appearedIDs: Set(match.userAppearedIDs))
-        updateBoard(userWon: won, draw: draw, isHome: match.userSide == .home)
-        if won { boostFanExcitement(margin: userScored - userConceded) }
+        updateBoard(userWon: won, draw: draw, isHome: match.userSide == .home,
+                    opponentIndex: match.userSide == .home ? match.awayIndex : match.homeIndex)
+        if won { boostFanExcitement(margin: userScored - userConceded, topPerformerName: match.motmName) }
         checkWinMilestones()
         if won { checkGiantKilling(opponentIndex: match.userSide == .home ? match.awayIndex : match.homeIndex) }
 

@@ -137,10 +137,31 @@ struct SaveState: Codable {
     var newspapers: [Newspaper]?
     var managerPersonalities: [ManagerPersonality]?
     var clubNegotiationStances: [ClubNegotiationStance]?
+    var clubIdentities: [ClubIdentity]?
     var dynamicRivalries: [RivalryPair]?
     var fanConfidenceTrend: Int?
     var seasonTicketHolders: Int?
     var socialFeed: [SocialPost]?
+    var fanPatience: Int?
+    var attendanceHistory: [Int]?
+    var seasonAttendanceTotal: Int?
+    var seasonHomeMatchesPlayed: Int?
+    var bloodedYouthIDs: Set<UUID>?
+    var fanCampaignFiredThisSeason: Bool?
+    var seasonObjectives: [SeasonObjective]?
+    var completedSeasonObjectiveIDs: Set<String>?
+    var rivalWinThisSeason: Bool?
+    var youthPromotedThisSeasonIDs: Set<UUID>?
+    var reachedCupQuarterFinalThisSeason: Bool?
+    var soldFanFavouriteThisSeason: Bool?
+    var signedYoungPlayerThisSeason: Bool?
+    var fanConfidenceAtSeasonStart: Int?
+    var homeUnbeatenStreak: Int?
+    var pendingWorldStories: [PendingWorldStory]?
+    var wonderkidWatchlist: [UUID: WonderkidWatch]?
+    var clubPrestigeBaseline: [UUID: Int]?
+    var academyGraduateMilestoneIDs: Set<UUID>?
+    var recognizedFanFavouriteIDs: Set<UUID>?
 }
 
 @MainActor
@@ -190,6 +211,10 @@ final class GameStore {
     /// Hidden per-club transfer-negotiation hardness, index-aligned with
     /// `clubs` — see `ClubNegotiationStance`.
     var clubNegotiationStances: [ClubNegotiationStance] = []
+    /// A club's own hidden, permanent character, index-aligned with
+    /// `clubs` — see `ClubIdentity`. Unlike `managerPersonalities`, never
+    /// re-rolled once assigned at `newGame()`.
+    var clubIdentities: [ClubIdentity] = []
 
     /// The live match currently in progress, if any.
     var live: LiveMatch?
@@ -380,6 +405,22 @@ final class GameStore {
     /// legend) so far, newest last — permanent once earned.
     var clubLegends: [ClubLegend] = []
 
+    // MARK: - Season Objectives
+
+    /// This season's four rolled objectives — see `setSeasonObjectives()`.
+    var seasonObjectives: [SeasonObjective] = []
+    var completedSeasonObjectiveIDs: Set<String> = []
+    /// Tracking flags `checkSeasonObjectives()` reads, reset each season by
+    /// `setSeasonObjectives()` except `homeUnbeatenStreak`, which is a
+    /// continuously-live counter updated in `updateBoard`.
+    var rivalWinThisSeason = false
+    var youthPromotedThisSeasonIDs: Set<UUID> = []
+    var reachedCupQuarterFinalThisSeason = false
+    var soldFanFavouriteThisSeason = false
+    var signedYoungPlayerThisSeason = false
+    var fanConfidenceAtSeasonStart = 60
+    var homeUnbeatenStreak = 0
+
     // MARK: - Newspapers
 
     /// Generated front pages for newspaper-worthy stories, newest first —
@@ -394,6 +435,29 @@ final class GameStore {
     /// Rivalries that formed organically over a career, on top of the
     /// scripted real-world derbies in `RivalClubs` — see `areRivals(_:_:)`.
     var dynamicRivalries: [RivalryPair] = []
+    /// World-flavour stories scheduled to land a few days in the future
+    /// — see `scheduleWorldStory`/`checkPendingWorldStories` in
+    /// `GameStore+WorldSimulation.swift`, the shared follow-up mechanism
+    /// every "event chain" below is built on.
+    var pendingWorldStories: [PendingWorldStory] = []
+    /// A wonderkid's player id → the season they emerged, so
+    /// `checkWonderkidFollowUps()` can check back on them once and
+    /// report whether they kept developing or faded — removed once resolved.
+    var wonderkidWatchlist: [UUID: WonderkidWatch] = [:]
+    /// An AI club's id → its prestige the last time `checkClubFortunes()`
+    /// measured a rise/fall arc from — reset to the current value
+    /// whenever an arc fires, so the next one measures fresh.
+    var clubPrestigeBaseline: [UUID: Int] = [:]
+
+    // MARK: - Player Stories
+
+    /// Player ids already celebrated for an academy-graduate breakthrough
+    /// (see `checkAcademyGraduateBreakthroughs()`) — a permanent fact once
+    /// true, so this only guards against firing twice, never removed.
+    var academyGraduateMilestoneIDs: Set<UUID> = []
+    /// Player ids already celebrated for becoming a fan favourite (see
+    /// `checkFanFavourites()`) — same one-shot-forever guard as above.
+    var recognizedFanFavouriteIDs: Set<UUID> = []
 
     // MARK: - Supporters
 
@@ -408,6 +472,26 @@ final class GameStore {
     /// over big results, transfers and club moments.
     var socialFeed: [SocialPost] = []
     static let socialFeedCap = 150
+    /// A deliberately slow-moving meter, distinct from the fast-swinging
+    /// `fanConfidence` — lags behind it (nudged a small fraction of
+    /// `fanConfidenceTrend` on every result, see `updateBoard`), so it only
+    /// really moves over a sustained run of good or bad form, not one
+    /// result. Low patience is what triggers a fan campaign — see
+    /// `GameStore+FanEngagement.swift`.
+    var fanPatience: Int = 70
+    /// Average home attendance per season, appended at season end —
+    /// `expectedAttendance(...)` itself is otherwise recomputed fresh
+    /// every call and never stored anywhere.
+    var attendanceHistory: [Int] = []
+    var seasonAttendanceTotal: Int = 0
+    var seasonHomeMatchesPlayed: Int = 0
+    /// A youth-academy player's id, once they've made their first senior
+    /// start — permanent dedup so the "fans loved seeing him get a
+    /// chance" moment fires exactly once per player.
+    var bloodedYouthIDs: Set<UUID> = []
+    /// Whether a fan campaign has already fired this season — resets each
+    /// season, caps the campaign moment to once per season.
+    var fanCampaignFiredThisSeason: Bool = false
 
     /// Whether two clubs are rivals — the scripted real-world derbies, plus
     /// anything that's organically formed during this career.

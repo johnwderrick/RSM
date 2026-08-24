@@ -548,9 +548,17 @@ extension GameStore {
             // Ability still matters most, but a natural leader edges out a
             // similarly-rated teammate who isn't — not just the single
             // highest-rated outfield player regardless of temperament.
+            let previousCaptainID = captainID
             captainID = squad.filter { $0.position != .goalkeeper }.max {
                 (Double($0.rating) + Double($0.traits.leadership) * 0.3) < (Double($1.rating) + Double($1.traits.leadership) * 0.3)
             }?.id
+            // Only a real moment when a departing captain is being
+            // replaced — the very first assignment on a new save is just
+            // squad setup, not a story worth telling.
+            if previousCaptainID != nil, let newCaptain = squad.first(where: { $0.id == captainID }) {
+                addNews(.board, "New captain", "\(newCaptain.name) has been named the new \(userClub.name) captain.",
+                        player: newCaptain, clubName: userClub.name)
+            }
         }
         if !exists(penaltyTakerID) {
             penaltyTakerID = squad.max { ($0.attributes["Shooting"] ?? 0) < ($1.attributes["Shooting"] ?? 0) }?.id
@@ -573,10 +581,15 @@ extension GameStore {
         let base = userClub.prestige
         let level = userClub.youthFacilityLevel
         var sawForeignTalent = false
-        let count = Int.random(in: 3...5) + (level >= 3 ? 1 : 0) + (level >= 5 ? 1 : 0)
+        // A Youth Factory club produces a bigger, better crop every year
+        // regardless of the facility level itself — its hidden identity,
+        // not something the manager built.
+        let isYouthFactory = clubIdentity(forClubIndex: userClubIndex) == .youthFactory
+        let count = Int.random(in: 3...5) + (level >= 3 ? 1 : 0) + (level >= 5 ? 1 : 0) + (isYouthFactory ? 1 : 0)
         // Better facilities narrow the usual below-first-team gap and
         // improve the odds of a scout unearthing talent from overseas.
-        let penaltyRange = (-28 + level * 3)...(-8 + level * 2)
+        let identityPenaltyRelief = isYouthFactory ? 6 : 0
+        let penaltyRange = (-28 + level * 3 + identityPenaltyRelief)...(-8 + level * 2 + identityPenaltyRelief)
         let foreignChance = 0.15 + Double(level) * 0.05
         let freshIntake: [Player] = (0..<count).map { _ in
             let position = Position.allCases.randomElement()!
@@ -587,6 +600,7 @@ extension GameStore {
             let name = isForeign ? Self.randomForeignName() : Self.randomName()
             var player = Self.makePlayer(name: name, position: position, age: Int.random(in: 15...18), rating: rating, startYear: startYear)
             player.contractYears = Int.random(in: 2...3)
+            player.isAcademyProduct = true
             if isForeign { sawForeignTalent = true }
             return player
         }
@@ -622,6 +636,7 @@ extension GameStore {
         guard let index = youthProspects.firstIndex(where: { $0.id == player.id }) else { return "No longer available." }
         let prospect = youthProspects.remove(at: index)
         clubs[userClubIndex].players.append(prospect)
+        youthPromotedThisSeasonIDs.insert(prospect.id)
         addNews(.transfer, "Youth promoted", "\(prospect.name) (\(prospect.age)) has been promoted to the first team.",
                player: prospect, clubName: userClub.name)
         persist()
@@ -638,7 +653,12 @@ extension GameStore {
 
     // MARK: - Squad roles
 
-    func setCaptain(_ player: Player) { captainID = player.id }
+    func setCaptain(_ player: Player) {
+        guard captainID != player.id else { return }
+        captainID = player.id
+        addNews(.board, "New captain", "\(player.name) has been named the new \(userClub.name) captain.",
+                player: player, clubName: userClub.name)
+    }
     func setPenaltyTaker(_ player: Player) { penaltyTakerID = player.id }
     func setFreeKickTaker(_ player: Player) { freeKickTakerID = player.id }
     func setCornerTaker(_ player: Player) { cornerTakerID = player.id }

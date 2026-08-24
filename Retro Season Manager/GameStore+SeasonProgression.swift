@@ -250,8 +250,21 @@ extension GameStore {
             // squad-filler youth-team player.
             if clubIndex == userClubIndex {
                 for retiree in retirees where retiree.rating >= 65 {
+                    // Real career totals, not just flavour — allTimeAppearances/
+                    // allTimeScorers already include this final season's stats,
+                    // since recordSeasonHonours() accumulates them before this
+                    // retirement pass ever runs. Passing `player:` also unlocks
+                    // the existing bespoke "LEGEND ANNOUNCES RETIREMENT"/"HANGS
+                    // UP HIS BOOTS" newspaper templates, previously dead code
+                    // for the user's own retirees since this call never passed it.
+                    let apps = allTimeAppearances[retiree.name] ?? retiree.apps
+                    let goals = allTimeScorers[retiree.name] ?? retiree.goals
+                    let statsLine = goals > 0
+                        ? "He leaves after \(apps) appearance\(apps == 1 ? "" : "s") and \(goals) goal\(goals == 1 ? "" : "s") for \(clubs[clubIndex].name)."
+                        : "He leaves after \(apps) appearance\(apps == 1 ? "" : "s") for \(clubs[clubIndex].name)."
                     addNews(.board, "Retirement",
-                            "\(retiree.name) has announced his retirement from professional football, at \(retiree.age).")
+                            "\(retiree.name) has announced his retirement from professional football, at \(retiree.age). \(statsLine)",
+                            player: retiree, clubName: clubs[clubIndex].name)
                 }
                 // Legend induction needs `clubTenureStart` before it's
                 // pruned to currently-kept players below.

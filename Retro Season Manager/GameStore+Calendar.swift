@@ -422,7 +422,7 @@ extension GameStore {
             }
         }
         updateSquadMorale(appearedIDs: userStarterIDs)
-        updateBoard(userWon: won, draw: draw, isHome: userIsHome)
+        updateBoard(userWon: won, draw: draw, isHome: userIsHome, opponentIndex: userIsHome ? awayIndex : homeIndex)
         if won { checkGiantKilling(opponentIndex: userIsHome ? awayIndex : homeIndex) }
     }
 
@@ -455,6 +455,7 @@ extension GameStore {
         checkMonthlyAwards()
         checkInternationalCallUps()
         checkRivalManagerSackings()
+        checkPendingWorldStories()
         checkShortlistAvailability()
         checkObjectiveRisk()
         maybeProcessFriendlies()
@@ -601,22 +602,28 @@ extension GameStore {
         }
         awardClubPlayerOfTheMonth()
         punditPowerRankings()
+        checkFanPoll()
+        checkFanCampaign()
     }
 
-    /// A monthly pundit-style top-5 roundup for the user's division — a
-    /// different flavour of "how are things going" than the plain
-    /// standings table, with a nod to where the user's club sits if
-    /// they're outside it.
+    /// A monthly "around the leagues" roundup — the top 3 of every
+    /// division in the pyramid, not just the user's own, with a nod to
+    /// where the user's club sits if their own division's leaders don't
+    /// already cover it.
     func punditPowerRankings() {
-        let table = leagueTable(tier: userDivisionTier)
-        let top5 = Array(table.prefix(5))
-        guard !top5.isEmpty else { return }
-        let lines = top5.enumerated().map { "\($0.offset + 1). \($0.element.name)" }.joined(separator: ", ")
-        var body = "This month's power rankings: \(lines)."
-        if let userRank = table.firstIndex(where: { $0.id == userClub.id }), userRank >= 5 {
-            body += " \(userClub.name) sit \(userRank + 1)\(ordinalSuffix(userRank + 1)) — plenty to play for."
+        var sections: [String] = []
+        for tier in 0..<Self.divisionNames.count {
+            let table = leagueTable(tier: tier)
+            let top3 = Array(table.prefix(3))
+            guard !top3.isEmpty else { continue }
+            var line = "\(divisionName(tier)): " + top3.enumerated().map { "\($0.offset + 1). \($0.element.name)" }.joined(separator: ", ")
+            if tier == userDivisionTier, let userRank = table.firstIndex(where: { $0.id == userClub.id }), userRank >= 3 {
+                line += " (\(userClub.name) \(userRank + 1)\(ordinalSuffix(userRank + 1)))"
+            }
+            sections.append(line)
         }
-        addNews(.info, "Power rankings", body)
+        guard !sections.isEmpty else { return }
+        addNews(.info, "Around the leagues", "This month across the pyramid — " + sections.joined(separator: " | "))
     }
 
     func ordinalSuffix(_ n: Int) -> String {
@@ -677,13 +684,24 @@ extension GameStore {
     /// journeyman never stays long anywhere, and a big spender who isn't
     /// delivering on that outlay is shown the door faster.
     private func sackingWeight(forClubIndex index: Int) -> Double {
+        var weight: Double
         switch personality(forClubIndex: index) {
-        case .loyal:         return 0.5
-        case .pressFriendly: return 0.7
-        case .journeyman:    return 1.6
-        case .bigSpender:    return 1.3
-        default:             return 1.0
+        case .loyal:         weight = 0.5
+        case .pressFriendly: weight = 0.7
+        case .journeyman:    weight = 1.6
+        case .bigSpender:    weight = 1.3
+        default:             weight = 1.0
         }
+        // A patient board tolerates more from a club that was never
+        // expected to be challenging anyway; a Sleeping Giant/Historic
+        // Giant's board has far less patience for underachievement,
+        // relative to whatever else its manager brings to the table.
+        switch clubIdentity(forClubIndex: index) {
+        case .underdog, .communityClub:      weight *= 0.6
+        case .sleepingGiant, .historicGiant: weight *= 1.4
+        default: break
+        }
+        return weight
     }
 
     func checkRivalManagerSackings() {
@@ -693,9 +711,22 @@ extension GameStore {
             let table = leagueTable(tier: tier)
             guard table.count > 6 else { continue }
             strugglers.append(contentsOf: table.suffix(4).filter { $0.id != userClub.id && $0.played >= 8 })
+            // A Sleeping Giant/Historic Giant sitting well below where its
+            // own prestige says it belongs is a sacking risk too, even
+            // mid-table — the bottom-4-only rule above would otherwise
+            // never flag a prestigious underperformer at all.
+            let byPrestige = clubs.filter { $0.divisionTier == tier }.sorted { $0.prestige > $1.prestige }
+            for (actualRank, club) in table.enumerated() where club.id != userClub.id && club.played >= 8 {
+                guard let clubIndex = clubs.firstIndex(where: { $0.id == club.id }),
+                      let identity = clubIdentity(forClubIndex: clubIndex),
+                      identity == .sleepingGiant || identity == .historicGiant,
+                      let prestigeRank = byPrestige.firstIndex(where: { $0.id == club.id }),
+                      actualRank - prestigeRank >= 5 else { continue }
+                strugglers.append(club)
+            }
         }
-        let candidateIndices = strugglers.compactMap { struggler in clubs.firstIndex(where: { $0.id == struggler.id }) }
-        guard let index = weightedRandomIndex(from: candidateIndices, weight: { sackingWeight(forClubIndex: $0) }) else { return }
+        let candidateIndices = Set(strugglers.compactMap { struggler in clubs.firstIndex(where: { $0.id == struggler.id }) })
+        guard let index = weightedRandomIndex(from: Array(candidateIndices), weight: { sackingWeight(forClubIndex: $0) }) else { return }
         let oldManager = managers[index]
         managers[index] = Self.randomManagerName()
         if managerPersonalities.indices.contains(index) {
@@ -703,6 +734,10 @@ extension GameStore {
         }
         addNews(.world, "Manager sacked",
                 "\(clubs[index].name) have sacked \(oldManager) after a difficult run of results. \(managers[index]) takes charge.")
+        scheduleWorldStory(daysFromNow: 3...7, category: .world, title: "New manager appointed",
+                            body: "\(managers[index]) has been formally unveiled as \(clubs[index].name)'s new manager, "
+                                + "promising a fresh start after \(oldManager)'s departure.",
+                            clubName: clubs[index].name)
     }
 
     /// A one-off ping (per season) when a shortlisted player enters the

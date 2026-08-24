@@ -143,10 +143,31 @@ extension GameStore {
                               newspapers: newspapers,
                               managerPersonalities: managerPersonalities,
                               clubNegotiationStances: clubNegotiationStances,
+                              clubIdentities: clubIdentities,
                               dynamicRivalries: dynamicRivalries,
                               fanConfidenceTrend: fanConfidenceTrend,
                               seasonTicketHolders: seasonTicketHolders,
-                              socialFeed: socialFeed)
+                              socialFeed: socialFeed,
+                              fanPatience: fanPatience,
+                              attendanceHistory: attendanceHistory,
+                              seasonAttendanceTotal: seasonAttendanceTotal,
+                              seasonHomeMatchesPlayed: seasonHomeMatchesPlayed,
+                              bloodedYouthIDs: bloodedYouthIDs,
+                              fanCampaignFiredThisSeason: fanCampaignFiredThisSeason,
+                              seasonObjectives: seasonObjectives,
+                              completedSeasonObjectiveIDs: completedSeasonObjectiveIDs,
+                              rivalWinThisSeason: rivalWinThisSeason,
+                              youthPromotedThisSeasonIDs: youthPromotedThisSeasonIDs,
+                              reachedCupQuarterFinalThisSeason: reachedCupQuarterFinalThisSeason,
+                              soldFanFavouriteThisSeason: soldFanFavouriteThisSeason,
+                              signedYoungPlayerThisSeason: signedYoungPlayerThisSeason,
+                              fanConfidenceAtSeasonStart: fanConfidenceAtSeasonStart,
+                              homeUnbeatenStreak: homeUnbeatenStreak,
+                              pendingWorldStories: pendingWorldStories,
+                              wonderkidWatchlist: wonderkidWatchlist,
+                              clubPrestigeBaseline: clubPrestigeBaseline,
+                              academyGraduateMilestoneIDs: academyGraduateMilestoneIDs,
+                              recognizedFanFavouriteIDs: recognizedFanFavouriteIDs)
         guard let id = currentSaveID, let data = try? JSONEncoder().encode(state) else { return }
         try? data.write(to: SaveSlots.fileURL(for: id))
         SaveSlots.upsert(SaveSlotInfo(id: id, clubName: userClub.name, managerName: "Manager",
@@ -259,10 +280,41 @@ extension GameStore {
         // random personality rather than leaving the array empty/mismatched.
         managerPersonalities = state.managerPersonalities ?? clubs.map { _ in ManagerPersonality.random() }
         clubNegotiationStances = state.clubNegotiationStances ?? clubs.map { _ in ClubNegotiationStance.allCases.randomElement()! }
+        // A save from before ClubIdentity existed gets one assigned now,
+        // the same derivation newGame() itself uses.
+        if let savedIdentities = state.clubIdentities, savedIdentities.count == clubs.count {
+            clubIdentities = savedIdentities
+        } else {
+            assignClubIdentities()
+        }
         dynamicRivalries = state.dynamicRivalries ?? []
         fanConfidenceTrend = state.fanConfidenceTrend ?? 0
         seasonTicketHolders = state.seasonTicketHolders ?? Int(Double(stadiumInfo(forClubIndex: userClubIndex).capacity) * 0.4)
         socialFeed = state.socialFeed ?? []
+        fanPatience = state.fanPatience ?? 70
+        attendanceHistory = state.attendanceHistory ?? []
+        seasonAttendanceTotal = state.seasonAttendanceTotal ?? 0
+        seasonHomeMatchesPlayed = state.seasonHomeMatchesPlayed ?? 0
+        bloodedYouthIDs = state.bloodedYouthIDs ?? []
+        fanCampaignFiredThisSeason = state.fanCampaignFiredThisSeason ?? false
+        seasonObjectives = state.seasonObjectives ?? []
+        completedSeasonObjectiveIDs = state.completedSeasonObjectiveIDs ?? []
+        rivalWinThisSeason = state.rivalWinThisSeason ?? false
+        youthPromotedThisSeasonIDs = state.youthPromotedThisSeasonIDs ?? []
+        reachedCupQuarterFinalThisSeason = state.reachedCupQuarterFinalThisSeason ?? false
+        soldFanFavouriteThisSeason = state.soldFanFavouriteThisSeason ?? false
+        signedYoungPlayerThisSeason = state.signedYoungPlayerThisSeason ?? false
+        fanConfidenceAtSeasonStart = state.fanConfidenceAtSeasonStart ?? fanConfidence
+        homeUnbeatenStreak = state.homeUnbeatenStreak ?? 0
+        pendingWorldStories = state.pendingWorldStories ?? []
+        wonderkidWatchlist = state.wonderkidWatchlist ?? [:]
+        clubPrestigeBaseline = state.clubPrestigeBaseline ?? [:]
+        academyGraduateMilestoneIDs = state.academyGraduateMilestoneIDs ?? []
+        recognizedFanFavouriteIDs = state.recognizedFanFavouriteIDs ?? []
+        // A save from before Season Objectives existed won't have any —
+        // roll a fresh set immediately rather than showing an empty screen
+        // for the rest of that season.
+        if seasonObjectives.isEmpty { setSeasonObjectives() }
         careerEnded = false
         // Rebuild transient state.
         news = []
@@ -312,6 +364,7 @@ extension GameStore {
         wasSacked = false
         generateTransferMarket()
         setBoardObjective()
+        setSeasonObjectives()
         autoPickLineup()
         pendingOffers = []
         windowWasOpen = transferWindowOpen

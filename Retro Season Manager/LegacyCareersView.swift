@@ -30,20 +30,38 @@ private func tierBadge(_ tier: LegacyTier, score: Int) -> some View {
         .clipShape(Capsule())
 }
 
-/// The "past careers" list, opened from the main menu.
+/// One wing of the Football Museum hub.
+enum MuseumWing: String, CaseIterable, Identifiable {
+    case careers = "Careers"
+    case trophyCabinet = "Trophy Cabinet"
+    case greatestManagers = "Managers"
+    case greatestPlayers = "Players"
+    case recordBook = "Record Book"
+    case newspapers = "Newspapers"
+
+    var id: String { rawValue }
+}
+
+/// The Football Museum hub, opened from the main menu — every permanently
+/// archived career (see `LegacyCareer.swift`), browsable both individually
+/// (the "Careers" wing, unchanged from the original "past careers" list)
+/// and as cross-save aggregates (the other five wings). Nothing about the
+/// original archive or the single-career detail view is removed; this
+/// builds additional wings on top of it.
 struct LegacyCareersListView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var careers: [LegacyCareerInfo] = LegacyArchive.all()
+    @State private var fullCareers: [LegacyCareer] = []
     @State private var selected: LegacyCareer?
     @State private var pendingDelete: LegacyCareerInfo?
-    @State private var showRecordBook = false
+    @State private var wing: MuseumWing = .careers
 
     var body: some View {
         ZStack {
             Retro.background.ignoresSafeArea()
             VStack(alignment: .leading, spacing: 14) {
                 HStack {
-                    Text("PAST CAREERS")
+                    Text("🏛 FOOTBALL MUSEUM")
                         .font(.system(.headline, design: .monospaced).bold())
                         .foregroundStyle(Retro.accent)
                     Spacer()
@@ -59,28 +77,10 @@ struct LegacyCareersListView: View {
                         .frame(maxWidth: .infinity, alignment: .center)
                     Spacer()
                 } else {
-                    Button {
-                        Haptics.tap()
-                        showRecordBook = true
-                    } label: {
-                        HStack {
-                            Image(systemName: "book.closed.fill")
-                            Text("GLOBAL RECORD BOOK")
-                                .font(.system(.footnote, design: .monospaced).bold())
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                        }
-                        .foregroundStyle(Retro.highlight)
-                        .padding(12)
-                        .background(Retro.highlight.opacity(0.12))
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                    }
-                    .buttonStyle(PressableButtonStyle())
-
+                    overviewStrip
+                    wingPicker
                     ScrollView {
-                        VStack(spacing: 8) {
-                            ForEach(careers) { info in row(info) }
-                        }
+                        wingContent
                     }
                 }
             }
@@ -88,11 +88,11 @@ struct LegacyCareersListView: View {
         }
         .font(.system(.body, design: .monospaced))
         .foregroundStyle(Retro.text)
+        .onAppear {
+            fullCareers = careers.compactMap { LegacyArchive.load(id: $0.id) }
+        }
         .sheet(item: $selected) { career in
             LegacyCareerDetailView(career: career)
-        }
-        .sheet(isPresented: $showRecordBook) {
-            GlobalRecordBookView(careers: careers)
         }
         .alert("Delete this career?", isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } })) {
             Button("Cancel", role: .cancel) { pendingDelete = nil }
@@ -100,11 +100,85 @@ struct LegacyCareersListView: View {
                 if let info = pendingDelete {
                     LegacyArchive.remove(id: info.id)
                     careers = LegacyArchive.all()
+                    fullCareers = careers.compactMap { LegacyArchive.load(id: $0.id) }
                 }
                 pendingDelete = nil
             }
         } message: {
             Text("This can't be undone.")
+        }
+    }
+
+    /// The "save-to-save museum overview" — a summary strip visible above
+    /// every wing, not just one screen.
+    private var overviewStrip: some View {
+        let totalTrophies = fullCareers.reduce(0) { $0 + $1.careerHonours.count }
+        let totalLegends = fullCareers.reduce(0) { $0 + $1.clubLegends.count }
+        let bestTier = fullCareers.map { $0.legacyScore }.max().map { LegacyTier.forScore($0) }
+        return HStack(spacing: 14) {
+            overviewStat("\(careers.count)", "career\(careers.count == 1 ? "" : "s")")
+            overviewStat("\(totalTrophies)", "trophies")
+            overviewStat("\(totalLegends)", "legends")
+            if let bestTier {
+                overviewStat(bestTier.rawValue, "best tier")
+            }
+        }
+        .padding(10)
+        .background(Retro.panel.opacity(0.5))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func overviewStat(_ value: String, _ label: String) -> some View {
+        VStack(spacing: 1) {
+            Text(value)
+                .font(.system(.callout, design: .monospaced).bold())
+                .foregroundStyle(Retro.highlight)
+            Text(label.uppercased())
+                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                .foregroundStyle(Retro.text.opacity(0.6))
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var wingPicker: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(MuseumWing.allCases) { candidate in
+                    let isSelected = wing == candidate
+                    Button {
+                        Haptics.tap()
+                        wing = candidate
+                    } label: {
+                        Text(candidate.rawValue.uppercased())
+                            .font(.system(.caption, design: .monospaced).bold())
+                            .padding(.horizontal, 12).padding(.vertical, 6)
+                            .background(isSelected ? Retro.highlight.opacity(0.3) : Retro.panel.opacity(0.6))
+                            .foregroundStyle(isSelected ? Retro.highlight : Retro.text.opacity(0.7))
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var wingContent: some View {
+        switch wing {
+        case .careers:
+            VStack(spacing: 8) {
+                ForEach(careers) { info in row(info) }
+            }
+        case .trophyCabinet:
+            MuseumTrophyCabinetView(careers: fullCareers)
+        case .greatestManagers:
+            MuseumGreatestManagersView(careers: fullCareers)
+        case .greatestPlayers:
+            MuseumGreatestPlayersView(careers: fullCareers)
+        case .recordBook:
+            MuseumRecordBookView(careers: fullCareers)
+        case .newspapers:
+            MuseumNewspapersView(careers: fullCareers)
         }
     }
 
@@ -139,95 +213,335 @@ struct LegacyCareersListView: View {
     }
 }
 
-/// Cross-career bests — a multi-career comparison at a glance, computed
-/// lazily (only when opened) since it's the one screen that has to decode
-/// every archived career in full rather than just the lightweight index.
-struct GlobalRecordBookView: View {
-    let careers: [LegacyCareerInfo]
-    @Environment(\.dismiss) private var dismiss
-    @State private var fullCareers: [LegacyCareer] = []
+/// A shared "LABEL … VALUE" row used by several museum wings below.
+private func museumLine(_ label: String, _ value: String) -> some View {
+    HStack {
+        Text(label)
+            .font(.system(.footnote, design: .monospaced))
+            .foregroundStyle(Retro.text.opacity(0.8))
+        Spacer()
+        Text(value)
+            .font(.system(.footnote, design: .monospaced).bold())
+            .foregroundStyle(Retro.text)
+            .multilineTextAlignment(.trailing)
+    }
+}
+
+/// Every honour won across every archived career, tagged by which career
+/// won it — the museum-wide counterpart to Settings' current-save-only
+/// Trophy Cabinet, reusing the same `TrophyKind.guess(from:)` visual language.
+struct MuseumTrophyCabinetView: View {
+    let careers: [LegacyCareer]
+
+    private var tally: [(honour: String, career: String)] { LegacyArchive.trophyTally(from: careers) }
 
     var body: some View {
-        ZStack {
-            Retro.background.ignoresSafeArea()
-            VStack(alignment: .leading, spacing: 14) {
-                HStack {
-                    Text("GLOBAL RECORD BOOK")
-                        .font(.system(.headline, design: .monospaced).bold())
-                        .foregroundStyle(Retro.accent)
-                    Spacer()
-                    Button("Close") { dismiss() }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(Retro.text)
-                }
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        Panel(title: "BEST CAREERS") {
-                            VStack(alignment: .leading, spacing: 8) {
-                                if let best = fullCareers.max(by: { $0.legacyScore < $1.legacyScore }) {
-                                    line("👑 Highest Legacy Score", "\(best.managerName) at \(best.clubName) (\(best.legacyScore))")
-                                }
-                                if let mostTrophies = fullCareers.max(by: { $0.careerHonours.count < $1.careerHonours.count }) {
-                                    line("🏆 Most trophies in one career", "\(mostTrophies.managerName) — \(mostTrophies.careerHonours.count)")
-                                }
-                                if let longest = fullCareers.max(by: { $0.seasonsManaged < $1.seasonsManaged }) {
-                                    line("📅 Longest career", "\(longest.managerName) — \(longest.seasonsManaged) seasons")
-                                }
-                                if let mostLegends = fullCareers.max(by: { $0.clubLegends.count < $1.clubLegends.count }) {
-                                    line("⭐ Most club legends produced", "\(mostLegends.managerName) — \(mostLegends.clubLegends.count)")
-                                }
-                            }
-                        }
-                        Panel(title: "INDIVIDUAL RECORDS") {
-                            if allRecordLines.isEmpty {
-                                Text("No individual records yet.")
-                                    .font(.system(.footnote, design: .monospaced))
-                                    .foregroundStyle(Retro.text.opacity(0.8))
+        Panel(title: "TROPHY CABINET") {
+            if tally.isEmpty {
+                Text("Nothing in the cabinet yet — win something to start filling it.")
+                    .font(.system(.footnote, design: .monospaced))
+                    .foregroundStyle(Retro.text.opacity(0.8))
+            } else {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 14) {
+                    ForEach(Array(tally.enumerated()), id: \.offset) { _, entry in
+                        VStack(spacing: 6) {
+                            if let guess = TrophyKind.guess(from: entry.honour) {
+                                TrophyView(kind: guess.kind, tier: guess.tier, size: 44)
                             } else {
-                                VStack(alignment: .leading, spacing: 6) {
-                                    ForEach(Array(allRecordLines.enumerated()), id: \.offset) { _, entry in
-                                        VStack(alignment: .leading, spacing: 1) {
-                                            Text(entry.line)
-                                                .font(.system(.footnote, design: .monospaced))
-                                                .foregroundStyle(Retro.text)
-                                            Text(entry.career)
-                                                .font(.system(.caption2, design: .monospaced))
-                                                .foregroundStyle(Retro.text.opacity(0.55))
-                                        }
-                                        .padding(.bottom, 4)
+                                TrophyView(kind: .league, tier: .bronze, size: 44)
+                            }
+                            Text(entry.honour)
+                                .font(.system(.caption2, design: .monospaced))
+                                .foregroundStyle(Retro.text.opacity(0.85))
+                                .multilineTextAlignment(.center)
+                                .lineLimit(2)
+                            Text(entry.career)
+                                .font(.system(size: 8, design: .monospaced))
+                                .foregroundStyle(Retro.text.opacity(0.55))
+                                .multilineTextAlignment(.center)
+                                .lineLimit(2)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Cross-career bests, plus a full leaderboard and a simple two-career
+/// comparison — the directive's "Greatest managers" and "Career
+/// comparison" items share one wing since a sortable leaderboard already
+/// *is* a comparison.
+struct MuseumGreatestManagersView: View {
+    let careers: [LegacyCareer]
+    @State private var compareA: LegacyCareer?
+    @State private var compareB: LegacyCareer?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Panel(title: "BEST CAREERS") {
+                VStack(alignment: .leading, spacing: 8) {
+                    if let best = careers.max(by: { $0.legacyScore < $1.legacyScore }) {
+                        museumLine("👑 Highest Legacy Score", "\(best.managerName) at \(best.clubName) (\(best.legacyScore))")
+                    }
+                    if let mostTrophies = careers.max(by: { $0.careerHonours.count < $1.careerHonours.count }) {
+                        museumLine("🏆 Most trophies in one career", "\(mostTrophies.managerName) — \(mostTrophies.careerHonours.count)")
+                    }
+                    if let longest = careers.max(by: { $0.seasonsManaged < $1.seasonsManaged }) {
+                        museumLine("📅 Longest career", "\(longest.managerName) — \(longest.seasonsManaged) seasons")
+                    }
+                    if let mostLegends = careers.max(by: { $0.clubLegends.count < $1.clubLegends.count }) {
+                        museumLine("⭐ Most club legends produced", "\(mostLegends.managerName) — \(mostLegends.clubLegends.count)")
+                    }
+                }
+            }
+            Panel(title: "LEADERBOARD") {
+                VStack(spacing: 6) {
+                    ForEach(Array(LegacyArchive.greatestManagers(from: careers, limit: 20).enumerated()), id: \.offset) { index, career in
+                        HStack {
+                            Text("\(index + 1).")
+                                .foregroundStyle(Retro.text.opacity(0.5))
+                                .frame(width: 24, alignment: .leading)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("\(career.managerName) — \(career.clubName)")
+                                    .font(.system(.footnote, design: .monospaced).bold())
+                                    .foregroundStyle(Retro.text)
+                                tierBadge(career.legacyTier, score: career.legacyScore)
+                            }
+                            Spacer()
+                        }
+                        .font(.system(.footnote, design: .monospaced))
+                    }
+                }
+            }
+            Panel(title: "COMPARE TWO CAREERS") {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        comparePicker("Career A", selection: $compareA)
+                        comparePicker("Career B", selection: $compareB)
+                    }
+                    if let a = compareA, let b = compareB {
+                        compareTable(a, b)
+                    } else {
+                        Text("Pick two careers to compare.")
+                            .font(.system(.footnote, design: .monospaced))
+                            .foregroundStyle(Retro.text.opacity(0.7))
+                    }
+                }
+            }
+        }
+    }
+
+    private func comparePicker(_ label: String, selection: Binding<LegacyCareer?>) -> some View {
+        Menu {
+            ForEach(careers) { career in
+                Button("\(career.managerName) — \(career.clubName)") { selection.wrappedValue = career }
+            }
+        } label: {
+            HStack {
+                Text(selection.wrappedValue.map { "\($0.managerName)" } ?? label)
+                    .font(.system(.caption, design: .monospaced).bold())
+                    .lineLimit(1)
+                Image(systemName: "chevron.down")
+            }
+            .foregroundStyle(Retro.accent)
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(Retro.panel.opacity(0.6))
+            .clipShape(Capsule())
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func compareTable(_ a: LegacyCareer, _ b: LegacyCareer) -> some View {
+        VStack(spacing: 4) {
+            compareRow("Club", a.clubName, b.clubName)
+            compareRow("Seasons", "\(a.seasonsManaged)", "\(b.seasonsManaged)")
+            compareRow("Trophies", "\(a.careerHonours.count)", "\(b.careerHonours.count)")
+            compareRow("Club legends", "\(a.clubLegends.count)", "\(b.clubLegends.count)")
+            compareRow("Legacy score", "\(a.legacyScore)", "\(b.legacyScore)")
+            compareRow("Tier", a.legacyTier.rawValue, b.legacyTier.rawValue)
+        }
+    }
+
+    private func compareRow(_ label: String, _ a: String, _ b: String) -> some View {
+        HStack {
+            Text(a).frame(maxWidth: .infinity, alignment: .leading)
+            Text(label).foregroundStyle(Retro.text.opacity(0.6)).frame(maxWidth: .infinity, alignment: .center)
+            Text(b).frame(maxWidth: .infinity, alignment: .trailing)
+        }
+        .font(.system(.caption2, design: .monospaced).bold())
+        .foregroundStyle(Retro.text)
+    }
+}
+
+/// A wall of the greatest club legends across every archived career,
+/// ranked by legend score — `ClubLegend` already carries full stats and a
+/// generated biography (see item 6), so no new player data is needed.
+struct MuseumGreatestPlayersView: View {
+    let careers: [LegacyCareer]
+
+    var body: some View {
+        Panel(title: "GREATEST PLAYERS") {
+            let wall = LegacyArchive.greatestPlayers(from: careers, limit: 30)
+            if wall.isEmpty {
+                Text("No club legends produced yet.")
+                    .font(.system(.footnote, design: .monospaced))
+                    .foregroundStyle(Retro.text.opacity(0.8))
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(Array(wall.enumerated()), id: \.offset) { index, entry in
+                        HStack {
+                            Text("\(index + 1).")
+                                .foregroundStyle(Retro.text.opacity(0.5))
+                                .frame(width: 24, alignment: .leading)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("\(entry.legend.name) — \(entry.legend.clubName)")
+                                    .font(.system(.footnote, design: .monospaced).bold())
+                                    .foregroundStyle(Retro.text)
+                                Text("\(entry.legend.appearances) apps · \(entry.legend.goals) goals · score \(entry.legend.legendScore) · \(entry.career)")
+                                    .font(.system(.caption2, design: .monospaced))
+                                    .foregroundStyle(Retro.text.opacity(0.6))
+                            }
+                            Spacer()
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Real cross-save superlatives — top scorer, most appearances, most
+/// MOTM, biggest win, best season, biggest transfers — computed from the
+/// structured `LegacyRecordHolder`/`topTransfers` fields, falling back to
+/// each career's original flat `recordBook` strings underneath so careers
+/// archived before those fields existed stay just as visible as before.
+struct MuseumRecordBookView: View {
+    let careers: [LegacyCareer]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Panel(title: "CAREER RECORD BOOK") {
+                VStack(alignment: .leading, spacing: 8) {
+                    holderLine("⚽ Top scorer", LegacyArchive.globalTopScorer(from: careers))
+                    holderLine("👕 Most appearances", LegacyArchive.globalTopAppearances(from: careers))
+                    holderLine("🌟 Most Man of the Match", LegacyArchive.globalTopMOTM(from: careers))
+                    holderLine("🔥 Biggest win", LegacyArchive.globalRecordWin(from: careers), suffix: "margin")
+                    holderLine("🏅 Best season", LegacyArchive.globalBestSeason(from: careers), positionStyle: true)
+                }
+            }
+            Panel(title: "BIGGEST TRANSFERS") {
+                let transfers = LegacyArchive.globalTopTransfers(from: careers, limit: 10)
+                if transfers.isEmpty {
+                    Text("No preserved transfer records yet — only careers archived from here on capture this.")
+                        .font(.system(.footnote, design: .monospaced))
+                        .foregroundStyle(Retro.text.opacity(0.8))
+                } else {
+                    VStack(spacing: 6) {
+                        ForEach(Array(transfers.enumerated()), id: \.offset) { _, entry in
+                            museumLine("\(entry.entry.action == "Sold" ? "💰" : "🖋️") \(entry.entry.playerName)",
+                                       "\(formatMoney(entry.entry.fee ?? 0)) — \(entry.career)")
+                        }
+                    }
+                }
+            }
+            Panel(title: "EVERY CAREER'S HIGHLIGHTS") {
+                let lines = careers.flatMap { career in
+                    career.recordBook.map { (line: $0, career: "\(career.managerName) at \(career.clubName)") }
+                }
+                if lines.isEmpty {
+                    Text("No individual records yet.")
+                        .font(.system(.footnote, design: .monospaced))
+                        .foregroundStyle(Retro.text.opacity(0.8))
+                } else {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(Array(lines.enumerated()), id: \.offset) { _, entry in
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(entry.line)
+                                    .font(.system(.footnote, design: .monospaced))
+                                    .foregroundStyle(Retro.text)
+                                Text(entry.career)
+                                    .font(.system(.caption2, design: .monospaced))
+                                    .foregroundStyle(Retro.text.opacity(0.55))
+                            }
+                            .padding(.bottom, 4)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func holderLine(_ label: String, _ result: (holder: LegacyRecordHolder, career: String)?,
+                             suffix: String? = nil, positionStyle: Bool = false) -> some View {
+        Group {
+            if let result {
+                let valueText = positionStyle
+                    ? "\(ordinal(result.holder.value)) — \(result.holder.detail)"
+                    : "\(result.holder.name) (\(result.holder.value)\(suffix.map { " " + $0 } ?? "")) — \(result.career)"
+                museumLine(label, valueText)
+            }
+        }
+    }
+
+    private func ordinal(_ n: Int) -> String {
+        switch n {
+        case 1: return "1st"
+        case 2: return "2nd"
+        case 3: return "3rd"
+        default: return "\(n)th"
+        }
+    }
+}
+
+/// Every preserved front page across every archived career, grouped by
+/// career rather than by season since these span different careers —
+/// reuses `NewspaperFrontPageCard`/`NewspaperArticleView` exactly as the
+/// current-save Newspaper Archive already does.
+struct MuseumNewspapersView: View {
+    let careers: [LegacyCareer]
+    @State private var selected: Newspaper?
+
+    private var careersWithPages: [(career: LegacyCareer, pages: [Newspaper])] {
+        careers.compactMap { career in
+            guard let pages = career.frontPages, !pages.isEmpty else { return nil }
+            return (career, pages)
+        }
+    }
+
+    var body: some View {
+        Group {
+            if careersWithPages.isEmpty {
+                Panel(title: "NEWSPAPERS") {
+                    Text("No preserved front pages yet — only careers archived from here on keep their biggest headlines.")
+                        .font(.system(.footnote, design: .monospaced))
+                        .foregroundStyle(Retro.text.opacity(0.8))
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 20) {
+                    ForEach(Array(careersWithPages.enumerated()), id: \.offset) { _, entry in
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("\(entry.career.managerName.uppercased()) AT \(entry.career.clubName.uppercased())")
+                                .font(.system(.caption, design: .monospaced).bold())
+                                .foregroundStyle(Retro.accent)
+                            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                                ForEach(entry.pages) { newspaper in
+                                    Button {
+                                        Haptics.tap()
+                                        selected = newspaper
+                                    } label: {
+                                        NewspaperFrontPageCard(newspaper: newspaper)
                                     }
+                                    .buttonStyle(.plain)
                                 }
                             }
                         }
                     }
-                    .frame(maxWidth: 560)
                 }
             }
-            .padding(20)
         }
-        .font(.system(.body, design: .monospaced))
-        .foregroundStyle(Retro.text)
-        .onAppear {
-            fullCareers = careers.compactMap { LegacyArchive.load(id: $0.id) }
-        }
-    }
-
-    private var allRecordLines: [(line: String, career: String)] {
-        fullCareers.flatMap { career in
-            career.recordBook.map { (line: $0, career: "\(career.managerName) at \(career.clubName)") }
-        }
-    }
-
-    private func line(_ label: String, _ value: String) -> some View {
-        HStack {
-            Text(label)
-                .font(.system(.footnote, design: .monospaced))
-                .foregroundStyle(Retro.text.opacity(0.8))
-            Spacer()
-            Text(value)
-                .font(.system(.footnote, design: .monospaced).bold())
-                .foregroundStyle(Retro.text)
-                .multilineTextAlignment(.trailing)
+        .sheet(item: $selected) { newspaper in
+            NewspaperArticleView(newspaper: newspaper)
         }
     }
 }

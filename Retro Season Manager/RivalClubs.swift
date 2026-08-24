@@ -51,6 +51,12 @@ enum RivalClubs {
 struct RivalryPair: Codable, Equatable {
     let clubA: String
     let clubB: String
+    /// When and why this rivalry formed — Optional since older saves
+    /// were written before these existed, and absent entirely for the
+    /// scripted real-world derbies above (only ever set by
+    /// `simulateNewRivalry`).
+    var formedSeason: Int? = nil
+    var reason: String? = nil
 
     func involves(_ nameA: String, _ nameB: String) -> Bool {
         (clubA == nameA && clubB == nameB) || (clubA == nameB && clubB == nameA)

@@ -18,6 +18,7 @@ enum SettingsDestination: String, CaseIterable, Identifiable {
     case boardConfidence = "Board Confidence"
     case trophyCabinet = "Trophy Cabinet"
     case achievements = "Achievements"
+    case seasonObjectives = "Season Objectives"
     case managerCV = "Manager CV"
     case records = "All-Time Records"
     case hallOfFame = "Hall of Fame"
@@ -41,6 +42,7 @@ enum SettingsDestination: String, CaseIterable, Identifiable {
         case .boardConfidence:  return "gauge.with.dots.needle.67percent"
         case .trophyCabinet:    return "trophy.fill"
         case .achievements:     return "medal.fill"
+        case .seasonObjectives: return "target"
         case .managerCV:        return "briefcase.fill"
         case .records:          return "chart.bar.fill"
         case .hallOfFame:       return "star.circle.fill"
@@ -58,7 +60,7 @@ enum SettingsDestination: String, CaseIterable, Identifiable {
         }
     }
 
-    static let manager: [SettingsDestination] = [.managerProfile, .boardConfidence, .trophyCabinet, .achievements, .managerCV, .records, .hallOfFame, .bestXI, .newspaperArchive, .supporterZone, .facilities, .managerOffice, .transferHub, .transferHistory, .seasonHistory]
+    static let manager: [SettingsDestination] = [.managerProfile, .boardConfidence, .trophyCabinet, .achievements, .seasonObjectives, .managerCV, .records, .hallOfFame, .bestXI, .newspaperArchive, .supporterZone, .facilities, .managerOffice, .transferHub, .transferHistory, .seasonHistory]
     static let options: [SettingsDestination] = [.currentSave, .difficulty, .teamSelection]
 }
 
@@ -70,6 +72,7 @@ struct SettingsView: View {
     @State private var showingSupporterZone = false
     @State private var showingFacilities = false
     @State private var showingAchievements = false
+    @State private var showingSeasonObjectives = false
     @State private var showingManagerOffice = false
     @State private var showingTransferHub = false
 
@@ -93,6 +96,7 @@ struct SettingsView: View {
                     case .supporterZone:    showingSupporterZone = true
                     case .facilities:       showingFacilities = true
                     case .achievements:     showingAchievements = true
+                    case .seasonObjectives: showingSeasonObjectives = true
                     case .managerOffice:    showingManagerOffice = true
                     case .transferHub:      showingTransferHub = true
                     default:                destination = selected
@@ -111,6 +115,9 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showingAchievements) {
             AchievementGalleryView(store: store)
+        }
+        .sheet(isPresented: $showingSeasonObjectives) {
+            SeasonObjectivesView(store: store)
         }
         .sheet(isPresented: $showingManagerOffice) {
             ManagerOfficeView(store: store)
@@ -240,6 +247,7 @@ struct SettingsDetailView: View {
         case .boardConfidence:  boardConfidencePanel
         case .trophyCabinet:    trophyCabinetPanel
         case .achievements:     AchievementGalleryView(store: store)
+        case .seasonObjectives: SeasonObjectivesView(store: store)
         case .currentSave:      currentSavePanel
         case .difficulty:       difficultyPanel
         case .teamSelection:    teamSelectionPanel

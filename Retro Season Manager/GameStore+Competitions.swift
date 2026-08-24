@@ -69,8 +69,15 @@ extension GameStore {
     /// more cup upsets.
     func simCupTie(_ homeIndex: Int, _ awayIndex: Int, magic: Double = 0) -> (hg: Int, ag: Int, winner: Int, pens: Bool) {
         if homeIndex == awayIndex { return (0, 0, homeIndex, false) }   // bye
-        let homeStrength = strengthValue(bestXI(for: clubs[homeIndex], formation: aiFormation(for: clubs[homeIndex]))) + 30
-        let awayStrength = strengthValue(bestXI(for: clubs[awayIndex], formation: aiFormation(for: clubs[awayIndex])))
+        var homeStrength = strengthValue(bestXI(for: clubs[homeIndex], formation: aiFormation(for: clubs[homeIndex]))) + 30
+        var awayStrength = strengthValue(bestXI(for: clubs[awayIndex], formation: aiFormation(for: clubs[awayIndex])))
+        // A Cup Specialist genuinely raises its game in cup competition —
+        // the first real effect on a tie's actual win probability this
+        // flavour of identity has ever had (the similarly-named
+        // `ManagerPersonality.cupSpecialist` only ever set a live
+        // opponent's starting mentality, never the underlying odds).
+        if clubIdentity(forClubIndex: homeIndex) == .cupSpecialist { homeStrength *= 1.08 }
+        if clubIdentity(forClubIndex: awayIndex) == .cupSpecialist { awayStrength *= 1.08 }
         var ratio = homeStrength / (homeStrength + awayStrength)
         ratio = ratio * (1 - magic) + 0.5 * magic
         let hg = poisson(2.6 * ratio)
@@ -115,6 +122,7 @@ extension GameStore {
 
         if let tie = cupTies.first(where: { $0.homeIndex == userClubIndex || $0.awayIndex == userClubIndex }) {
             let roundName = cupRoundName(tieCount: cupTies.filter { !$0.isBye }.count)
+            if roundName == "Quarter-finals" { reachedCupQuarterFinalThisSeason = true }
             if tie.isBye {
                 addNews(.result, "\(Self.cupName): \(roundName)", "\(userClub.name) receive a bye to the next round.")
             } else {
@@ -134,6 +142,11 @@ extension GameStore {
             cupWinnerID = clubs[winnerIndex].id
             clubs[winnerIndex].transferBudget += 1_300
             addNews(.board, "\(Self.cupName) winners", "\(cupWinnerName!) lift the \(Self.cupName)!")
+            // Celebrate the moment the cup is actually lifted, rather than
+            // leaving the payoff to a batched season-end achievement —
+            // unlock(_:) is idempotent, so recordSeasonHonours()'s own
+            // later call to the same case at season end is a safe no-op.
+            if winnerIndex == userClubIndex { unlock(.cupWinner) }
         } else {
             cupRound += 1
             cupTies = makeCupTies(from: winners, round: cupRound)
@@ -231,6 +244,7 @@ extension GameStore {
             leagueCupWinnerID = clubs[winnerIndex].id
             clubs[winnerIndex].transferBudget += 700
             addNews(.board, "\(Self.leagueCupName) winners", "\(leagueCupWinnerName!) lift the \(Self.leagueCupName)!")
+            if winnerIndex == userClubIndex { unlock(.cupWinner) }
         } else {
             leagueCupRound += 1
             leagueCupTies = makeCupTies(from: winners, round: leagueCupRound)
@@ -538,6 +552,7 @@ extension GameStore {
             clubs[winners[0]].transferBudget += 6_500
             bumpForeignPrestige(clubIndex: winners[0], by: 3)
             addNews(.board, "\(Self.euroName) winners", "\(euroWinnerName!) are champions of Europe!")
+            if winners[0] == userClubIndex { unlock(.europeanGlory) }
         } else {
             euroRound += 1
             euroTies = makeEuroTies(from: winners, round: euroRound)
@@ -679,6 +694,7 @@ extension GameStore {
             clubs[winnerIndex].transferBudget += 3_500
             bumpForeignPrestige(clubIndex: winnerIndex, by: 2)
             addNews(.board, "\(Self.uefaCupName) winners", "\(uefaCupWinnerName!) win the \(Self.uefaCupName)!")
+            if winnerIndex == userClubIndex { unlock(.europeanGlory) }
         } else {
             uefaCupRound += 1
             uefaCupTies = makeCupTies(from: winners, round: uefaCupRound)

@@ -138,6 +138,18 @@ extension GameStore {
                                    headline: "NEW MANAGER CONFIRMED", standfirst: body)
         }
 
+        if title == "Manager sacked" {
+            return NewspaperDraft(outlet: .national, importance: .notable,
+                                   headline: "\((clubName ?? "CLUB").uppercased()) PULL THE TRIGGER",
+                                   standfirst: body)
+        }
+
+        if title == "New manager appointed" {
+            return NewspaperDraft(outlet: .national, importance: .notable,
+                                   headline: "\((clubName ?? "CLUB").uppercased()) UNVEIL NEW BOSS",
+                                   standfirst: body)
+        }
+
         if title == "Clear-the-air meeting" {
             let reassured = body.contains("reassured")
             return NewspaperDraft(outlet: .local, importance: .notable,
@@ -188,6 +200,30 @@ extension GameStore {
                                    standfirst: body)
         }
 
+        if title == "Star in the making", let player {
+            return NewspaperDraft(outlet: .magazine, importance: .major,
+                                   headline: "\(player.name.uppercased()): STAR IN THE MAKING",
+                                   standfirst: body)
+        }
+
+        if title == "Faded from the spotlight", let player {
+            return NewspaperDraft(outlet: .magazine, importance: .notable,
+                                   headline: "WHATEVER HAPPENED TO \(player.name.uppercased())?",
+                                   standfirst: body)
+        }
+
+        if title == "Club on the rise" {
+            return NewspaperDraft(outlet: .national, importance: .major,
+                                   headline: "\((clubName ?? "CLUB").uppercased()) ON THE UP",
+                                   standfirst: body)
+        }
+
+        if title == "Club in decline" {
+            return NewspaperDraft(outlet: .national, importance: .major,
+                                   headline: "\((clubName ?? "CLUB").uppercased()) IN FREEFALL",
+                                   standfirst: body)
+        }
+
         if title == "Stadium expansion" {
             return NewspaperDraft(outlet: .local, importance: .notable,
                                    headline: "\((clubName ?? "CLUB").uppercased()) COMPLETE STADIUM EXPANSION",
@@ -197,6 +233,16 @@ extension GameStore {
         if title == "Rivalry forming" {
             return NewspaperDraft(outlet: .national, importance: .major,
                                    headline: "NEW RIVALRY BREWING", standfirst: body)
+        }
+
+        if title == "Old rivals" {
+            return NewspaperDraft(outlet: .national, importance: .notable,
+                                   headline: "OLD RIVALS, OLDER GRUDGE", standfirst: body)
+        }
+
+        if title == "League announcement" {
+            return NewspaperDraft(outlet: .national, importance: .notable,
+                                   headline: "LEAGUE CONFIRMS CHANGES", standfirst: body)
         }
 
         if category == .result, title.hasPrefix("Derby") {

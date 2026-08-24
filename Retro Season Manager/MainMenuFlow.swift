@@ -192,7 +192,7 @@ struct MainMenuView: View {
                                  enabled: GameStore.hasSavedGame) {
                             showSaveList = true
                         }
-                        menuTile(icon: "trophy.fill", title: "Legacy",
+                        menuTile(icon: "trophy.fill", title: "Museum",
                                  subtitle: legacyCareers.isEmpty ? "No careers finished yet" : "\(legacyCareers.count) past career\(legacyCareers.count == 1 ? "" : "s")",
                                  enabled: !legacyCareers.isEmpty) {
                             showLegacyCareers = true

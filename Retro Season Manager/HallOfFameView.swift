@@ -135,7 +135,7 @@ struct LegendPortraitCard: View {
                 RoundedRectangle(cornerRadius: 8)
                     .fill(LinearGradient(colors: frameColors, startPoint: .topLeading, endPoint: .bottomTrailing))
                     .frame(width: 78, height: 78)
-                PlayerPortraitView(name: legend.name, position: legend.position, age: legend.finalAge, size: 58)
+                PlayerPortraitView(name: legend.name, position: legend.position, age: legend.finalAge, nation: legend.nationality, size: 58)
                     .clipShape(RoundedRectangle(cornerRadius: 4))
             }
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.25), lineWidth: 1))
@@ -265,9 +265,12 @@ struct ClubLegendDetailSheet: View {
                         Text(legend.name)
                             .font(.system(.title2, design: .monospaced).bold())
                             .foregroundStyle(legend.isGlobalLegend ? Retro.gold : Retro.text)
-                        Text("\(legend.nationality) · \(legend.position.rawValue) · \(legend.clubName)")
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(Retro.text.opacity(0.75))
+                        HStack(spacing: 5) {
+                            FlagView(nationality: legend.nationality, width: 16)
+                            Text("\(legend.nationality) · \(legend.position.rawValue) · \(legend.clubName)")
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundStyle(Retro.text.opacity(0.75))
+                        }
                         Text("\(legend.joinedSeason)–\(legend.retiredSeason) (\(legend.yearsAtClub) season\(legend.yearsAtClub == 1 ? "" : "s"))")
                             .font(.system(.caption2, design: .monospaced))
                             .foregroundStyle(Retro.text.opacity(0.6))

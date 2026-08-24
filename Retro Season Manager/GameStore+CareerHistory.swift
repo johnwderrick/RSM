@@ -386,6 +386,12 @@ extension GameStore {
                                                 peakRating: player.rating, peakSeason: seasonLabel)
         }
 
+        checkSeasonObjectives(isSeasonEnd: true)
+        checkAcademyGraduateBreakthroughs()
+        checkFanFavourites()
+        checkUserWonderkidBreakthroughs()
+        checkSeasonStyleReaction()
+        applySeasonTicketAttrition()
         updateReputation()
         checkForSacking()
         checkManagerContractRenewal()
@@ -511,6 +517,21 @@ extension GameStore {
         }
         let score = LegacyScoring.score(trophyCount: careerHonours.count, seasonsManaged: history.count,
                                         achievementPoints: careerAchievementPoints, legendCount: clubLegends.count)
+        let topScorer = allTimeScorers.max { $0.value < $1.value }
+            .map { LegacyRecordHolder(name: $0.key, value: $0.value, detail: "goals") }
+        let topAppearances = allTimeAppearances.max { $0.value < $1.value }
+            .map { LegacyRecordHolder(name: $0.key, value: $0.value, detail: "appearances") }
+        let topMOTM = motmTally.max { $0.value < $1.value }
+            .map { LegacyRecordHolder(name: $0.key, value: $0.value, detail: "MOTM awards") }
+        let recordWin = userClub.recordWinMargin > 0
+            ? LegacyRecordHolder(name: userClub.name, value: userClub.recordWinMargin, detail: userClub.recordWinDescription)
+            : nil
+        let bestSeason = history.min { $0.userPosition < $1.userPosition }
+            .map { LegacyRecordHolder(name: $0.userClub, value: $0.userPosition, detail: "\($0.userDivision) · \($0.label)") }
+        let topSales = transferHistory.filter { $0.action == "Sold" && ($0.fee ?? 0) > 0 }
+            .sorted { ($0.fee ?? 0) > ($1.fee ?? 0) }.prefix(3)
+        let topSignings = transferHistory.filter { $0.action == "Signed" && $0.otherClub != nil && ($0.fee ?? 0) > 0 }
+            .sorted { ($0.fee ?? 0) > ($1.fee ?? 0) }.prefix(3)
         let career = LegacyCareer(id: UUID(), managerName: managerName, clubName: userClub.name,
                                   startYear: startYear, endYear: startYear + history.count,
                                   seasonsManaged: history.count, finalDivisionName: divisionName(userDivisionTier),
@@ -519,7 +540,11 @@ extension GameStore {
                                   careerAchievementPoints: careerAchievementPoints, clubLegends: clubLegends,
                                   history: history, careerRecordByClub: careerRecordByClub,
                                   legacyScore: score, legacyTier: .forScore(score),
-                                  recordBook: careerRecordBookLines(), archivedDate: Date())
+                                  recordBook: careerRecordBookLines(), archivedDate: Date(),
+                                  topScorer: topScorer, topAppearances: topAppearances, topMOTM: topMOTM,
+                                  recordWin: recordWin, bestSeason: bestSeason,
+                                  topTransfers: Array(topSales) + Array(topSignings),
+                                  frontPages: newspapers.filter { $0.importance >= .major })
         LegacyArchive.archive(career)
     }
 

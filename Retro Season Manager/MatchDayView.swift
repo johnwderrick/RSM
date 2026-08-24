@@ -74,9 +74,11 @@ struct PreMatchHubView: View {
                     pressPanel(question).padding(.horizontal, 14)
                 }
                 HStack(alignment: .top, spacing: 14) {
-                    // Left: the match-up & your form.
+                    // Left: the match-up, your form, and the broadcast-style extras.
                     VStack(spacing: 14) {
                         matchupPanel(opponentIndex: opponentIndex, isHome: isHome)
+                        keyPlayersPanel(opponentIndex: opponentIndex)
+                        lineupsPanel(opponentIndex: opponentIndex)
                         predictionPanel(opponentIndex: opponentIndex, isHome: isHome)
                     }
                     .frame(maxWidth: .infinity, alignment: .top)
@@ -93,8 +95,17 @@ struct PreMatchHubView: View {
     private func matchupPanel(opponentIndex: Int, isHome: Bool) -> some View {
         let opponent = store.clubs[opponentIndex]
         let ratings = store.starRatings(forClubIndices: [store.userClubIndex, opponentIndex])
+        let homeIndex = isHome ? store.userClubIndex : opponentIndex
+        let awayIndex = isHome ? opponentIndex : store.userClubIndex
         return Panel(title: store.nextMatchIsDerby ? "⚔️ DERBY DAY" : "THE FIXTURE") {
             VStack(spacing: 10) {
+                if store.nextMatchIsDerby {
+                    Text(derbyFlavorText(opponentIndex: opponentIndex))
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(Retro.highlight)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity)
+                }
                 HStack {
                     teamBadge(store.userClub.shortName, store.userClub.name, ratings[store.userClubIndex] ?? 1, store.userColor)
                     Text(isHome ? "vs" : "@")
@@ -102,6 +113,9 @@ struct PreMatchHubView: View {
                         .foregroundStyle(Retro.highlight)
                     teamBadge(opponent.shortName, opponent.name, ratings[opponentIndex] ?? 1, store.color(forClubIndex: opponentIndex))
                 }
+                Text(store.matchAtmosphere(homeIndex: homeIndex, awayIndex: awayIndex))
+                    .font(.system(.caption, design: .monospaced).bold())
+                    .foregroundStyle(Retro.accent)
                 HStack {
                     Text("Your form")
                         .font(.system(.caption, design: .monospaced))
@@ -118,6 +132,90 @@ struct PreMatchHubView: View {
                 }
             }
         }
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(store.nextMatchIsDerby ? Retro.highlight.opacity(0.6) : Color.clear, lineWidth: 2)
+        )
+    }
+
+    /// A short flavour line for derby day — quotes the rivalry's own
+    /// formation story if it's one that grew organically this career
+    /// (see `RivalryPair.formedSeason`/`reason`, item 4), otherwise a
+    /// generic line for the scripted real-world derbies.
+    private func derbyFlavorText(opponentIndex: Int) -> String {
+        let opponentName = store.clubs[opponentIndex].name
+        if let pair = store.dynamicRivalries.first(where: { $0.involves(store.userClub.name, opponentName) }),
+           let season = pair.formedSeason, let reason = pair.reason {
+            return "Rivals since Season \(season)'s \(reason)."
+        }
+        return "One of the fiercest fixtures in the league."
+    }
+
+    private func keyPlayersPanel(opponentIndex: Int) -> some View {
+        Panel(title: "ONES TO WATCH") {
+            HStack(spacing: 16) {
+                if let key = store.keyPlayer(forClubIndex: store.userClubIndex) {
+                    keyPlayerCard(key, store.userClub.shortName, store.userColor)
+                }
+                if let key = store.keyPlayer(forClubIndex: opponentIndex) {
+                    keyPlayerCard(key, store.clubs[opponentIndex].shortName, store.color(forClubIndex: opponentIndex))
+                }
+            }
+        }
+    }
+
+    private func keyPlayerCard(_ player: Player, _ clubShort: String, _ color: Color) -> some View {
+        VStack(spacing: 3) {
+            Text(clubShort.uppercased())
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .foregroundStyle(color)
+            Text(player.name)
+                .font(.system(.footnote, design: .monospaced).bold())
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+            Text("\(player.rating) OVR")
+                .font(.system(.caption2, design: .monospaced))
+                .foregroundStyle(Retro.text.opacity(0.7))
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 6)
+        .background(Retro.background.opacity(0.4))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    /// A read-only confirmed-lineups display — deliberately not the
+    /// editable `PitchView` (bound to `store.userStarterIDs`/`slotPins`,
+    /// tap-to-edit), just a simple two-column list built from the exact
+    /// XI the match engine itself will field for either side.
+    private func lineupsPanel(opponentIndex: Int) -> some View {
+        let userXI = store.matchXIForPreview(store.userClubIndex).sorted { $0.position.order < $1.position.order }
+        let opponentXI = store.matchXIForPreview(opponentIndex).sorted { $0.position.order < $1.position.order }
+        return Panel(title: "CONFIRMED LINEUPS") {
+            HStack(alignment: .top, spacing: 16) {
+                lineupColumn(store.userClub.shortName, userXI)
+                lineupColumn(store.clubs[opponentIndex].shortName, opponentXI)
+            }
+        }
+    }
+
+    private func lineupColumn(_ short: String, _ xi: [Player]) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(short.uppercased())
+                .font(.system(.caption2, design: .monospaced).bold())
+                .foregroundStyle(Retro.accent)
+            ForEach(xi) { player in
+                HStack(spacing: 6) {
+                    Text(player.position.rawValue)
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .frame(width: 28, alignment: .leading)
+                        .foregroundStyle(Retro.highlight)
+                    Text(surname(player.name))
+                        .font(.system(.caption, design: .monospaced))
+                        .lineLimit(1)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func teamBadge(_ short: String, _ name: String, _ stars: Int, _ color: Color = Retro.accent) -> some View {
@@ -170,6 +268,12 @@ struct PreMatchHubView: View {
                 infoRow("Manager", store.manager(forClubIndex: opponentIndex))
                 if let key = store.keyPlayer(forClubIndex: opponentIndex) {
                     infoRow("Key player", "\(key.name) (\(key.rating))")
+                }
+                if let identity = store.clubIdentity(forClubIndex: opponentIndex) {
+                    Text(identity.flavorText)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(Retro.text.opacity(0.7))
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 Divider().overlay(Retro.accent.opacity(0.2))
                 HStack(alignment: .top, spacing: 16) {
@@ -263,6 +367,7 @@ struct MatchView: View {
     @State private var shakeTrigger = 0
     @State private var showConfetti = false
     @State private var confettiColors: [Color] = []
+    @State private var showKickoffIntro = false
 
     private var userGoals: Int { live.userSide == .home ? live.homeGoals : live.awayGoals }
     private var opponentGoals: Int { live.userSide == .home ? live.awayGoals : live.homeGoals }
@@ -293,13 +398,26 @@ struct MatchView: View {
             if goalFlash { goalFlashOverlay }
             if let eventFlash { MatchFlashOverlay(kind: eventFlash) }
             if showConfetti { PixelConfettiBurst(colors: confettiColors) }
+            if live.isHalfTime {
+                halfTimeSummaryOverlay
+            }
             if live.isFinished {
                 fullTimeOverlay
+            }
+            if showKickoffIntro {
+                kickoffIntroOverlay.transition(.opacity.combined(with: .scale(scale: 0.85)))
             }
             CRTScanlineOverlay()
         }
         .matchShake(trigger: shakeTrigger)
-        .onAppear { live.start() }
+        .onAppear {
+            live.start()
+            withAnimation(.easeIn(duration: 0.2)) { showKickoffIntro = true }
+            Task {
+                try? await Task.sleep(for: .milliseconds(2200))
+                withAnimation(.easeOut(duration: 0.4)) { showKickoffIntro = false }
+            }
+        }
         .onChange(of: live.homeGoals) { _, _ in triggerGoalFlash(side: .home) }
         .onChange(of: live.awayGoals) { _, _ in triggerGoalFlash(side: .away) }
         .onChange(of: live.penaltyAwardedCount) { _, _ in triggerPenaltyFlash() }
@@ -331,7 +449,8 @@ struct MatchView: View {
             if let climax = store.climaxFlash(for: live) {
                 triggerEventFlash(climax, holdMillis: 3200)
             } else if !live.motmName.isEmpty {
-                triggerEventFlash(.playerOfTheMatch(name: live.motmName))
+                let rating = live.userPlayerRatings.first?.rating ?? 0
+                triggerEventFlash(.playerOfTheMatch(name: live.motmName, rating: rating))
             }
         }
         .sheet(isPresented: $showSubs) { SubsSheet(live: live) }
@@ -476,6 +595,40 @@ struct MatchView: View {
         .transition(.opacity)
     }
 
+    /// A brief broadcast-style face-off card shown as the match view
+    /// appears — crests, competition, stadium and atmosphere — sitting on
+    /// top of the ticker for its first couple of seconds, same relationship
+    /// every other flash already has to the base layout underneath.
+    private var kickoffIntroOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.88).ignoresSafeArea()
+            VStack(spacing: 14) {
+                if store.areRivals(live.homeName, live.awayName) {
+                    Text("⚔️ DERBY DAY")
+                        .font(.system(.headline, design: .monospaced).bold())
+                        .foregroundStyle(Retro.highlight)
+                }
+                Text(live.competition.uppercased())
+                    .font(.system(.caption, design: .monospaced).bold())
+                    .foregroundStyle(Retro.accent)
+                HStack(spacing: 24) {
+                    CrestView(shortName: live.homeShort, size: 64, color: store.color(forClubIndex: live.homeIndex))
+                    Text("VS")
+                        .font(.system(size: 32, weight: .black, design: .rounded))
+                        .foregroundStyle(.white)
+                    CrestView(shortName: live.awayShort, size: 64, color: store.color(forClubIndex: live.awayIndex))
+                }
+                Text(live.stadium)
+                    .font(.system(.callout, design: .monospaced).bold())
+                    .foregroundStyle(.white)
+                Text(store.matchAtmosphere(homeIndex: live.homeIndex, awayIndex: live.awayIndex))
+                    .font(.system(.callout, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.85))
+            }
+        }
+        .allowsHitTesting(false)
+    }
+
     // MARK: Commentary
 
     private var commentaryFeed: some View {
@@ -608,22 +761,81 @@ struct MatchView: View {
                 .font(.system(.caption, design: .monospaced))
                 .foregroundStyle(Retro.text.opacity(0.8))
 
-            let stats: [(String, String, String)] = [
-                ("\(live.homePossession)%", "POSSESSION", "\(100 - live.homePossession)%"),
-                ("\(live.shots.home) (\(live.shotsOnTarget.home))", "SHOTS (ON TGT)", "\(live.shots.away) (\(live.shotsOnTarget.away))"),
-                ("\(live.clearCut.home)", "CLEAR CUT", "\(live.clearCut.away)"),
-                ("\(live.offsides.home)", "OFFSIDES", "\(live.offsides.away)"),
-                (ratingText(live.teamRating.home), "TEAM RATING", ratingText(live.teamRating.away)),
-                ("\(live.corners.home)", "CORNERS", "\(live.corners.away)"),
-            ]
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
-                ForEach(Array(stats.enumerated()), id: \.offset) { _, stat in
+            VStack(spacing: 6) {
+                ForEach(Array(matchStatPairs.enumerated()), id: \.offset) { _, stat in
                     statRow(home: stat.0, label: stat.1, away: stat.2)
                 }
             }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
+    }
+
+    /// The live head-to-head stat rows — shared by the always-visible
+    /// `statsBlock` and the half-time summary overlay, so the break gets
+    /// a real recap of the same numbers rather than duplicated logic.
+    private var matchStatPairs: [(String, String, String)] {
+        [
+            ("\(live.homePossession)%", "POSSESSION", "\(100 - live.homePossession)%"),
+            ("\(live.shots.home) (\(live.shotsOnTarget.home))", "SHOTS (ON TGT)", "\(live.shots.away) (\(live.shotsOnTarget.away))"),
+            ("\(live.clearCut.home)", "CLEAR CUT", "\(live.clearCut.away)"),
+            ("\(live.offsides.home)", "OFFSIDES", "\(live.offsides.away)"),
+            (ratingText(live.teamRating.home), "TEAM RATING", ratingText(live.teamRating.away)),
+            ("\(live.corners.home)", "CORNERS", "\(live.corners.away)"),
+        ]
+    }
+
+    /// A short, purely derived read on how the half has gone — scoreline
+    /// first, then shot count as a tie-breaker — no new engine state.
+    private var halfTimeNarrative: String {
+        if userGoals > opponentGoals { return "You're ahead at the break — keep it going." }
+        if userGoals < opponentGoals { return "Time for a rethink — you're behind at the break." }
+        let userShots = live.userSide == .home ? live.shots.home : live.shots.away
+        let opponentShots = live.userSide == .home ? live.shots.away : live.shots.home
+        if userShots > opponentShots + 2 { return "You've had the better of it, but the scoreline doesn't show it yet." }
+        if opponentShots > userShots + 2 { return "They've had the better chances — tighten up after the break." }
+        return "Level at the break — anyone's game."
+    }
+
+    private var halfTimeSummaryOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.75).ignoresSafeArea()
+            VStack(spacing: 12) {
+                Text("HALF TIME")
+                    .font(.system(.title2, design: .monospaced).bold())
+                    .foregroundStyle(Retro.accent)
+                Text("\(live.homeName) \(live.homeGoals) - \(live.awayGoals) \(live.awayName)")
+                    .font(.system(.title3, design: .monospaced).bold())
+                    .foregroundStyle(Retro.highlight)
+                    .multilineTextAlignment(.center)
+                Text(halfTimeNarrative)
+                    .font(.system(.callout, design: .monospaced))
+                    .foregroundStyle(Retro.text)
+                    .multilineTextAlignment(.center)
+                VStack(spacing: 6) {
+                    ForEach(Array(matchStatPairs.enumerated()), id: \.offset) { _, stat in
+                        statRow(home: stat.0, label: stat.1, away: stat.2)
+                    }
+                }
+                Button {
+                    live.resume()
+                } label: {
+                    Text("CONTINUE TO 2ND HALF ▸")
+                        .font(.system(.body, design: .monospaced).bold())
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(Retro.accent)
+                        .foregroundStyle(Retro.background)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(24)
+            .frame(maxWidth: 420)
+            .background(Retro.panel)
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .padding(24)
+        }
     }
 
     private func statRow(home: String, label: String, away: String) -> some View {
@@ -771,87 +983,125 @@ struct MatchView: View {
     private var fullTimeOverlay: some View {
         ZStack {
             Color.black.opacity(0.75).ignoresSafeArea()
-            VStack(spacing: 12) {
-                Text("FULL TIME")
-                    .font(.system(.title2, design: .monospaced).bold())
-                    .foregroundStyle(Retro.accent)
-                Text("\(live.homeName) \(live.homeGoals) - \(live.awayGoals) \(live.awayName)")
-                    .font(.system(.title3, design: .monospaced).bold())
-                    .foregroundStyle(Retro.highlight)
-                    .multilineTextAlignment(.center)
-
-                if !live.motmName.isEmpty {
-                    Text("★ Man of the Match: \(live.motmName)")
-                        .font(.system(.callout, design: .monospaced).bold())
-                        .foregroundStyle(Retro.accent)
-                }
-
-                Text("YOUR PLAYER RATINGS")
-                    .font(.system(.caption, design: .monospaced).bold())
-                    .foregroundStyle(Retro.text.opacity(0.8))
+            GeometryReader { geo in
                 ScrollView {
-                    VStack(spacing: 3) {
-                        ForEach(Array(live.userPlayerRatings.enumerated()), id: \.offset) { _, entry in
-                            HStack {
-                                Text(surname(entry.player.name))
-                                Spacer()
-                                Text(String(format: "%.1f", entry.rating))
-                                    .foregroundStyle(ratingColor(entry.rating))
-                                    .bold()
-                            }
-                            .font(.system(.callout, design: .monospaced))
-                        }
-                    }
+                    fullTimeCard
+                        .frame(maxWidth: .infinity, minHeight: geo.size.height)
                 }
-                .frame(maxHeight: 130)
-
-                if !interviewAnswered {
-                    let question = store.makePostMatchInterview(won: userWon, draw: userDrew)
-                    VStack(spacing: 6) {
-                        Text("🎙 \(question.prompt)")
-                            .font(.system(.caption, design: .monospaced).bold())
-                            .foregroundStyle(Retro.text)
-                            .multilineTextAlignment(.center)
-                        HStack(spacing: 8) {
-                            ForEach(question.options) { option in
-                                Button {
-                                    store.answerPress(option, headline: "Post-match interview")
-                                    interviewAnswered = true
-                                } label: {
-                                    Text(option.label)
-                                        .font(.system(.caption2, design: .monospaced).bold())
-                                        .padding(.horizontal, 10).padding(.vertical, 8)
-                                        .frame(maxWidth: .infinity)
-                                        .background(Retro.panel)
-                                        .foregroundStyle(Retro.text)
-                                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
-                    .padding(.vertical, 4)
-                }
-
-                Button {
-                    store.finishLiveMatch()
-                } label: {
-                    Text("CONTINUE ▸")
-                        .font(.system(.body, design: .monospaced).bold())
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(Retro.accent)
-                        .foregroundStyle(Retro.background)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                }
-                .buttonStyle(.plain)
             }
-            .padding(24)
-            .frame(maxWidth: 420)
-            .background(Retro.panel)
-            .clipShape(RoundedRectangle(cornerRadius: 14))
-            .padding(24)
         }
+    }
+
+    private var fullTimeCard: some View {
+        VStack(spacing: 12) {
+            Text("FULL TIME")
+                .font(.system(.title2, design: .monospaced).bold())
+                .foregroundStyle(Retro.accent)
+            Text("\(live.homeName) \(live.homeGoals) - \(live.awayGoals) \(live.awayName)")
+                .font(.system(.title3, design: .monospaced).bold())
+                .foregroundStyle(Retro.highlight)
+                .multilineTextAlignment(.center)
+
+            if store.areRivals(live.homeName, live.awayName) {
+                Text(userWon ? "Bragging rights are yours." : (userDrew ? "Honours even in the derby." : "A tough day in the derby."))
+                    .font(.system(.caption, design: .monospaced).bold())
+                    .foregroundStyle(Retro.highlight)
+            }
+
+            if let motm = live.userPlayerRatings.first, !live.motmName.isEmpty {
+                motmCard(name: live.motmName, rating: motm.rating)
+            }
+
+            Text("YOUR PLAYER RATINGS")
+                .font(.system(.caption, design: .monospaced).bold())
+                .foregroundStyle(Retro.text.opacity(0.8))
+            ScrollView {
+                VStack(spacing: 3) {
+                    ForEach(Array(live.userPlayerRatings.enumerated()), id: \.offset) { _, entry in
+                        HStack {
+                            Text(surname(entry.player.name))
+                            Spacer()
+                            Text(String(format: "%.1f", entry.rating))
+                                .foregroundStyle(ratingColor(entry.rating))
+                                .bold()
+                        }
+                        .font(.system(.callout, design: .monospaced))
+                    }
+                }
+            }
+            .frame(maxHeight: 130)
+
+            if !interviewAnswered {
+                let question = store.makePostMatchInterview(won: userWon, draw: userDrew)
+                VStack(spacing: 6) {
+                    Text("🎙 \(question.prompt)")
+                        .font(.system(.caption, design: .monospaced).bold())
+                        .foregroundStyle(Retro.text)
+                        .multilineTextAlignment(.center)
+                    HStack(spacing: 8) {
+                        ForEach(question.options) { option in
+                            Button {
+                                store.answerPress(option, headline: "Post-match interview")
+                                interviewAnswered = true
+                            } label: {
+                                Text(option.label)
+                                    .font(.system(.caption2, design: .monospaced).bold())
+                                    .padding(.horizontal, 10).padding(.vertical, 8)
+                                    .frame(maxWidth: .infinity)
+                                    .background(Retro.panel)
+                                    .foregroundStyle(Retro.text)
+                                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+
+            Button {
+                store.finishLiveMatch()
+            } label: {
+                Text("CONTINUE ▸")
+                    .font(.system(.body, design: .monospaced).bold())
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(Retro.accent)
+                    .foregroundStyle(Retro.background)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(24)
+        .frame(maxWidth: 420)
+        .background(Retro.panel)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .padding(24)
+    }
+
+    /// A small standout card for the Man of the Match — previously a
+    /// single plain text line lost above the ratings list.
+    private func motmCard(name: String, rating: Double) -> some View {
+        HStack(spacing: 10) {
+            Text("⭐")
+                .font(.system(size: 28))
+            VStack(alignment: .leading, spacing: 1) {
+                Text("MAN OF THE MATCH")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundStyle(Retro.text.opacity(0.7))
+                Text(name)
+                    .font(.system(.callout, design: .monospaced).bold())
+                    .foregroundStyle(Retro.text)
+            }
+            Spacer()
+            Text(String(format: "%.1f", rating))
+                .font(.system(.title3, design: .monospaced).bold())
+                .foregroundStyle(Retro.gold)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Retro.gold.opacity(0.15))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private func ratingColor(_ value: Double) -> Color {

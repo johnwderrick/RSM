@@ -263,6 +263,7 @@ extension GameStore {
         managers = clubs.map { _ in Self.randomManagerName() }
         managerPersonalities = clubs.map { _ in ManagerPersonality.random() }
         clubNegotiationStances = clubs.map { _ in ClubNegotiationStance.allCases.randomElement()! }
+        assignClubIdentities()
         dynamicRivalries = []
         fanConfidenceTrend = 0
         socialFeed = []
@@ -275,6 +276,7 @@ extension GameStore {
         seedInjuries()
         generateTransferMarket()
         setBoardObjective()
+        setSeasonObjectives()
         news = []
         unreadNewsIDs = []
         pendingOffers = []

@@ -36,12 +36,30 @@ struct SupporterZoneView: View {
                             .foregroundStyle(Retro.text.opacity(0.85))
                     }
                 }
+                Panel(title: "FAN PATIENCE") {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ConfidenceBar(value: store.fanPatience)
+                        Text("A slow-moving read on the fanbase — only really shifts over a sustained run of results, not one match either way.")
+                            .font(.system(.caption2, design: .monospaced))
+                            .foregroundStyle(Retro.text.opacity(0.6))
+                    }
+                }
                 Panel(title: "MATCHDAY") {
                     VStack(alignment: .leading, spacing: 8) {
                         statRow("Season ticket holders", "\(store.seasonTicketHolders.formatted())")
                         statRow("Ground capacity", "\(store.stadiumInfo(forClubIndex: store.userClubIndex).capacity.formatted())")
                         if let nextAtmosphere {
                             statRow("Next-match atmosphere", nextAtmosphere)
+                        }
+                    }
+                }
+                if !store.attendanceHistory.isEmpty {
+                    Panel(title: "ATTENDANCE TREND") {
+                        VStack(alignment: .leading, spacing: 6) {
+                            ForEach(Array(store.attendanceHistory.suffix(5).enumerated()), id: \.offset) { offset, average in
+                                let seasonsAgo = store.attendanceHistory.suffix(5).count - offset
+                                statRow(seasonsAgo == 1 ? "Last season" : "\(seasonsAgo) seasons ago", "\(average.formatted()) avg.")
+                            }
                         }
                     }
                 }

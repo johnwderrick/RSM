@@ -45,6 +45,16 @@ enum LegacyTier: String, Codable {
     }
 }
 
+/// A single named record-holder for a career's museum stats — the club's
+/// biggest win, a player's goal/appearance/MOTM tally, or a season's final
+/// position — kept as real numbers (not baked prose) so a museum can
+/// re-sort and compare them across every archived career.
+struct LegacyRecordHolder: Codable {
+    let name: String
+    let value: Int
+    let detail: String
+}
+
 /// The Legacy Score formula — trophies count for the most since they're
 /// the clearest signal of a well-run career, club legends and achievement
 /// points reward long-term squad building and standout moments, and raw
@@ -135,12 +145,33 @@ struct LegacyCareer: Codable, Identifiable {
     /// rather than storing the raw beats to re-render later.
     let recordBook: [String]
     let archivedDate: Date
+    /// Structured museum stats, kept as real numbers rather than baked
+    /// prose so cross-career aggregation (`LegacyArchive.greatestPlayers`
+    /// etc.) can re-sort and compare them — added after the type first
+    /// shipped, so all seven are Optional/lenient-decoded like
+    /// `legacyScore`/`recordBook` before them.
+    let topScorer: LegacyRecordHolder?
+    let topAppearances: LegacyRecordHolder?
+    let topMOTM: LegacyRecordHolder?
+    let recordWin: LegacyRecordHolder?
+    let bestSeason: LegacyRecordHolder?
+    /// Top 3 sales + top 3 signings by fee — reuses the existing
+    /// `TransferHistoryEntry` type directly.
+    let topTransfers: [TransferHistoryEntry]?
+    /// Only `.major`/`.historic` importance front pages — not the full
+    /// (possibly 600-entry) newspaper archive, to keep the per-career file
+    /// size sane while preserving the genuinely front-page-worthy moments.
+    let frontPages: [Newspaper]?
 
     init(id: UUID, managerName: String, clubName: String, startYear: Int, endYear: Int, seasonsManaged: Int,
          finalDivisionName: String, careerHonours: [String], autobiography: String, timeline: [LegacyCareerMoment],
          achievementUnlocks: [AchievementUnlock], careerAchievementPoints: Int, clubLegends: [ClubLegend],
          history: [SeasonRecord], careerRecordByClub: [String: ClubCareerRecord], legacyScore: Int,
-         legacyTier: LegacyTier, recordBook: [String], archivedDate: Date) {
+         legacyTier: LegacyTier, recordBook: [String], archivedDate: Date,
+         topScorer: LegacyRecordHolder? = nil, topAppearances: LegacyRecordHolder? = nil,
+         topMOTM: LegacyRecordHolder? = nil, recordWin: LegacyRecordHolder? = nil,
+         bestSeason: LegacyRecordHolder? = nil, topTransfers: [TransferHistoryEntry]? = nil,
+         frontPages: [Newspaper]? = nil) {
         self.id = id
         self.managerName = managerName
         self.clubName = clubName
@@ -160,11 +191,19 @@ struct LegacyCareer: Codable, Identifiable {
         self.legacyTier = legacyTier
         self.recordBook = recordBook
         self.archivedDate = archivedDate
+        self.topScorer = topScorer
+        self.topAppearances = topAppearances
+        self.topMOTM = topMOTM
+        self.recordWin = recordWin
+        self.bestSeason = bestSeason
+        self.topTransfers = topTransfers
+        self.frontPages = frontPages
     }
 
     /// `legacyScore`/`legacyTier`/`recordBook` were added after the type
     /// shipped — leniently decoded so a career archived before that still
-    /// opens instead of failing to load.
+    /// opens instead of failing to load. Same treatment for the seven
+    /// museum fields added afterward.
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id)
@@ -186,6 +225,13 @@ struct LegacyCareer: Codable, Identifiable {
         legacyScore = try c.decodeIfPresent(Int.self, forKey: .legacyScore) ?? 0
         legacyTier = try c.decodeIfPresent(LegacyTier.self, forKey: .legacyTier) ?? .forScore(legacyScore)
         recordBook = try c.decodeIfPresent([String].self, forKey: .recordBook) ?? []
+        topScorer = try c.decodeIfPresent(LegacyRecordHolder.self, forKey: .topScorer)
+        topAppearances = try c.decodeIfPresent(LegacyRecordHolder.self, forKey: .topAppearances)
+        topMOTM = try c.decodeIfPresent(LegacyRecordHolder.self, forKey: .topMOTM)
+        recordWin = try c.decodeIfPresent(LegacyRecordHolder.self, forKey: .recordWin)
+        bestSeason = try c.decodeIfPresent(LegacyRecordHolder.self, forKey: .bestSeason)
+        topTransfers = try c.decodeIfPresent([TransferHistoryEntry].self, forKey: .topTransfers)
+        frontPages = try c.decodeIfPresent([Newspaper].self, forKey: .frontPages)
     }
 }
 
@@ -237,5 +283,81 @@ enum LegacyArchive {
     static func remove(id: UUID) {
         writeIndex(all().filter { $0.id != id })
         try? FileManager.default.removeItem(at: fileURL(for: id))
+    }
+}
+
+// MARK: - Museum aggregation
+
+/// Pure, SwiftUI-free cross-career reductions over a set of already-loaded
+/// `LegacyCareer` records — the museum views call these after decoding
+/// every archived career (the same `compactMap { LegacyArchive.load(id:) }`
+/// pattern `GlobalRecordBookView` already uses), kept here rather than
+/// inline in a View so they're independently testable.
+extension LegacyArchive {
+
+    static func trophyTally(from careers: [LegacyCareer]) -> [(honour: String, career: String)] {
+        careers.flatMap { career in
+            career.careerHonours.map { (honour: $0, career: "\(career.managerName) at \(career.clubName)") }
+        }
+    }
+
+    /// Every archived career, best legacy score first.
+    static func greatestManagers(from careers: [LegacyCareer], limit: Int) -> [LegacyCareer] {
+        Array(careers.sorted { $0.legacyScore > $1.legacyScore }.prefix(limit))
+    }
+
+    /// Every club legend across every archived career, flattened and
+    /// ranked by legend score — `ClubLegend` is already a full record
+    /// (stats + biography), so no new player-side data is needed.
+    static func greatestPlayers(from careers: [LegacyCareer], limit: Int) -> [(legend: ClubLegend, career: String)] {
+        let flattened = careers.flatMap { career in
+            career.clubLegends.map { (legend: $0, career: "\(career.managerName) at \(career.clubName)") }
+        }
+        return Array(flattened.sorted { $0.legend.legendScore > $1.legend.legendScore }.prefix(limit))
+    }
+
+    /// The single best-of across every career for one of the five
+    /// `LegacyRecordHolder` fields — careers archived before these fields
+    /// existed simply have `nil` and are skipped, not treated as an error.
+    private static func recordHolder(from careers: [LegacyCareer], _ keyPath: KeyPath<LegacyCareer, LegacyRecordHolder?>,
+                                      maximize: Bool) -> (holder: LegacyRecordHolder, career: String)? {
+        let candidates = careers.compactMap { career -> (LegacyRecordHolder, String)? in
+            guard let holder = career[keyPath: keyPath] else { return nil }
+            return (holder, "\(career.managerName) at \(career.clubName)")
+        }
+        let best = maximize ? candidates.max { $0.0.value < $1.0.value } : candidates.min { $0.0.value < $1.0.value }
+        return best.map { (holder: $0.0, career: $0.1) }
+    }
+
+    static func globalTopScorer(from careers: [LegacyCareer]) -> (holder: LegacyRecordHolder, career: String)? {
+        recordHolder(from: careers, \.topScorer, maximize: true)
+    }
+
+    static func globalTopAppearances(from careers: [LegacyCareer]) -> (holder: LegacyRecordHolder, career: String)? {
+        recordHolder(from: careers, \.topAppearances, maximize: true)
+    }
+
+    static func globalTopMOTM(from careers: [LegacyCareer]) -> (holder: LegacyRecordHolder, career: String)? {
+        recordHolder(from: careers, \.topMOTM, maximize: true)
+    }
+
+    static func globalRecordWin(from careers: [LegacyCareer]) -> (holder: LegacyRecordHolder, career: String)? {
+        recordHolder(from: careers, \.recordWin, maximize: true)
+    }
+
+    /// "Best" here means the lowest final league position (1st place),
+    /// the one record-holder reduction that minimizes rather than maximizes.
+    static func globalBestSeason(from careers: [LegacyCareer]) -> (holder: LegacyRecordHolder, career: String)? {
+        recordHolder(from: careers, \.bestSeason, maximize: false)
+    }
+
+    /// Every career's preserved top transfers, flattened and re-sorted by
+    /// fee — careers archived before `topTransfers` existed contribute
+    /// nothing here, not an error.
+    static func globalTopTransfers(from careers: [LegacyCareer], limit: Int) -> [(entry: TransferHistoryEntry, career: String)] {
+        let flattened = careers.flatMap { career in
+            (career.topTransfers ?? []).map { (entry: $0, career: "\(career.managerName) at \(career.clubName)") }
+        }
+        return Array(flattened.sorted { ($0.entry.fee ?? 0) > ($1.entry.fee ?? 0) }.prefix(limit))
     }
 }

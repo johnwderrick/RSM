@@ -47,15 +47,23 @@ extension GameStore {
     /// than the board's own official objective; fans want more than
     /// "avoid relegation," whatever the board is prepared to say publicly.
     func fanExpectation() -> String {
+        // A Community Club's fans stay content regardless of table
+        // position — their identity, not a function of current form.
+        if clubIdentity(forClubIndex: userClubIndex) == .communityClub {
+            return "Just give it everything and enjoy the ride — no one's expecting miracles."
+        }
         let tier = userClub.divisionTier
         let table = clubs.filter { $0.divisionTier == tier }.sorted { $0.prestige > $1.prestige }
         let rank = (table.firstIndex { $0.id == userClub.id } ?? 0) + 1
+        // A Historic Giant's fans expect the very top regardless of
+        // current rank — a club used to winning, not just currently good.
+        let isHistoricGiant = clubIdentity(forClubIndex: userClubIndex) == .historicGiant
         if tier == 0 {
-            if rank <= 2 { return "Nothing but the title will do." }
+            if isHistoricGiant || rank <= 2 { return "Nothing but the title will do." }
             if rank <= 6 { return "A serious push for Europe." }
             return "Mid-table respectability — and no relegation scare, please."
         } else {
-            if rank <= 2 { return "Automatic promotion, no play-off drama." }
+            if isHistoricGiant || rank <= 2 { return "Automatic promotion, no play-off drama." }
             if rank <= 6 { return "At least a play-off push." }
             return "Steady progress — just don't go backwards."
         }
@@ -94,13 +102,15 @@ extension GameStore {
     /// Beating someone comfortably ought to feel different from scraping
     /// past them — an extra jolt of excitement (and season ticket
     /// interest) on top of the flat per-result delta `updateBoard` applies.
-    func boostFanExcitement(margin: Int) {
+    func boostFanExcitement(margin: Int, topPerformerName: String? = nil) {
         guard margin >= 3 else { return }
         let bonus = min(12, 3 + margin)
         fanConfidence = min(100, fanConfidence + bonus)
         seasonTicketHolders += margin >= 5 ? 15 : 6
         postSocialReaction(.hype, "\(userClub.shortName) just put \(margin) past them. \(["INCREDIBLE.", "Where has this been all season?!", "Get in there!!", "That's an absolute statement."].randomElement()!)")
-        if Double.random(in: 0..<1) < 0.5 {
+        if let topPerformerName, !topPerformerName.isEmpty, Double.random(in: 0..<1) < 0.2 {
+            postSocialReaction(.pride, ChantBook.goalChant(playerName: topPerformerName))
+        } else if Double.random(in: 0..<1) < 0.5 {
             postSocialReaction(.pride, ChantBook.winChant(clubShortName: userClub.shortName))
         }
     }
@@ -113,8 +123,17 @@ extension GameStore {
     func reactToUserSigning(_ player: Player, fee: Int) {
         guard fee > 0, player.value > 0 else { return }
         let ratio = Double(fee) / Double(player.value)
-        guard ratio > 1.35 else { return }
-        let dip = min(10, Int((ratio - 1.35) * 12))
+        // A Financial Powerhouse's fans expect big spending and aren't
+        // fazed by it; a Crisis Club/Selling Club's fans are anxious
+        // about financial overreach and grumble far sooner.
+        let threshold: Double
+        switch clubIdentity(forClubIndex: userClubIndex) {
+        case .financialPowerhouse: threshold = 1.6
+        case .crisisClub, .sellingClub: threshold = 1.15
+        default: threshold = 1.35
+        }
+        guard ratio > threshold else { return }
+        let dip = min(10, Int((ratio - threshold) * 12))
         guard dip > 0 else { return }
         fanConfidence = max(0, fanConfidence - dip)
         postSocialReaction(.concern, [
@@ -132,6 +151,7 @@ extension GameStore {
     /// and a chant of protest.
     func reactToSellingFanFavourite(_ player: Player) {
         guard isFanFavourite(player) else { return }
+        soldFanFavouriteThisSeason = true
         let dip = min(20, 8 + max(0, player.rating - 70))
         fanConfidence = max(0, fanConfidence - dip)
         boardConfidence = max(0, boardConfidence - dip / 3)

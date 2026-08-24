@@ -198,8 +198,15 @@ extension GameStore {
         }
         clubs[userClubIndex].players.append(signing)
         clubs[userClubIndex].transferBudget -= (deal.agreedFee + signingOnFee)
+        if signing.age <= 21 { signedYoungPlayerThisSeason = true }
         if signingOnFee > 0 {
             extras += " Signing-on fee: \(formatMoney(signingOnFee))."
+        }
+        // A big transfer saga moment for a standout deal — the same
+        // rough "marquee" fee threshold the newspaper classifier already
+        // uses (£15M+).
+        if deal.agreedFee >= 15_000 {
+            extras += " At \(signing.age), it's one of the biggest deals \(userClub.name) have ever done."
         }
         pendingTransferDeals.remove(at: dealIndex)
         let message = "Signed \(deal.player.name) from \(deal.sellingClubName) for \(formatMoney(deal.agreedFee))." + extras
@@ -349,6 +356,9 @@ extension GameStore {
         clubs[userClubIndex].transferBudget += fee
         userStarterIDs.remove(player.id)
         validateRoles()
+        if fee >= 15_000 {
+            extras += " A landmark departure — few sales in \(userClub.name)'s history have brought in more."
+        }
         let message = "Sold \(player.name) for \(formatMoney(fee))." + extras
         addNews(.transfer, "Player sold", message, player: player)
         reactToSellingFanFavourite(player)
@@ -407,17 +417,33 @@ extension GameStore {
 
     private func aiBuyerWeight(forClubIndex index: Int) -> Double {
         let base = sqrt(Double(clubs[index].transferBudget))
+        var weight = base
         switch personality(forClubIndex: index) {
-        case .bigSpender: return base * 1.8
-        case .moneySaver: return base * 0.5
-        default:          return base
+        case .bigSpender: weight *= 1.8
+        case .moneySaver: weight *= 0.5
+        default: break
+        }
+        if clubIdentity(forClubIndex: index) == .financialPowerhouse { weight *= 1.6 }
+        return weight
+    }
+
+    /// A club's likelihood of being picked as the SELLER in an AI-to-AI
+    /// deal — previously every AI club was equally likely regardless of
+    /// character (`processAITransfer()`'s old plain `.randomElement()`).
+    /// A Selling Club cashes in more readily; a Talent Hoarder rarely lets
+    /// its squad be picked over at all.
+    private func aiSellerWeight(forClubIndex index: Int) -> Double {
+        switch clubIdentity(forClubIndex: index) {
+        case .sellingClub:   return 2.2
+        case .talentHoarder: return 0.3
+        default:             return 1.0
         }
     }
 
     func processAITransfer() {
         let aiClubs = clubs.indices.filter { $0 != userClubIndex && clubs[$0].divisionTier < 4 }
         guard let buyer = weightedRandomIndex(from: aiClubs, weight: { aiBuyerWeight(forClubIndex: $0) }) else { return }
-        guard let seller = aiClubs.filter({ $0 != buyer }).randomElement() else { return }
+        guard let seller = weightedRandomIndex(from: aiClubs.filter { $0 != buyer }, weight: { aiSellerWeight(forClubIndex: $0) }) else { return }
         let ranked = clubs[seller].players.sorted { $0.rating > $1.rating }
         guard ranked.count > 15 else { return }
         let buyerPersonality = personality(forClubIndex: buyer)
@@ -591,7 +617,18 @@ extension GameStore {
     /// Rejects a rival's bid.
     func rejectOffer(_ offer: TransferOffer) {
         pendingOffers.removeAll { $0.id == offer.id }
-        addNews(.info, "Bid rejected", "You turned down the bid for \(offer.playerName).")
+        // A loyalty story, not just routine business — reserved for a
+        // genuinely long-serving, loyal-by-nature player, not every
+        // rejected bid.
+        if let player = userClub.players.first(where: { $0.id == offer.playerID }),
+           player.traits.loyalty >= 65,
+           let joined = clubTenureStart[player.id], season - joined >= 3 {
+            addNews(.board, "Loyalty rewarded",
+                    "You've turned down a big offer to keep \(player.name) at \(userClub.name) — a player who has given the club real service.",
+                    player: player, clubName: userClub.name)
+        } else {
+            addNews(.info, "Bid rejected", "You turned down the bid for \(offer.playerName).")
+        }
     }
 
     // MARK: - Shortlist
