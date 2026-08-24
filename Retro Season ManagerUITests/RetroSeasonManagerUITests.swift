@@ -40,12 +40,67 @@ final class RetroSeasonManagerUITests: XCTestCase {
     /// the button was clipped below the visible landscape height.
     func testManagerOnboardingCompletesEndToEnd() throws {
         let app = XCUIApplication()
-        // Idempotent across re-runs on the same simulator install: without
-        // this, a second run would already have a manager profile from the
-        // first and skip straight past onboarding to the dashboard.
         app.launchArguments = ["UITEST_RESET_LEGENDS_MANAGER"]
         app.launch()
+        completeOnboarding(app)
+    }
 
+    /// Regression test for a reported "left tab freezes the game" bug:
+    /// navigate away from the Home dashboard into another sidebar
+    /// destination (Squad), then tap Home again to come back. If
+    /// navigating back to Home ever hangs, `waitForHittable` below times
+    /// out and this test fails loudly instead of the app just silently
+    /// wedging in a live install.
+    func testSidebarHomeNavigationDoesNotHangAfterVisitingAnotherTab() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_RESET_LEGENDS_MANAGER"]
+        app.launch()
+        completeOnboarding(app)
+
+        let squadTab = app.buttons["Squad"]
+        XCTAssertTrue(squadTab.waitForExistence(timeout: 8),
+                      "Expected the Squad sidebar item on the Legends dashboard")
+        squadTab.tap()
+
+        // Grab a screenshot immediately, before any wait-for-idle timeout,
+        // so a hang is visible even if the later existence check times out.
+        let shot = app.screenshot()
+        let attachment = XCTAttachment(screenshot: shot)
+        attachment.name = "after-tapping-squad"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        let pngPath = "/tmp/rsm_squad_tap.png"
+        try? shot.pngRepresentation.write(to: URL(fileURLWithPath: pngPath))
+
+        // Something Squad-screen-specific should appear, confirming the
+        // first navigation itself didn't hang.
+        XCTAssertTrue(app.staticTexts["STARTING XI"].waitForExistence(timeout: 8)
+                        || app.staticTexts["SQUAD"].waitForExistence(timeout: 2),
+                      "Expected to actually land on the Squad screen")
+
+        let homeTab = app.buttons["Home"]
+        XCTAssertTrue(homeTab.waitForExistence(timeout: 8),
+                      "Expected the Home sidebar item to still be reachable from Squad")
+        homeTab.tap()
+
+        // Back on the dashboard, the sidebar's own Squad entry should be
+        // tappable again — proves the app is still responsive, not frozen.
+        let squadTabAgain = app.buttons["Squad"]
+        XCTAssertTrue(squadTabAgain.waitForExistence(timeout: 8),
+                      "Expected to land back on the Home dashboard with a live, responsive sidebar")
+        XCTAssertTrue(squadTabAgain.isHittable, "Sidebar should be interactive, not frozen, after returning Home")
+    }
+
+    /// Shared onboarding flow: pick an archetype, scroll to and tap SELECT
+    /// MANAGER, fill in a name, tap REVIEW PROFILE, then BEGIN YOUR LEGEND.
+    /// Real XCUITest hit-testing (not raw screen coordinates) is what makes
+    /// this reliable under the app's forced-landscape rotation — this is
+    /// also a real regression test for the bug this exact flow had: SELECT
+    /// MANAGER was unreachable once a profile was picked, because
+    /// `selection` had no scroll container and the button was clipped
+    /// below the visible landscape height.
+    @discardableResult
+    private func completeOnboarding(_ app: XCUIApplication) -> Bool {
         let legendsButton = app.buttons["experience.legends"]
         XCTAssertTrue(legendsButton.waitForExistence(timeout: 8),
                       "Expected the RSM Legends entry button on the experience selector")
@@ -84,6 +139,7 @@ final class RetroSeasonManagerUITests: XCTestCase {
 
         XCTAssertFalse(app.buttons["BEGIN YOUR LEGEND"].waitForExistence(timeout: 4),
                        "Confirming should leave the onboarding flow entirely")
+        return true
     }
 
     /// Launches the app fresh, finds `buttonID`, asserts the pressed artwork is

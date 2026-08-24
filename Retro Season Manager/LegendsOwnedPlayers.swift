@@ -84,7 +84,19 @@ extension LegendsStore {
                                                          acquisitionMethod: "COMPLETED CAREER",
                                                          isNew: false)
         }
-        profile.ownedPlayerRecords = records
+        // Guard the assignment: this runs on every ownedPlayerRecord(for:)
+        // call, including from computed properties (activeClubPlayers,
+        // reservePlayers, unsignedPlayers) read directly inside SwiftUI
+        // view bodies. profile is @Observable — an unconditional
+        // reassignment here, even to an equal dictionary, re-triggers
+        // observation and re-renders the view, which reads those
+        // properties again, which calls this again: an infinite render
+        // loop that freezes the app solid (reproduced on the Squad
+        // screen, which reads all three). Only assign when migration
+        // actually changed something.
+        if profile.ownedPlayerRecords != records {
+            profile.ownedPlayerRecords = records
+        }
     }
 
     private func statePriority(_ state: LegendsOwnedPlayerState) -> Int {
