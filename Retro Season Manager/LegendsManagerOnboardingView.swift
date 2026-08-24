@@ -244,7 +244,14 @@ struct LegendsManagerOnboardingView: View {
     @ViewBuilder private func managerArtwork(_ option: LegendsManagerArchetype, fullBody: Bool) -> some View {
         let asset = fullBody ? option.fullBodyAsset : option.portraitAsset
         if UIImage(named: asset) != nil {
-            Image(asset).resizable().scaledToFit()
+            // scaledToFill, not scaledToFit — the source photos aren't
+            // square (portraits ~4:5, full-body ~1:2), so scaledToFit left
+            // gaps at the frame's edges inside every circle/rounded-rect
+            // clip that shows this artwork, letting the panel background
+            // show through as a stray crescent/band. Every call site
+            // already pairs this with its own .frame(...).clipShape(...),
+            // which crops the overflow correctly once this actually fills.
+            Image(asset).resizable().scaledToFill()
         } else {
             Image(systemName: "person.crop.circle.fill").resizable().scaledToFit().foregroundStyle(.white.opacity(0.8)).padding(18)
         }

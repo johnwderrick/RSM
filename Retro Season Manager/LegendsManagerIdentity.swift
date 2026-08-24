@@ -367,7 +367,10 @@ struct LegendsManagerProfileView: View {
     }
 
     @ViewBuilder private func managerPortrait(_ option: LegendsManagerArchetype) -> some View {
-        if UIImage(named: option.portraitAsset) != nil { Image(option.portraitAsset).resizable().scaledToFit() }
+        // scaledToFill, not scaledToFit — see LegendsManagerOnboardingView's
+        // managerArtwork for why: the source photos aren't square, so
+        // scaledToFit left a gap at the circle's edges.
+        if UIImage(named: option.portraitAsset) != nil { Image(option.portraitAsset).resizable().scaledToFill() }
         else { Image(systemName: "person.crop.circle.fill").resizable().scaledToFit().foregroundStyle(option.accent).padding(12) }
     }
 }
