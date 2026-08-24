@@ -3,8 +3,8 @@ import XCTest
 
 @MainActor
 final class LegendsOwnedPlayersTests: XCTestCase {
-    private func freshStore() -> LegendsStore {
-        let store = LegendsStore()
+    private func freshStore() async -> LegendsStore {
+        let store = await Task { @MainActor in LegendsStore() }.value
         store.profile = .starter()
         store.profile.managerProfile = nil
         store.migrateLegacyCareerStates()
@@ -19,15 +19,15 @@ final class LegendsOwnedPlayersTests: XCTestCase {
         return card
     }
 
-    func testStarterMigrationCreatesOneRecordPerOwnedCard() {
-        let store = freshStore()
+    func testStarterMigrationCreatesOneRecordPerOwnedCard() async {
+        let store = await freshStore()
         XCTAssertEqual(store.profile.ownedPlayerRecords.count, store.profile.ownedCardIDs.count)
         XCTAssertEqual(store.profile.ownedPlayerRecords.values.filter { $0.state == .signed }.count, store.profile.startingXICardIDs.compactMap { $0 }.count + store.profile.benchCardIDs.compactMap { $0 }.count)
         XCTAssertEqual(Set(store.profile.ownedPlayerRecords.values.map(\.playerDefinitionID)), store.profile.ownedCardIDs)
     }
 
-    func testSigningCreatesActiveReserveWithoutChangingSquadAssignment() {
-        let store = freshStore()
+    func testSigningCreatesActiveReserveWithoutChangingSquadAssignment() async {
+        let store = await freshStore()
         let card = addUnsignedCard(to: store)
         XCTAssertTrue(store.signPlayer(cardID: card.id))
         store.moveToReserves(cardID: card.id)
@@ -36,15 +36,15 @@ final class LegendsOwnedPlayersTests: XCTestCase {
         XCTAssertNotNil(store.careerState(for: card))
     }
 
-    func testUnsignedPlayerCannotBeSelectedUntilSigned() {
-        let store = freshStore()
+    func testUnsignedPlayerCannotBeSelectedUntilSigned() async {
+        let store = await freshStore()
         let card = addUnsignedCard(to: store)
         store.assign(cardID: card.id, toXISlot: 0)
         XCTAssertFalse(store.profile.startingXICardIDs.contains(card.id))
     }
 
-    func testMoveToReservesNeverFreezesCareer() {
-        let store = freshStore()
+    func testMoveToReservesNeverFreezesCareer() async {
+        let store = await freshStore()
         let card = LegendsCardDatabase.all.first { store.profile.startingXICardIDs.contains($0.id) }!
         XCTAssertTrue(store.isSigned(card))
         store.moveToReserves(cardID: card.id)
@@ -54,8 +54,8 @@ final class LegendsOwnedPlayersTests: XCTestCase {
         XCTAssertFalse(store.profile.benchCardIDs.contains(card.id))
     }
 
-    func testRepeatedAssignmentsDoNotDuplicateCareerIDOrCardReference() {
-        let store = freshStore()
+    func testRepeatedAssignmentsDoNotDuplicateCareerIDOrCardReference() async {
+        let store = await freshStore()
         let card = LegendsCardDatabase.all.first { store.profile.ownedCardIDs.contains($0.id) }!
         store.assign(cardID: card.id, toXISlot: 0)
         store.assign(cardID: card.id, toBenchSlot: 0)
@@ -64,8 +64,8 @@ final class LegendsOwnedPlayersTests: XCTestCase {
         XCTAssertEqual(store.profile.ownedPlayerRecords.values.filter { $0.playerDefinitionID == card.id }.count, 1)
     }
 
-    func testSignedReservesAgeAndUnsignedPlayersRemainFrozen() {
-        let store = freshStore()
+    func testSignedReservesAgeAndUnsignedPlayersRemainFrozen() async {
+        let store = await freshStore()
         let active = LegendsCardDatabase.all.first { store.profile.startingXICardIDs.contains($0.id) }!
         let unsigned = addUnsignedCard(to: store)
         let activeAge = store.effectiveAge(for: active)
