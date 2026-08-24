@@ -158,10 +158,12 @@ final class LegendsSeasonSoakTests: XCTestCase {
     private func refillSquadIfNeeded(_ store: LegendsStore) -> Bool {
         for index in store.startingXISlots.indices where store.profile.startingXICardIDs[index] == nil {
             guard let replacement = bestReplacement(store) else { return false }
+            store.signPlayer(cardID: replacement)
             store.assign(cardID: replacement, toXISlot: index)
         }
         for index in store.profile.benchCardIDs.indices where store.profile.benchCardIDs[index] == nil {
             guard let replacement = bestReplacement(store) else { return false }
+            store.signPlayer(cardID: replacement)
             store.assign(cardID: replacement, toBenchSlot: index)
         }
         return true

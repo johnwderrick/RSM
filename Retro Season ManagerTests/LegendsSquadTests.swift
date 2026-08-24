@@ -22,6 +22,7 @@ final class LegendsSquadTests: XCTestCase {
         var seenNames = Set<String>()
         let uniqueCards = LegendsCardDatabase.all.filter { seenNames.insert($0.name).inserted }
         store.profile.ownedCardIDs = Set(uniqueCards.prefix(20).map(\.id))
+        store.signAllOwnedCardsForTesting()
         store.profile.startingXICardIDs = Array(repeating: nil, count: 11)
         store.profile.benchCardIDs = Array(repeating: nil, count: LegendsStore.benchSize)
         store.profile.captainCardID = nil
@@ -202,6 +203,7 @@ final class LegendsSquadTests: XCTestCase {
         let peak = LegendsCardDatabase.all.first { $0.id == "miessi-1112" }!
         XCTAssertEqual(young.name, peak.name)
         store.profile.ownedCardIDs.insert(peak.id)
+        store.signAllOwnedCardsForTesting()
 
         store.assign(cardID: young.id, toXISlot: 0)
         store.assign(cardID: peak.id, toBenchSlot: 0)
@@ -214,6 +216,7 @@ final class LegendsSquadTests: XCTestCase {
         let young = LegendsCardDatabase.all.first { $0.id == "miessi-0506" }!
         let peak = LegendsCardDatabase.all.first { $0.id == "miessi-1112" }!
         store.profile.ownedCardIDs.insert(peak.id)
+        store.signAllOwnedCardsForTesting()
 
         store.assign(cardID: young.id, toXISlot: 0)
         store.setCaptain(cardID: young.id)

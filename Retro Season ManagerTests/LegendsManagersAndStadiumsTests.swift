@@ -49,6 +49,7 @@ final class LegendsStoreManagersAndStadiumsTests: XCTestCase {
     private func freshStore() async -> LegendsStore {
         let store = await Task { @MainActor in LegendsStore() }.value
         store.profile.ownedCardIDs = Set(LegendsCardDatabase.all.map(\.id))
+        store.signAllOwnedCardsForTesting()
         store.profile.startingXICardIDs = Array(repeating: nil, count: 11)
         store.profile.benchCardIDs = Array(repeating: nil, count: LegendsStore.benchSize)
         store.profile.ownedManagerIDs = []

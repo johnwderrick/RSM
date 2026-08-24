@@ -33,6 +33,7 @@ final class LegendsLifecyclePhase2Tests: XCTestCase {
         store.profile.lastSeasonReview = [:]
         store.profile.cardUpgrades = [:]
         store.profile.duplicateProgress = [:]
+        store.signAllOwnedCardsForTesting()
         return store
     }
 
@@ -145,6 +146,7 @@ final class LegendsLifecyclePhase2Tests: XCTestCase {
     func testAppearanceThresholdMilestonesFireWhenCrossed() async {
         let store = await freshStore()
         let young = card("miessi-0506")
+        store.startCareerIfNeeded(for: young)
         store.assign(cardID: young.id, toXISlot: 0)
         // Drive the career to 69 appearances (one below the 14-match-season
         // threshold of 70), then finish a season that crosses 70 — the
@@ -330,6 +332,7 @@ final class LegendsLifecyclePhase2Tests: XCTestCase {
         let store = await freshStore()
         let young = card("miessi-0506")
         store.profile.ownedCardIDs.insert(young.id)
+        store.startCareerIfNeeded(for: young)
         store.assign(cardID: young.id, toXISlot: 0)
         var state = store.profile.playerCareers[young.id]!
         state.developmentMultiplier = 1.5 // BREAKTHROUGH SEASON flavour

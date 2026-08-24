@@ -32,6 +32,7 @@ final class LegendsAgingTests: XCTestCase {
         store.profile.duplicateProgress = [:]
         store.profile.playerCareers = [:]
         store.profile.legendsHall = []
+        store.signAllOwnedCardsForTesting()
         return store
     }
 
@@ -144,6 +145,7 @@ final class LegendsAgingTests: XCTestCase {
         let store = await freshStore()
         let card = card("miessi-0506")
         store.profile.ownedCardIDs = [card.id]
+        store.signAllOwnedCardsForTesting()
         for _ in 0..<(LegendsStore.matchesPerSeason * 3) {
             _ = store.advanceSeasonIfNeeded()
         }
@@ -157,6 +159,8 @@ final class LegendsAgingTests: XCTestCase {
         let store = await freshStore()
         let card = card("miessi-0506")
         store.profile.ownedCardIDs = [card.id]
+        store.signAllOwnedCardsForTesting()
+        store.startCareerIfNeeded(for: card)
         store.assign(cardID: card.id, toXISlot: 1)
         let firstCareer = store.profile.playerCareers[card.id]
         XCTAssertNotNil(firstCareer)
@@ -171,6 +175,8 @@ final class LegendsAgingTests: XCTestCase {
         let store = await freshStore()
         let card = card("miessi-0506")
         store.profile.ownedCardIDs = [card.id]
+        store.signAllOwnedCardsForTesting()
+        store.startCareerIfNeeded(for: card)
         store.assign(cardID: card.id, toXISlot: 1)
         let initial = store.effectiveOverall(for: card)
         XCTAssertTrue(store.trainPlayer(card.id))
@@ -188,6 +194,7 @@ final class LegendsAgingTests: XCTestCase {
         let store = await freshStore()
         let card = card("miessi-0506")
         store.profile.ownedCardIDs = [card.id]
+        store.signAllOwnedCardsForTesting()
         store.assign(cardID: card.id, toXISlot: 1)
         // Bring the signed career to age 34, then observe the final-season
         // announcement at 35 and Hall archival at 36.

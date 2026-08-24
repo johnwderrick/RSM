@@ -16,6 +16,7 @@
 		223624989D3B1426429EBD23 /* LegendsLiveMatchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B58DAAE268FF435CCAB8ACB /* LegendsLiveMatchTests.swift */; };
 		255D12E4E73B3F1FD532841A /* LegendsSquadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2167ED2F990D56D684B0E673 /* LegendsSquadTests.swift */; };
 		3206C4960AED715B18175B0C /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4EA2B70D878918DA4CFE4BBE /* Foundation.framework */; };
+		3630E764F76C890D39B84FC9 /* LegendsStoreTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CE7740EA775A77C8A09E25A /* LegendsStoreTestSupport.swift */; };
 		364413F3B62370F1A108B57F /* LegendsChallengeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7E8513B66785D4FEF21768F /* LegendsChallengeTests.swift */; };
 		3ED8FD5AA963F391C9598BD1 /* LegendsChemistryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F03BEE8FDDB675C4FEBF2BAA /* LegendsChemistryTests.swift */; };
 		4FAC06DD7BE5C1E8423AD72B /* CareerStoryGenerationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B121F6A9C9D225B23258477 /* CareerStoryGenerationTests.swift */; };
@@ -82,6 +83,7 @@
 		4EA2B70D878918DA4CFE4BBE /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		52EE5DA4302272C0002A9DDF /* Retro Season Manager.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Retro Season Manager.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		58C8B31BA10D57B3BFD39DAC /* NegotiationFormulaTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NegotiationFormulaTests.swift; sourceTree = "<group>"; };
+		5CE7740EA775A77C8A09E25A /* LegendsStoreTestSupport.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendsStoreTestSupport.swift; sourceTree = "<group>"; };
 		630311A8820AD986CC73BA6D /* LegendsProfileRoundTripTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendsProfileRoundTripTests.swift; sourceTree = "<group>"; };
 		644C36E4BB719E46DC5F1BD4 /* LegendsMatchTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendsMatchTests.swift; sourceTree = "<group>"; };
 		73FF9AB27737BE67B844606D /* LegacyScoringTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegacyScoringTests.swift; sourceTree = "<group>"; };
@@ -187,6 +189,7 @@
 				37A4AC188E0A4B00B09D6FD7 /* ClubIdentityTests.swift */,
 				10FBA8DFA5324C93823611D1 /* FanEngagementTests.swift */,
 				D6E7F8091A2B3C4D5E6F7081 /* LegendsLifecyclePhase2Tests.swift */,
+				5CE7740EA775A77C8A09E25A /* LegendsStoreTestSupport.swift */,
 			);
 			path = "Retro Season ManagerTests";
 			sourceTree = "<group>";
@@ -402,6 +405,7 @@
 				A9E76500D69E4CF2948C2371 /* ClubIdentityTests.swift in Sources */,
 				EB066EF752E24DD9BCABDC59 /* FanEngagementTests.swift in Sources */,
 				A1B2C3D4E5F60718293A4B5C /* LegendsLifecyclePhase2Tests.swift in Sources */,
+				3630E764F76C890D39B84FC9 /* LegendsStoreTestSupport.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -491,6 +495,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = Z9WUBU7CDA;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -510,10 +515,12 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
+				INFOPLIST_KEY_UIRequiresFullScreen = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -553,6 +560,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = Z9WUBU7CDA;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -566,9 +574,11 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
+				INFOPLIST_KEY_UIRequiresFullScreen = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 			};
 			name = Release;
@@ -581,6 +591,7 @@
 				CODE_SIGN_ENTITLEMENTS = "";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 2;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = Z9WUBU7CDA;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -626,6 +637,7 @@
 				CODE_SIGN_ENTITLEMENTS = "";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 2;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = Z9WUBU7CDA;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
