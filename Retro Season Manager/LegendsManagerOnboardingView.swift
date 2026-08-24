@@ -165,7 +165,7 @@ struct LegendsManagerOnboardingView: View {
                     }
                 }
                 if !namesValid { Text("Enter a first name and surname using letters, apostrophes or hyphens.").identityError() }
-                if !dateValid { Text("Manager age must be between 25 and 70.").identityError() }
+                if !dateValid { Text("Manager age must be between 30 and 70.").identityError() }
                 HStack {
                     Button("BACK") { step = 0 }.buttonStyle(IdentitySecondaryButtonStyle())
                     Button("REVIEW PROFILE") { step = 2 }.buttonStyle(IdentityPrimaryButtonStyle(color: archetype?.accent ?? LegendsPalette.green)).disabled(!namesValid || !dateValid || archetype == nil)
