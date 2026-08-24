@@ -195,7 +195,7 @@ struct TransfersView: View {
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(store.pendingTransferDeals) { deal in
                     HStack(spacing: 8) {
-                        PlayerAvatarView(name: deal.player.name, position: deal.player.detailedPosition.broad, size: 30, age: deal.player.age)
+                        PlayerAvatarView(name: deal.player.name, position: deal.player.detailedPosition.broad, size: 30, age: deal.player.age, nation: deal.player.nationality)
                         VStack(alignment: .leading, spacing: 1) {
                             Text(deal.player.name)
                                 .font(.system(.callout, design: .monospaced).bold())

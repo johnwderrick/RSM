@@ -99,7 +99,7 @@ struct TransferHubView: View {
 
     private func dealRow(_ deal: PendingTransferDeal) -> some View {
         HStack(spacing: 8) {
-            PlayerAvatarView(name: deal.player.name, position: deal.player.detailedPosition.broad, size: 32, age: deal.player.age)
+            PlayerAvatarView(name: deal.player.name, position: deal.player.detailedPosition.broad, size: 32, age: deal.player.age, nation: deal.player.nationality)
             VStack(alignment: .leading, spacing: 2) {
                 Text(deal.player.name)
                     .font(.system(.callout, design: .monospaced).bold())

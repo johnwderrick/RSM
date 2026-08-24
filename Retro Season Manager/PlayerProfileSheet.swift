@@ -118,7 +118,7 @@ struct PlayerProfileSheet: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 14) {
-                PlayerPortraitView(name: player.name, position: player.position, age: player.age, size: 56)
+                PlayerPortraitView(name: player.name, position: player.position, age: player.age, nation: player.nationality, size: 56)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(player.name)
                         .font(.system(.title2, design: .monospaced).bold())
@@ -126,6 +126,12 @@ struct PlayerProfileSheet: View {
                     Text("Age \(player.age) · \(player.detailedPosition.fullName) · \(player.foot)")
                         .font(.system(.footnote, design: .monospaced))
                         .foregroundStyle(Retro.text.opacity(0.85))
+                    HStack(spacing: 5) {
+                        FlagView(nationality: player.nationality, width: 16)
+                        Text(player.nationality)
+                            .font(.system(.footnote, design: .monospaced))
+                            .foregroundStyle(Retro.text.opacity(0.85))
+                    }
                     OverallRatingView(rating: player.rating)
                 }
                 Spacer()
@@ -135,6 +141,15 @@ struct PlayerProfileSheet: View {
                         .foregroundStyle(Retro.highlight)
                     Text("OVR").font(.system(.caption2, design: .monospaced))
                 }
+            }
+            if player.isAcademyProduct {
+                Text("🎓 ACADEMY GRADUATE")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundStyle(Retro.accent)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Retro.accent.opacity(0.15))
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
             }
             if !player.secondaryPositions.isEmpty {
                 HStack(spacing: 6) {
@@ -241,6 +256,9 @@ struct PlayerProfileSheet: View {
                 infoCell("Status", statusText)
                 infoCell("Form", player.formGuide.isEmpty ? "—" : player.formGuide.map(String.init).joined(separator: "-"))
                 infoCell("Ability", String(repeating: "★", count: player.stars) + String(repeating: "☆", count: 5 - player.stars))
+                if let joined = store.clubTenureStart[player.id] {
+                    infoCell("At the club", "Since Season \(joined)")
+                }
             }
         }
     }

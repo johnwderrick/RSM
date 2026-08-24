@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 // MARK: - Reusable pieces
 
@@ -98,18 +99,18 @@ struct AttributeBar: View {
     }
 }
 
-/// A simple crest: the club's short name inside a rounded badge.
-/// A circular initials "headshot" for a player — no real portraits exist
-/// in this game, so a coloured monogram (tinted by position, like a strip
-/// colour) stands in for one anywhere a player card is shown.
+/// A circular player headshot — forwards to `PlayerPortraitView`'s real
+/// portrait photo pool. `nation`, when the caller has one on hand, biases
+/// which skin-tone bucket of that pool the photo is drawn from.
 struct PlayerAvatarView: View {
     let name: String
     let position: Position?
     let size: CGFloat
     var age: Int? = nil
+    var nation: String? = nil
 
     var body: some View {
-        PlayerPortraitView(name: name, position: position, age: age, size: size)
+        PlayerPortraitView(name: name, position: position, age: age, nation: nation, size: size)
     }
 }
 
@@ -120,6 +121,44 @@ struct CrestView: View {
 
     var body: some View {
         ClubBadgeView(name: shortName, shortName: shortName, size: size, primaryColor: color)
+    }
+}
+
+/// A small national flag for a `Player.nationality`/`LegendsCard.nation`
+/// string, looked up in `Assets.xcassets/Flags/Flag_<slug>` by stripping
+/// everything but letters/digits from the name (`"Cote d'Ivoire"` →
+/// `Flag_CotedIvoire`) — the same slugging the flag pack's crop script
+/// used to name the files. A couple of `aliases` cover spots where this
+/// codebase's existing nationality strings differ slightly from the
+/// pack's own naming. The flag pack's "FIFA members" source sheet didn't
+/// include England, Scotland, or Northern Ireland as separate entries
+/// (despite each fielding its own national team in reality) — for those
+/// three specific nations, and any other name with no matching asset,
+/// this renders nothing rather than a broken-image placeholder.
+struct FlagView: View {
+    let nationality: String
+    var width: CGFloat = 24
+
+    private static let aliases: [String: String] = [
+        "Czech Republic": "Czechia",
+        "Ivory Coast": "Cote d'Ivoire",
+    ]
+
+    private var assetName: String {
+        let resolved = Self.aliases[nationality] ?? nationality
+        let slug = resolved.filter { $0.isLetter || $0.isNumber }
+        return "Flag_\(slug)"
+    }
+
+    var body: some View {
+        if UIImage(named: assetName) != nil {
+            Image(assetName)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: width, height: width * 0.68)
+                .clipShape(RoundedRectangle(cornerRadius: 2))
+                .overlay(RoundedRectangle(cornerRadius: 2).stroke(.black.opacity(0.25), lineWidth: 0.5))
+        }
     }
 }
 
@@ -229,7 +268,7 @@ struct Panel<Content: View>: View {
 enum MatchFlashKind {
     case halfTime(homeShort: String, homeGoals: Int, awayGoals: Int, awayShort: String)
     case injury(playerName: String)
-    case playerOfTheMatch(name: String)
+    case playerOfTheMatch(name: String, rating: Double)
     case yellowCard(playerName: String)
     case substitution(offName: String, onName: String)
     case promotion(clubName: String)
@@ -251,7 +290,7 @@ enum MatchFlashKind {
         switch self {
         case .halfTime(let home, let homeGoals, let awayGoals, let away): return "\(home) \(homeGoals)-\(awayGoals) \(away)"
         case .injury(let name): return name
-        case .playerOfTheMatch(let name): return name
+        case .playerOfTheMatch(let name, let rating): return "\(name) — \(String(format: "%.1f", rating)) rating"
         case .yellowCard(let name): return name
         case .substitution(let off, let on): return "\(on) replaces \(off)"
         case .promotion(let clubName): return "\(clubName) go up!"
@@ -289,6 +328,9 @@ enum MatchFlashKind {
     var isCelebratory: Bool {
         switch self {
         case .promotion, .champions: return true
+        // A genuine standout display — not every match's routine MOTM —
+        // earns the same shake/confetti broadcast treatment.
+        case .playerOfTheMatch(_, let rating): return rating >= 8.5
         default: return false
         }
     }

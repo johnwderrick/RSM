@@ -290,23 +290,6 @@ struct ShieldShape: Shape {
     }
 }
 
-/// A simple 3-pointed crown.
-struct CrownShape: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        let w = rect.width, h = rect.height
-        path.move(to: CGPoint(x: rect.minX, y: rect.maxY))
-        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + h * 0.45))
-        path.addLine(to: CGPoint(x: rect.minX + w * 0.2, y: rect.minY + h * 0.7))
-        path.addLine(to: CGPoint(x: rect.minX + w * 0.5, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.minX + w * 0.8, y: rect.minY + h * 0.7))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + h * 0.45))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
-        path.closeSubpath()
-        return path
-    }
-}
-
 /// A 5-point star.
 struct StarShape: Shape {
     var points: Int = 5
@@ -329,169 +312,37 @@ struct StarShape: Shape {
     }
 }
 
-/// A single laurel leaf, curving away from the stem — two mirrored copies
-/// either side of a badge form the classic laurel-wreath charge.
-struct LaurelLeafShape: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        path.move(to: CGPoint(x: rect.midX, y: rect.maxY))
-        path.addQuadCurve(to: CGPoint(x: rect.midX, y: rect.minY),
-                           control: CGPoint(x: rect.maxX, y: rect.midY))
-        path.addQuadCurve(to: CGPoint(x: rect.midX, y: rect.maxY),
-                           control: CGPoint(x: rect.minX, y: rect.midY))
-        path.closeSubpath()
-        return path
-    }
-}
-
-private enum BadgeShapeKind: CaseIterable { case circle, shield }
-private enum BadgePattern: CaseIterable { case solid, halvedVertical, halvedDiagonal, stripes, quartered }
-private enum BadgeCharge: CaseIterable { case initials, star, crown, laurel, chevron }
-
-/// A procedurally generated club crest: shape, colour pattern and central
-/// charge are all picked deterministically from the club's name, so the
-/// same club always renders the same badge and the whole roster of clubs
-/// reads as hundreds of distinct-but-related crests from one system
-/// instead of hand-drawn one-offs. `primaryColor` is caller-supplied (club
-/// branding elsewhere in the app) — everything else grows from the seed.
+/// Renders one of a curated pool of real crest artwork images
+/// (`Assets.xcassets/Badges/ClubBadge01`...`ClubBadge24`), picked
+/// deterministically from the club's name so the same club always shows
+/// the same badge — the same "same seed, same result" principle the
+/// procedural generator this replaced used, just against real artwork
+/// instead of drawn shapes. With only 24 source badges against a much
+/// larger roster of clubs (80 across Career Mode's four divisions alone),
+/// clubs necessarily repeat a badge sometimes — acceptable for a first
+/// pass; a larger badge pool or a player-facing picker would remove the
+/// repetition later. `shortName`/`primaryColor` stay on the signature for
+/// source compatibility with existing call sites but no longer drive the
+/// rendering, since the artwork's colors and lettering are fixed.
 struct ClubBadgeView: View {
     let name: String
     let shortName: String
     let size: CGFloat
     var primaryColor: Color = Retro.emerald
 
-    private var seed: SeededGenerator { SeededGenerator(seed: name) }
+    private static let badgeCount = 24
 
-    private var shapeKind: BadgeShapeKind {
-        var gen = seed
-        return BadgeShapeKind.allCases.randomElement(using: &gen) ?? .circle
-    }
-
-    private var pattern: BadgePattern {
-        var gen = seed
-        _ = gen.next()
-        return BadgePattern.allCases.randomElement(using: &gen) ?? .solid
-    }
-
-    private var charge: BadgeCharge {
-        var gen = seed
-        _ = gen.next(); _ = gen.next()
-        return BadgeCharge.allCases.randomElement(using: &gen) ?? .initials
-    }
-
-    private var secondaryColor: Color {
-        var gen = seed
-        _ = gen.next(); _ = gen.next(); _ = gen.next()
-        let options: [Color] = [Retro.gold, Retro.darkGreen, Retro.pureWhite, Retro.royalBlue]
-        return options.randomElement(using: &gen) ?? Retro.gold
+    private var badgeIndex: Int {
+        var gen = SeededGenerator(seed: name)
+        return Int.random(in: 1...Self.badgeCount, using: &gen)
     }
 
     var body: some View {
-        ZStack {
-            base
-            chargeView
-        }
-        .frame(width: size, height: size)
-        .overlay(outline)
-        .shadow(color: primaryColor.opacity(0.5), radius: size * 0.1, y: size * 0.04)
-    }
-
-    @ViewBuilder
-    private var base: some View {
-        switch pattern {
-        case .solid:
-            clip(LinearGradient(colors: [primaryColor, primaryColor.opacity(0.7)], startPoint: .top, endPoint: .bottom))
-        case .halvedVertical:
-            clip(HStack(spacing: 0) {
-                Rectangle().fill(primaryColor)
-                Rectangle().fill(secondaryColor)
-            })
-        case .halvedDiagonal:
-            clip(ZStack {
-                Rectangle().fill(primaryColor)
-                Path { path in
-                    path.move(to: CGPoint(x: 0, y: size))
-                    path.addLine(to: CGPoint(x: size, y: 0))
-                    path.addLine(to: CGPoint(x: size, y: size))
-                    path.closeSubpath()
-                }
-                .fill(secondaryColor)
-            })
-        case .stripes:
-            clip(HStack(spacing: 0) {
-                ForEach(0..<5, id: \.self) { i in
-                    Rectangle().fill(i.isMultiple(of: 2) ? primaryColor : secondaryColor)
-                }
-            })
-        case .quartered:
-            clip(VStack(spacing: 0) {
-                HStack(spacing: 0) { Rectangle().fill(primaryColor); Rectangle().fill(secondaryColor) }
-                HStack(spacing: 0) { Rectangle().fill(secondaryColor); Rectangle().fill(primaryColor) }
-            })
-        }
-    }
-
-    private func clip(_ content: some View) -> some View {
-        content.clipShape(badgeShape)
-    }
-
-    private var badgeShape: AnyShape {
-        switch shapeKind {
-        case .circle: return AnyShape(Circle())
-        case .shield: return AnyShape(ShieldShape())
-        }
-    }
-
-    @ViewBuilder
-    private var outline: some View {
-        switch shapeKind {
-        case .circle: Circle().stroke(chargeTint.opacity(0.55), lineWidth: max(1, size * 0.025))
-        case .shield: ShieldShape().stroke(chargeTint.opacity(0.55), lineWidth: max(1, size * 0.025))
-        }
-    }
-
-    /// The charge (initials/star/crown/laurel) is always drawn in
-    /// whichever of primary/secondary reads better against the base, so
-    /// it's never invisible on a same-tone background.
-    private var chargeTint: Color {
-        pattern == .solid ? Retro.pureWhite : secondaryColor
-    }
-
-    @ViewBuilder
-    private var chargeView: some View {
-        switch charge {
-        case .initials:
-            Text(shortName)
-                .font(.system(size: size * 0.34, weight: .bold, design: .monospaced))
-                .foregroundStyle(chargeTint)
-                .shadow(color: .black.opacity(0.35), radius: 1, y: 1)
-        case .star:
-            StarShape()
-                .fill(chargeTint)
-                .frame(width: size * 0.44, height: size * 0.44)
-        case .crown:
-            CrownShape()
-                .fill(chargeTint)
-                .frame(width: size * 0.5, height: size * 0.36)
-                .offset(y: -size * 0.02)
-        case .laurel:
-            HStack(spacing: size * 0.28) {
-                LaurelLeafShape().fill(chargeTint).frame(width: size * 0.16, height: size * 0.5)
-                    .rotationEffect(.degrees(-18))
-                LaurelLeafShape().fill(chargeTint).frame(width: size * 0.16, height: size * 0.5)
-                    .rotationEffect(.degrees(18))
-                    .scaleEffect(x: -1, y: 1)
-            }
-        case .chevron:
-            Path { path in
-                let w = size * 0.5, h = size * 0.32
-                path.move(to: CGPoint(x: -w / 2, y: -h / 2))
-                path.addLine(to: CGPoint(x: 0, y: h / 2))
-                path.addLine(to: CGPoint(x: w / 2, y: -h / 2))
-            }
-            .stroke(chargeTint, style: StrokeStyle(lineWidth: max(2, size * 0.06), lineCap: .round, lineJoin: .round))
-            .frame(width: size * 0.5, height: size * 0.32)
-        }
+        Image("ClubBadge\(String(format: "%02d", badgeIndex))")
+            .resizable()
+            .scaledToFit()
+            .frame(width: size, height: size)
+            .shadow(color: .black.opacity(0.35), radius: size * 0.08, y: size * 0.03)
     }
 }
 
@@ -817,65 +668,57 @@ struct HonourRow: View {
 /// rather than photoreal — flat colour, hard edges, no shading gradients on
 /// the face itself — to sit comfortably next to the game's pixel-icon
 /// system instead of reading as a different, softer art style.
+/// A circular player headshot: one of a curated pool of real portrait
+/// photos (`Assets.xcassets/Portraits/Portrait01`...`Portrait66`), picked
+/// deterministically from the player's name — the same "same seed, same
+/// result" principle `ClubBadgeView` uses for real crest artwork. With
+/// only 66 source photos against a Career Mode roster that can run into
+/// the thousands, the same photo repeats often (roughly every ~25
+/// players) — accepted for now as a starter set; a larger portrait pool
+/// would reduce the repetition later without any other change here.
+/// `age` stays on the signature for source compatibility with existing
+/// call sites but no longer drives anything, since a real photo can't be
+/// aged up or down the way the procedural generator it replaced could.
+///
+/// The pick isn't uniformly random across all 66, though — see
+/// `tonePool` below for why, and `PlayerPortraitView.ToneOverrides.swift`-
+/// adjacent tables further down this file for the actual data.
 struct PlayerPortraitView: View {
     let name: String
     var position: Position? = nil
     var age: Int? = nil
+    /// A real-world nationality string, when the caller has one on hand
+    /// (`Player.nationality`, `LegendsCard.nation`, `ClubLegend.nationality`)
+    /// — biases which skin-tone bucket of the 66 portraits this player's
+    /// face is drawn from. Optional and additive: omitting it just falls
+    /// back to the unbucketed full pool, exactly like before this existed.
+    var nation: String? = nil
     var size: CGFloat = 40
 
-    private var seed: SeededGenerator { SeededGenerator(seed: name) }
-    private var isVeteran: Bool { (age ?? 25) >= 31 }
-    private var isYouth: Bool { (age ?? 25) <= 20 }
+    private static let portraitCount = 66
 
-    private static let skinTones: [Color] = [
-        Color(red: 0.94, green: 0.80, blue: 0.69),
-        Color(red: 0.87, green: 0.68, blue: 0.53),
-        Color(red: 0.76, green: 0.57, blue: 0.42),
-        Color(red: 0.55, green: 0.38, blue: 0.27),
-        Color(red: 0.35, green: 0.23, blue: 0.16),
-    ]
-    private static let hairTones: [Color] = [
-        Color(red: 0.08, green: 0.07, blue: 0.07),
-        Color(red: 0.25, green: 0.16, blue: 0.10),
-        Color(red: 0.40, green: 0.27, blue: 0.15),
-        Color(red: 0.80, green: 0.68, blue: 0.40),
-        Color(red: 0.72, green: 0.35, blue: 0.18),
-    ]
-    private static let greyTones: [Color] = [
-        Color(red: 0.65, green: 0.65, blue: 0.65),
-        Color(red: 0.78, green: 0.78, blue: 0.78),
-        Color(red: 0.25, green: 0.16, blue: 0.10),
-    ]
-
-    private var skinTone: Color {
-        var gen = seed
-        return Self.skinTones.randomElement(using: &gen) ?? Self.skinTones[0]
+    /// Which skin-tone bucket a player's portrait should be drawn from,
+    /// and why: Legends' card names are deliberate parodies of specific,
+    /// identifiable real footballers ("L. Miessi" → Messi, "K. Mbappa" →
+    /// Mbappé) — `PortraitTone.nameOverrides` matches on the *exact*
+    /// display name for the ones where the real person's own appearance
+    /// is well known, since a nation-level guess isn't good enough there
+    /// (a France-default bucket would put a Mbappé/Kanté/Vieira/Varane/
+    /// Desailly parody on the wrong-toned face). Career Mode's players
+    /// are generated, not parodies of anyone real, so for them (and any
+    /// Legends name not in the override list) this only ever reaches
+    /// `PortraitTone.nationDefaults` — a plausibility default bucketed by
+    /// nation, not a claim about any specific individual.
+    private var tonePool: [Int] {
+        if let override = PortraitTone.nameOverrides[name] { return override }
+        if let nation, let byNation = PortraitTone.nationDefaults[nation] { return byNation }
+        return Array(1...Self.portraitCount)
     }
 
-    private var hairTone: Color {
-        var gen = seed
-        _ = gen.next()
-        let pool = isVeteran ? Self.greyTones : Self.hairTones
-        return pool.randomElement(using: &gen) ?? pool[0]
-    }
-
-    private var hairStyle: Int {
-        var gen = seed
-        _ = gen.next(); _ = gen.next()
-        return Int.random(in: 0...3, using: &gen)
-    }
-
-    private var hasBeard: Bool {
-        guard !isYouth else { return false }
-        var gen = seed
-        _ = gen.next(); _ = gen.next(); _ = gen.next()
-        return Double.random(in: 0..<1, using: &gen) < (isVeteran ? 0.55 : 0.3)
-    }
-
-    private var browAngle: Double {
-        var gen = seed
-        _ = gen.next(); _ = gen.next(); _ = gen.next(); _ = gen.next()
-        return [-8.0, 0.0, 10.0].randomElement(using: &gen) ?? 0
+    private var portraitIndex: Int {
+        var gen = SeededGenerator(seed: name)
+        let pool = tonePool
+        return pool.randomElement(using: &gen) ?? Int.random(in: 1...Self.portraitCount, using: &gen)
     }
 
     private var accentColor: Color {
@@ -893,54 +736,67 @@ struct PlayerPortraitView: View {
             Circle()
                 .fill(RadialGradient(colors: [accentColor.opacity(0.35), accentColor.opacity(0.1)],
                                       center: .center, startRadius: 0, endRadius: size * 0.6))
-            hairBackdrop
-            ZStack {
-                Circle().fill(skinTone)
-                HStack(spacing: size * 0.14) {
-                    Capsule().fill(hairTone).frame(width: size * 0.14, height: size * 0.035)
-                        .rotationEffect(.degrees(browAngle))
-                    Capsule().fill(hairTone).frame(width: size * 0.14, height: size * 0.035)
-                        .rotationEffect(.degrees(-browAngle))
-                }
-                .offset(y: -size * 0.05)
-                HStack(spacing: size * 0.18) {
-                    Circle().fill(Color.black.opacity(0.75)).frame(width: size * 0.07, height: size * 0.07)
-                    Circle().fill(Color.black.opacity(0.75)).frame(width: size * 0.07, height: size * 0.07)
-                }
-                .offset(y: size * 0.02)
-                if hasBeard {
-                    Ellipse()
-                        .fill(hairTone.opacity(0.92))
-                        .frame(width: size * 0.5, height: size * 0.22)
-                        .offset(y: size * 0.3)
-                }
-                Capsule()
-                    .fill(Color.black.opacity(0.5))
-                    .frame(width: size * 0.2, height: size * 0.03)
-                    .offset(y: size * 0.18)
-            }
-            .frame(width: size * 0.82, height: size * 0.82)
-            .clipShape(Circle())
-            .overlay(Circle().stroke(.white.opacity(0.3), lineWidth: 1).frame(width: size * 0.82, height: size * 0.82))
+            Image("Portrait\(String(format: "%02d", portraitIndex))")
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .frame(width: size * 0.82, height: size * 0.82)
+                .clipShape(Circle())
+                .overlay(Circle().stroke(.white.opacity(0.3), lineWidth: 1))
         }
         .frame(width: size, height: size)
     }
+}
 
-    /// Drawn behind the (clipped, circular) head, so only the portion that
-    /// pokes out beyond the head's edge reads as visible hair — a bald or
-    /// short style barely peeks above the hairline, a fuller style shows
-    /// as a band or ring around the head.
-    @ViewBuilder
-    private var hairBackdrop: some View {
-        switch hairStyle {
-        case 0:
-            EmptyView()
-        case 1:
-            Circle().fill(hairTone).frame(width: size * 0.7, height: size * 0.5).offset(y: -size * 0.22)
-        case 2:
-            Circle().fill(hairTone).frame(width: size * 0.95, height: size * 0.95).offset(y: -size * 0.02)
-        default:
-            Circle().fill(hairTone).frame(width: size * 0.88, height: size * 0.62).offset(y: -size * 0.18)
-        }
-    }
+/// The skin-tone buckets `PlayerPortraitView.tonePool` draws from — the
+/// 66 source photos sorted once, by eye, into three broad tone groups,
+/// plus the two tables (per-nation default, per-name override) that
+/// decide which bucket a given player pulls from. Kept as one small,
+/// clearly-labelled place so the judgment calls involved (which bucket a
+/// person or nation gets) are easy to find and revise, rather than
+/// scattered through `PlayerPortraitView` itself.
+private enum PortraitTone {
+    static let light = [6, 9, 12, 14, 15, 18, 22, 25, 27, 30, 35, 36, 42, 46, 53, 57, 64]
+    static let medium = [2, 5, 7, 8, 13, 17, 19, 20, 26, 28, 31, 32, 33, 34, 39, 43, 47, 48, 50, 51, 52, 54, 56, 58, 59, 60, 61, 62, 63, 65, 66]
+    static let dark = [1, 3, 4, 10, 11, 16, 21, 23, 24, 29, 37, 38, 40, 41, 44, 45, 49, 55]
+
+    /// A plausibility default per nation — not a claim about any one
+    /// person, just the bucket a generated (not-a-real-person) Career
+    /// Mode player from that nation most often lands in. Every nation
+    /// appearing in `LegendsCardDatabase` or Career Mode's
+    /// `nationalityPool`/`randomNationality` is covered.
+    static let nationDefaults: [String: [Int]] = [
+        "Argentina": light, "Austria": light, "Belgium": light, "Brazil": medium,
+        "Canada": light, "Croatia": light, "Czech Republic": light, "Denmark": light,
+        "England": light, "France": light, "Germany": light,
+        "Republic of Ireland": light, "Italy": light, "Ivory Coast": dark, "Netherlands": light,
+        "Nigeria": dark, "Northern Ireland": light, "Norway": light, "Poland": light,
+        "Portugal": light, "Romania": light, "Scotland": light, "Slovenia": light,
+        "Spain": light, "Sweden": light, "Wales": light,
+    ]
+
+    /// Legends' card names are deliberate parodies of specific, real,
+    /// identifiable footballers — this is the subset where the nation
+    /// default above would put a well-known real person's face on the
+    /// wrong tone entirely (mostly Black players from squads whose
+    /// nation-default above skews light, going by the rest of that
+    /// nation's roster in this card set). Not exhaustive — only the
+    /// cases confidently identifiable from the name/nation/era on the
+    /// card, and only where getting it wrong would actually show.
+    static let nameOverrides: [String: [Int]] = [
+        "A. Davison": dark,     // Alphonso Davies
+        "C. Seedorfino": dark,  // Clarence Seedorf
+        "D. Alvarinho": dark,   // Dani Alves
+        "E. Nascimento": dark,  // Pelé
+        "K. Mbappa": dark,      // Kylian Mbappé
+        "M. Desaille": dark,    // Marcel Desailly
+        "N. Kantay": dark,      // N'Golo Kanté
+        "P. Vieirama": dark,    // Patrick Vieira
+        "R. Carlosao": dark,    // Roberto Carlos
+        "R. Riveraldo": dark,   // Rivaldo
+        "R. Varanova": dark,    // Raphaël Varane
+        "T. Alabana": dark,     // David Alaba
+        "T. Walkerino": dark,   // Kyle Walker
+        "V. Dijkerman": dark,   // Virgil van Dijk
+        "V. Junior": dark,      // Vinícius Júnior
+    ]
 }
