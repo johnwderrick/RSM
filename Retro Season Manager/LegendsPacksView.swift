@@ -2,105 +2,112 @@
 //  LegendsPacksView.swift
 //  Retro Season Manager
 //
-//  Pack shop + the animated opening reveal (Phase 4): cards flip one by
-//  one, high-rarity pulls get a confetti burst, duplicates show their
-//  upgrade progress.
+//  Pack shop and the three-card choice flow. Opening a pack reserves three
+//  candidates, animates them into view, and only the selected card enters
+//  the player library.
 //
 
 import SwiftUI
 
 struct LegendsPacksView: View {
     let store: LegendsStore
+    var onNavigate: ((LegendsNavItem) -> Void)? = nil
     var onBack: () -> Void
 
     @State private var openingPack: LegendsPack? = nil
 
     var body: some View {
-        ZStack {
-            Retro.background.ignoresSafeArea()
-            VStack(spacing: 14) {
-                header
-                ScrollView {
+        LegendsMenuShell(store: store, title: "PACKS", subtitle: "OPEN YOUR NEXT STORY", icon: "shippingbox.fill", accent: LegendsPalette.purple, onBack: onBack, currentNav: .packs, onNavigate: onNavigate, scrollContent: false) {
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 14) {
+                    if let pendingPackID = store.profile.pendingPackID,
+                       let pendingPack = LegendsPackDatabase.all.first(where: { $0.id == pendingPackID }) {
+                        pendingBanner(pendingPack)
+                    }
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                         ForEach(LegendsPackDatabase.all) { pack in
                             packTile(pack)
                         }
                     }
-                    .padding(.horizontal)
                     .padding(.bottom, 20)
                 }
             }
         }
-        .fullScreenCover(item: $openingPack) { pack in
+        .sheet(item: $openingPack) { pack in
             LegendsPackOpeningView(store: store, pack: pack) { openingPack = nil }
         }
     }
 
-    private var header: some View {
-        VStack(spacing: 10) {
-            HStack {
-                LegendsBackButton(action: onBack)
+    private func pendingBanner(_ pack: LegendsPack) -> some View {
+        Button {
+            openingPack = pack
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "sparkles.tv.fill")
+                    .font(.system(size: 24, weight: .black))
+                    .foregroundStyle(LegendsPalette.gold)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("PACK DECISION WAITING")
+                        .font(.system(size: 11, weight: .black, design: .monospaced))
+                        .foregroundStyle(LegendsPalette.navy)
+                    Text("Choose one of your three candidates to add to the library.")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(LegendsPalette.navy.opacity(0.66))
+                }
                 Spacer()
+                Image(systemName: "chevron.right.circle.fill")
+                    .foregroundStyle(LegendsPalette.purple)
             }
-            .padding(.horizontal)
-            .padding(.top, 12)
-
-            Text("PACKS")
-                .font(.system(.title2, design: .monospaced).bold())
-                .foregroundStyle(Retro.accent)
-
-            HStack(spacing: 16) {
-                Label("\(store.profile.coins)", systemImage: "dollarsign.circle.fill")
-                Label("\(store.profile.packTokens)", systemImage: "shippingbox.fill")
-            }
-            .font(.system(.footnote, design: .monospaced).bold())
-            .foregroundStyle(Retro.text.opacity(0.85))
+            .padding(14)
+            .background(LegendsPalette.goldWash)
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(LegendsPalette.gold.opacity(0.4), lineWidth: 1))
         }
+        .buttonStyle(PressableButtonStyle())
     }
 
     private func packTile(_ pack: LegendsPack) -> some View {
         let claimed = pack.id == "starter" && store.profile.hasClaimedStarterPack
-        let affordable = !claimed && (pack.currency == .coins ? store.profile.coins >= pack.cost : store.profile.packTokens >= pack.cost)
+        let pending = store.profile.pendingPackID != nil
+        let affordable = !claimed && !pending && (pack.currency == .coins ? store.profile.coins >= pack.cost : store.profile.packTokens >= pack.cost)
         return Button {
             Haptics.tap()
             openingPack = pack
         } label: {
             VStack(spacing: 8) {
-                Image(systemName: "shippingbox.fill")
-                    .font(.system(size: 30))
-                    .foregroundStyle(affordable ? Retro.accent : Retro.text.opacity(0.3))
+                LegendsPackArtwork(tint: affordable ? LegendsPalette.purple : LegendsPalette.navy.opacity(0.35))
                 Text(pack.name)
-                    .font(.system(.footnote, design: .monospaced).bold())
-                    .foregroundStyle(affordable ? Retro.text : Retro.text.opacity(0.4))
+                    .font(.system(.footnote, design: .rounded).weight(.black))
+                    .foregroundStyle(affordable ? LegendsPalette.navy : LegendsPalette.navy.opacity(0.4))
                 Text(pack.subtitle)
                     .font(.system(.caption2, design: .monospaced))
-                    .foregroundStyle(Retro.text.opacity(0.55))
+                    .foregroundStyle(LegendsPalette.navy.opacity(0.58))
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
-                Text("GUARANTEED: \(pack.guaranteedRarityLabel.uppercased())+")
-                    .font(.system(size: 9, design: .monospaced).bold())
-                    .foregroundStyle(Retro.gold.opacity(0.85))
+                if pack.guaranteedMinTier > 0 {
+                    Text("GUARANTEED: \(pack.guaranteedRarityLabel.uppercased())+")
+                        .font(.system(size: 9, design: .monospaced).bold())
+                        .foregroundStyle(LegendsPalette.purple)
+                }
                 HStack(spacing: 4) {
                     if !claimed {
                         Image(systemName: pack.currency == .coins ? "dollarsign.circle.fill" : "shippingbox.fill")
                             .font(.system(size: 11))
                     }
-                    Text(claimed ? "CLAIMED" : (pack.cost == 0 ? "FREE" : "\(pack.cost)"))
+                    Text(claimed ? "CLAIMED" : (pending ? "FINISH DECISION" : (pack.cost == 0 ? "FREE" : "\(pack.cost)")))
                         .font(.system(.caption, design: .monospaced).bold())
                 }
-                .foregroundStyle(claimed ? Retro.text.opacity(0.4) : (affordable ? Retro.highlight : Retro.warning))
+                .foregroundStyle(claimed ? LegendsPalette.navy.opacity(0.4) : (affordable ? LegendsPalette.goldDeep : Retro.warning))
             }
-            .frame(maxWidth: .infinity, minHeight: 140)
-            .padding(12)
-            .background(
-                LinearGradient(colors: [Retro.panel.opacity(0.95), Retro.panel.opacity(0.7)],
-                               startPoint: .top, endPoint: .bottom)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 14))
-            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Retro.accent.opacity(affordable ? 0.4 : 0.1), lineWidth: 1))
+            .frame(maxWidth: .infinity, minHeight: 166)
+            .padding(14)
+            .background(affordable ? LegendsPalette.purpleWash : LegendsPalette.navy.opacity(0.05))
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(LegendsPalette.purple.opacity(affordable ? 0.35 : 0.1), lineWidth: 1))
+            .shadow(color: LegendsPalette.navy.opacity(0.08), radius: 7, y: 3)
         }
         .buttonStyle(PressableButtonStyle())
-        .disabled(!affordable)
+        .disabled(claimed || (pending && store.profile.pendingPackID != pack.id))
     }
 }
 
@@ -110,157 +117,208 @@ private struct LegendsPackOpeningView: View {
     var onDone: () -> Void
 
     @State private var results: [LegendsPackPullResult] = []
-    @State private var revealedCount = 0
-    @State private var flipped: Set<Int> = []
+    @State private var revealed = Set<Int>()
+    @State private var selectedIndex: Int? = nil
     @State private var burstIndex: Int? = nil
     @State private var errorMessage: String? = nil
+    @State private var entry = false
+    @State private var claimedCardID: String? = nil
+    @State private var showingSignChoice = false
+
+    private var pending: Bool { store.profile.pendingPackID != nil }
+    private var allRevealed: Bool { revealed.count == results.count && !results.isEmpty }
 
     var body: some View {
         ZStack {
-            Retro.background.ignoresSafeArea()
-            VStack(spacing: 24) {
+            LinearGradient(colors: [LegendsPalette.navy, LegendsPalette.purple, LegendsPalette.blue], startPoint: .topLeading, endPoint: .bottomTrailing)
+                .ignoresSafeArea()
+            VStack(spacing: 16) {
                 HStack {
-                    LegendsBackButton(label: "Close", action: onDone)
+                    Button {
+                        Haptics.tap()
+                        onDone()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 14, weight: .black))
+                            .foregroundStyle(.white)
+                            .frame(width: 38, height: 38)
+                            .background(.white.opacity(0.15))
+                            .clipShape(Circle())
+                    }
+                    .accessibilityLabel("Close pack opening")
+                    .buttonStyle(PressableButtonStyle())
                     Spacer()
+                    Text(pack.name.uppercased())
+                        .font(.system(size: 16, weight: .black, design: .rounded))
+                        .foregroundStyle(.white)
+                    Spacer()
+                    LegendsPackArtwork(tint: LegendsPalette.gold, compact: true)
                 }
-                .padding(.horizontal)
+                .padding(.horizontal, 18)
                 .padding(.top, 12)
 
-                Text(pack.name.uppercased())
-                    .font(.system(.title2, design: .monospaced).bold())
-                    .foregroundStyle(Retro.accent)
-
-                if results.isEmpty && errorMessage == nil {
-                    Spacer()
-                    ProgressView().tint(Retro.accent)
-                    Spacer()
-                } else if let errorMessage {
+                if let errorMessage {
                     Spacer()
                     Text(errorMessage)
                         .font(.system(.footnote, design: .monospaced))
-                        .foregroundStyle(Retro.warning)
+                        .foregroundStyle(.white)
                         .multilineTextAlignment(.center)
-                        .padding(.horizontal, 40)
                     Spacer()
                 } else {
+                    VStack(spacing: 6) {
+                        Text(allRevealed ? "CHOOSE ONE PLAYER" : "YOUR PACK IS OPENING")
+                            .font(.system(size: 24, weight: .black, design: .rounded))
+                            .foregroundStyle(LegendsPalette.gold)
+                        Text(allRevealed ? "The other two remain unavailable." : "Three candidates. One becomes part of your story.")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.76))
+                    }
+                    .padding(.top, 8)
+
                     Spacer()
-                    HStack(spacing: 16) {
+                    HStack(spacing: 10) {
                         ForEach(Array(results.enumerated()), id: \.offset) { index, result in
-                            cardSlot(index: index, result: result)
+                            candidateCard(index: index, result: result)
                         }
                     }
+                    .padding(.horizontal, 12)
                     Spacer()
-                    if revealedCount >= results.count {
+
+                    if let selectedIndex {
                         Button {
                             Haptics.success()
-                            onDone()
+                            do {
+                                let claimed = try store.claimPreparedPack(at: selectedIndex)
+                                claimedCardID = claimed.card.id
+                                self.selectedIndex = nil
+                                showingSignChoice = true
+                            } catch {
+                                errorMessage = "This player could not be added right now."
+                            }
                         } label: {
-                            Text("CONTINUE")
+                            Text("ADD PLAYER TO LIBRARY")
                                 .font(.system(.headline, design: .monospaced).bold())
-                                .foregroundStyle(Retro.background)
-                                .frame(maxWidth: 260)
+                                .foregroundStyle(LegendsPalette.navy)
+                                .frame(maxWidth: 320)
                                 .padding(.vertical, 14)
-                                .background(Retro.accent)
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                                .background(LegendsPalette.green)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
                         }
                         .buttonStyle(PressableButtonStyle())
-                        .padding(.bottom, 30)
-                        .transition(.opacity)
+                        .padding(.bottom, 24)
                     } else {
-                        Text("Tap each card to reveal it")
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(Retro.text.opacity(0.6))
-                            .padding(.bottom, 30)
+                        Text(allRevealed ? "Tap the player you want to keep" : "Tap each card to reveal it")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.68))
+                            .padding(.bottom, 24)
                     }
                 }
+            }
+        }
+        .alert("PLAYER ACQUIRED", isPresented: $showingSignChoice) {
+            Button("ADD TO COLLECTION") {
+                if let claimedCardID { store.markPlayerViewed(cardID: claimedCardID) }
+                onDone()
+            }
+            if let claimedCardID {
+                Button("SIGN NOW") {
+                    _ = store.signPlayer(cardID: claimedCardID)
+                    onDone()
+                }
+            }
+        } message: {
+            if let claimedCardID,
+               let card = LegendsCardDatabase.all.first(where: { $0.id == claimedCardID }) {
+                Text("\(card.name) is waiting in your Collection. Sign now to start the career, or keep the player unsigned with their age frozen.")
+            } else {
+                Text("Choose whether to begin this player's career now or keep them unsigned in your Collection.")
             }
         }
         .onAppear {
-            do {
-                results = try store.openPack(pack)
-            } catch {
-                errorMessage = "Couldn't open this pack."
+            if store.profile.pendingPackID == pack.id {
+                results = store.pendingPackResults()
+            } else if store.profile.pendingPackID == nil {
+                do { results = try store.preparePack(pack) }
+                catch { errorMessage = "This pack cannot be opened right now." }
+            } else {
+                errorMessage = "Finish the other pack decision first."
             }
+            withAnimation(.easeOut(duration: 0.45)) { entry = true }
         }
     }
 
-    private func cardSlot(index: Int, result: LegendsPackPullResult) -> some View {
-        let isFlipped = flipped.contains(index)
-        return ZStack {
-            cardBack
-                .opacity(isFlipped ? 0 : 1)
-            cardFront(result)
-                .opacity(isFlipped ? 1 : 0)
-                .overlay {
-                    if burstIndex == index {
-                        ConfettiBurst()
-                    }
+    private func candidateCard(index: Int, result: LegendsPackPullResult) -> some View {
+        let isRevealed = revealed.contains(index)
+        let isSelected = selectedIndex == index
+        return Button {
+            guard isRevealed || allRevealed else {
+                Haptics.tap()
+                revealed.insert(index)
+                if result.card.rarity.tier >= 5 {
+                    burstIndex = index
+                    Haptics.success()
+                    SoundManager.shared.play(.trophyLift)
                 }
-        }
-        .rotation3DEffect(.degrees(isFlipped ? 0 : 180), axis: (x: 0, y: 1, z: 0))
-        .animation(.spring(duration: 0.5), value: isFlipped)
-        .onTapGesture {
-            guard !isFlipped else { return }
-            Haptics.tap()
-            flipped.insert(index)
-            revealedCount += 1
-            if result.card.rarity.tier >= 5 {
-                burstIndex = index
-                Haptics.success()
-                SoundManager.shared.play(.trophyLift)
+                return
             }
+            guard allRevealed else { return }
+            Haptics.tap()
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.72)) {
+                selectedIndex = isSelected ? nil : index
+            }
+        } label: {
+            ZStack {
+                if isRevealed {
+                    cardFront(result, isSelected: isSelected)
+                } else {
+                    cardBack
+                }
+                if burstIndex == index {
+                    ConfettiBurst(particleCount: result.card.rarity.tier >= 6 ? 22 : 14, duration: 0.9)
+                }
+            }
+            .rotation3DEffect(.degrees(isRevealed ? 0 : 180), axis: (x: 0, y: 1, z: 0))
+            .offset(y: entry ? 0 : 80)
+            .opacity(entry ? 1 : 0)
+            .animation(.spring(response: 0.55, dampingFraction: 0.78).delay(Double(index) * 0.12), value: entry)
         }
+        .buttonStyle(.plain)
     }
 
     private var cardBack: some View {
-        RoundedRectangle(cornerRadius: 14)
-            .fill(Retro.panel)
-            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Retro.accent.opacity(0.5), lineWidth: 1))
-            .overlay(Image(systemName: "questionmark").font(.system(size: 26)).foregroundStyle(Retro.accent.opacity(0.6)))
-            .frame(width: 96, height: 130)
+        RoundedRectangle(cornerRadius: 16)
+            .fill(LinearGradient(colors: [LegendsPalette.navy, LegendsPalette.blue], startPoint: .topLeading, endPoint: .bottomTrailing))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(LegendsPalette.gold.opacity(0.8), lineWidth: 2))
+            .overlay(VStack(spacing: 7) {
+                Text("RSM").font(.system(size: 20, weight: .black, design: .rounded)).foregroundStyle(.white)
+                Image(systemName: "sparkles").font(.system(size: 26, weight: .black)).foregroundStyle(LegendsPalette.gold)
+            })
+            .frame(width: 102, height: 142)
     }
 
-    private func cardFront(_ result: LegendsPackPullResult) -> some View {
+    private func cardFront(_ result: LegendsPackPullResult, isSelected: Bool) -> some View {
         VStack(spacing: 6) {
-            Text(result.card.position.rawValue)
-                .font(.system(.caption2, design: .monospaced).bold())
-                .foregroundStyle(Retro.background)
-                .padding(4)
-                .background(Circle().fill(result.card.rarity.tint))
-            Text(result.card.name)
-                .font(.system(size: 10, design: .monospaced).bold())
-                .foregroundStyle(Retro.text)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-            Text("\(store.effectiveOverall(for: result.card))")
-                .font(.system(.title3, design: .monospaced).bold())
-                .foregroundStyle(result.card.rarity.tint)
-            if !result.isNewCard {
-                Text(result.grantedUpgrade ? "UPGRADED +1" : "DUPLICATE")
-                    .font(.system(size: 8, design: .monospaced).bold())
-                    .foregroundStyle(result.grantedUpgrade ? Retro.gold : Retro.text.opacity(0.5))
-            } else {
-                Text("NEW")
-                    .font(.system(size: 8, design: .monospaced).bold())
-                    .foregroundStyle(Retro.highlight)
-            }
+            LegendsPlayerCardView(store: store, card: result.card, variant: .reveal, isSelected: isSelected, showsStatus: false)
+                .environment(\.colorScheme, .dark)
+            Text(isSelected ? "KEEPING" : "CANDIDATE")
+                .font(.system(size: 8, weight: .black, design: .monospaced))
+                .foregroundStyle(isSelected ? LegendsPalette.green : .white.opacity(0.62))
         }
-        .frame(width: 96, height: 130)
-        .padding(6)
-        .background(Retro.panel.opacity(0.9))
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(result.card.rarity.tint, lineWidth: 2))
+        .frame(width: 102, height: 142)
     }
 }
 
-/// A one-shot burst of small tinted particles for high-rarity reveals —
-/// no external dependency, just a handful of animated shapes.
 private struct ConfettiBurst: View {
+    let duration: Double
+    let particles: [(angle: Double, distance: CGFloat, color: Color)]
     @State private var expanded = false
 
-    private let particles: [(angle: Double, distance: CGFloat, color: Color)] = (0..<14).map { i in
-        (angle: Double(i) * (360.0 / 14.0), distance: CGFloat.random(in: 40...80),
-         color: [Retro.gold, Retro.emerald, Retro.royalBlue, Retro.pureWhite].randomElement()!)
+    init(particleCount: Int = 14, duration: Double = 0.7) {
+        self.duration = duration
+        self.particles = (0..<particleCount).map { i in
+            (angle: Double(i) * (360.0 / Double(particleCount)), distance: CGFloat.random(in: 40...80),
+             color: [LegendsPalette.gold, LegendsPalette.green, LegendsPalette.blue, .white].randomElement()!)
+        }
     }
 
     var body: some View {
@@ -275,9 +333,7 @@ private struct ConfettiBurst: View {
                     .opacity(expanded ? 0 : 1)
             }
         }
-        .onAppear {
-            withAnimation(.easeOut(duration: 0.7)) { expanded = true }
-        }
+        .onAppear { withAnimation(.easeOut(duration: duration)) { expanded = true } }
         .allowsHitTesting(false)
     }
 }

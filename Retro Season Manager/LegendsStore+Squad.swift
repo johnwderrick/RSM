@@ -10,6 +10,101 @@
 
 import Foundation
 
+/// Presentation-only controls for the Player Library. Keeping these
+/// value types outside the view makes filtering/sorting deterministic and
+/// easy to exercise without rendering SwiftUI.
+enum LegendsLibrarySort: String, CaseIterable, Identifiable {
+    case rating = "RATING"
+    case name = "NAME"
+    case age = "AGE"
+    case rarity = "RARITY"
+
+    var id: String { rawValue }
+}
+
+enum LegendsLibraryGroup: String, CaseIterable, Identifiable {
+    case none = "ALL CARDS"
+    case player = "BY PLAYER"
+    case position = "BY POSITION"
+
+    var id: String { rawValue }
+}
+
+struct LegendsLibraryQuery {
+    var position: DetailedPosition?
+    var rarity: LegendsRarity?
+    var era: LegendsEra?
+    var sort: LegendsLibrarySort
+    var group: LegendsLibraryGroup
+    var searchText: String
+
+    nonisolated init(position: DetailedPosition? = nil,
+                     rarity: LegendsRarity? = nil,
+                     era: LegendsEra? = nil,
+                     sort: LegendsLibrarySort = .rating,
+                     group: LegendsLibraryGroup = .none,
+                     searchText: String = "") {
+        self.position = position
+        self.rarity = rarity
+        self.era = era
+        self.sort = sort
+        self.group = group
+        self.searchText = searchText
+    }
+}
+
+extension LegendsStore {
+    func libraryCards(query: LegendsLibraryQuery = LegendsLibraryQuery(),
+                      excludingActive: Bool = true) -> [LegendsCard] {
+        let signedIDs = profile.activatedCardIDs.union(
+            (profile.startingXICardIDs + profile.benchCardIDs).compactMap { $0 }
+        )
+        let search = query.searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let filtered = LegendsCardDatabase.all.filter { card in
+            profile.ownedCardIDs.contains(card.id)
+                && (!excludingActive || !signedIDs.contains(card.id))
+                && !isRetired(card)
+                && (query.position == nil || canPlay(card, in: query.position!))
+                && (query.rarity == nil || card.rarity == query.rarity!)
+                && (query.era == nil || card.era == query.era!)
+                && (search.isEmpty || card.name.lowercased().contains(search)
+                    || card.club.lowercased().contains(search)
+                    || card.nation.lowercased().contains(search))
+        }
+        return filtered.sorted { lhs, rhs in
+            switch query.sort {
+            case .rating:
+                let left = effectiveOverall(for: lhs)
+                let right = effectiveOverall(for: rhs)
+                return left != right ? left > right : lhs.name < rhs.name
+            case .name:
+                return lhs.name != rhs.name ? lhs.name < rhs.name : lhs.season < rhs.season
+            case .age:
+                let left = effectiveAge(for: lhs)
+                let right = effectiveAge(for: rhs)
+                return left != right ? left < right : lhs.name < rhs.name
+            case .rarity:
+                return lhs.rarity.tier != rhs.rarity.tier ? lhs.rarity.tier > rhs.rarity.tier : lhs.name < rhs.name
+            }
+        }
+    }
+
+    func libraryGroups(query: LegendsLibraryQuery = LegendsLibraryQuery()) -> [(key: String, cards: [LegendsCard])] {
+        let cards = libraryCards(query: query)
+        guard query.group != .none else { return [(key: "ALL CARDS", cards: cards)] }
+        let grouped = Dictionary(grouping: cards) { card in
+            switch query.group {
+            case .player: return card.name
+            case .position: return card.position.broad.rawValue
+            case .none: return "ALL CARDS"
+            }
+        }
+        return grouped.keys.sorted().map { key in
+            (key: key, cards: grouped[key] ?? [])
+        }
+    }
+}
+
 /// A single position in the squad — either a Starting XI index or a bench
 /// index — used to identify the two sides of a drag-and-drop swap on the
 /// Squad screen.
@@ -47,18 +142,7 @@ extension LegendsStore {
     /// midfield and attack rows, derived the same way Career Mode's own
     /// `PitchView` derives them from a `Formation`.
     var startingXISlots: [DetailedPosition] {
-        let f = formation
-        var slots: [DetailedPosition] = [.goalkeeper]
-        for i in 0..<f.defenders {
-            slots.append(.expected(for: .defender, indexInRow: i, rowCount: f.defenders))
-        }
-        for i in 0..<f.midfielders {
-            slots.append(.expected(for: .midfielder, indexInRow: i, rowCount: f.midfielders, wideIsWinger: f.wideMidfieldersAreWingers))
-        }
-        for i in 0..<f.forwards {
-            slots.append(.expected(for: .forward, indexInRow: i, rowCount: f.forwards))
-        }
-        return slots
+        formation.slotRoles()
     }
 
     /// Switches formation, resizing `startingXICardIDs` to match — cards
@@ -109,6 +193,14 @@ extension LegendsStore {
         }
     }
 
+    /// Whether a card is a natural fit for a detailed formation slot.
+    /// Pickers use this to avoid presenting players who cannot play the
+    /// position being replaced.
+    func canPlay(_ card: LegendsCard, in slot: DetailedPosition) -> Bool {
+        if card.position == slot { return true }
+        return card.position.relatedRoles.contains(slot)
+    }
+
     /// A retired card (LegendsStore+Aging.swift) can't be fielded — the
     /// whole point of retirement is forcing a replacement, not letting
     /// the same aged-out card just get reassigned straight back in.
@@ -118,17 +210,47 @@ extension LegendsStore {
     }
 
     func assign(cardID: String, toXISlot index: Int) {
-        guard isAssignable(cardID), profile.startingXICardIDs.indices.contains(index) else { return }
+        guard isAssignable(cardID), profile.startingXICardIDs.indices.contains(index),
+              let card = LegendsCardDatabase.all.first(where: { $0.id == cardID }), isSigned(card) else { return }
         removeFromSquad(cardID)
         profile.startingXICardIDs[index] = cardID
+        profile.activatedCardIDs.insert(cardID)
         persist()
     }
 
     func assign(cardID: String, toBenchSlot index: Int) {
-        guard isAssignable(cardID), profile.benchCardIDs.indices.contains(index) else { return }
+        guard isAssignable(cardID), profile.benchCardIDs.indices.contains(index),
+              let card = LegendsCardDatabase.all.first(where: { $0.id == cardID }), isSigned(card) else { return }
         removeFromSquad(cardID)
         profile.benchCardIDs[index] = cardID
+        profile.activatedCardIDs.insert(cardID)
         persist()
+    }
+
+    func moveToReserves(cardID: String) {
+        guard let card = LegendsCardDatabase.all.first(where: { $0.id == cardID }), isSigned(card) else { return }
+        for index in profile.startingXICardIDs.indices where profile.startingXICardIDs[index] == cardID {
+            if profile.captainCardID == cardID { profile.captainCardID = nil }
+            profile.startingXICardIDs[index] = nil
+        }
+        for index in profile.benchCardIDs.indices where profile.benchCardIDs[index] == cardID {
+            profile.benchCardIDs[index] = nil
+        }
+        persist()
+    }
+
+    func assignToStartingXI(cardID: String, slot index: Int) -> Bool {
+        guard let card = LegendsCardDatabase.all.first(where: { $0.id == cardID }), isSigned(card),
+              profile.startingXICardIDs.indices.contains(index) else { return false }
+        assign(cardID: cardID, toXISlot: index)
+        return profile.startingXICardIDs[index] == cardID
+    }
+
+    func assignToBench(cardID: String, slot index: Int) -> Bool {
+        guard let card = LegendsCardDatabase.all.first(where: { $0.id == cardID }), isSigned(card),
+              profile.benchCardIDs.indices.contains(index) else { return false }
+        assign(cardID: cardID, toBenchSlot: index)
+        return profile.benchCardIDs[index] == cardID
     }
 
     func clearXISlot(_ index: Int) {
@@ -171,6 +293,8 @@ extension LegendsStore {
         let cardB = read(b)
         write(a, cardB)
         write(b, cardA)
+        if let cardA { profile.activatedCardIDs.insert(cardA) }
+        if let cardB { profile.activatedCardIDs.insert(cardB) }
 
         // The captain follows their card ID, not a slot — but if this
         // swap moved the captain out of the XI onto the bench, the

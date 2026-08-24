@@ -34,6 +34,20 @@
                ReferencedContainer = "container:Retro Season Manager.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "D1D2D3D4D5D6D7D8D9DADBDC"
+               BuildableName = "Retro Season ManagerUITests.xctest"
+               BlueprintName = "Retro Season ManagerUITests"
+               ReferencedContainer = "container:Retro Season Manager.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction
@@ -59,6 +73,16 @@
                BlueprintIdentifier = "09BE58255CAC8C4148BBE9ED"
                BuildableName = "Retro Season ManagerTests.xctest"
                BlueprintName = "Retro Season ManagerTests"
+               ReferencedContainer = "container:Retro Season Manager.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "D1D2D3D4D5D6D7D8D9DADBDC"
+               BuildableName = "Retro Season ManagerUITests.xctest"
+               BlueprintName = "Retro Season ManagerUITests"
                ReferencedContainer = "container:Retro Season Manager.xcodeproj">
             </BuildableReference>
          </TestableReference>

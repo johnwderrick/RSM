@@ -4,15 +4,27 @@
 //
 //  The live match presentation for RSM Legends' full-parity match
 //  engine (LegendsLiveMatch.swift) — mirrors MatchDayView.swift's
-//  MatchView/SubsSheet composition (fixed score bar, flexible
-//  commentary feed, fixed control bar) restyled with Legends' own Retro
-//  chrome. Reuses Career Mode's stadium background art and match "flash
-//  screen" overlays (MatchFlashOverlay, PixelConfettiBurst,
-//  CRTScanlineOverlay, matchShake) directly — all pure views with zero
-//  GameStore coupling. Penalty/red-card flashes are intentionally not
-//  ported: this engine only ever produces goal/half-time/full-time/sub
-//  events, so there's no trigger for them. No animated 2D/3D pitch —
-//  explicitly descoped, Legends stays text/UI-based per the design doc.
+//  MatchView/SubsSheet composition (fixed score bar, flexible main
+//  content, fixed control bar) restyled with Legends' own Retro chrome.
+//  Reuses Career Mode's stadium background art and match "flash screen"
+//  overlays (MatchFlashOverlay, PixelConfettiBurst, CRTScanlineOverlay,
+//  matchShake) directly — all pure views with zero GameStore coupling.
+//  Penalty/red-card flashes are intentionally not ported: this engine
+//  only ever produces goal/half-time/full-time/sub events, so there's no
+//  trigger for them.
+//
+//  The animated 2D pitch (`LegendsPitchCanvas`, LegendsLiveMatchPitchView.swift)
+//  is the *default* main content as of Phase 6 of the 2D match simulator
+//  — it used to live behind a "2D" debug button opening a separate sheet;
+//  now this view owns the `LegendsMatchSimulation` driving it directly,
+//  keeps its `speedMultiplier` in lockstep with `live.speed`/`isPaused`
+//  so the pitch speeds up and freezes exactly in step with the
+//  commentary, and forwards goal/big-chance commentary lines into
+//  `simulation.triggerAttack(forUser:scored:)` plus substitutions into
+//  `simulation.applySubstitution(...)` — so the pitch dots track the
+//  real XI as it changes, not just the kickoff snapshot. The text
+//  commentary feed is still one tap away via the control bar's toggle,
+//  just no longer the default.
 //
 
 import SwiftUI
@@ -21,8 +33,24 @@ struct LegendsLiveMatchView: View {
     let store: LegendsStore
     let live: LegendsLiveMatch
     var onFinished: () -> Void
+    /// Invoked when the player abandons the match early — the parent
+    /// records a forfeit loss (see `abandonMatch()`), as opposed to
+    /// `onFinished`, which carries the real result.
+    var onAbandoned: () -> Void
 
+    @State private var simulation: LegendsMatchSimulation
     @State private var showSubs = false
+    @State private var showAbandonConfirm = false
+    /// Which main content the score bar sits above — the animated pitch
+    /// by default, or the scrolling text commentary one tap away.
+    @State private var showCommentary = false
+    /// The `id` of the newest commentary line already forwarded to the
+    /// pitch — the anchor `reactToLatestCommentary` diffs against, so a
+    /// tick that appends two lines (a goal and a big chance in the same
+    /// minute) forwards *both* rather than only the newest. Compared by
+    /// stable id rather than index because the feed is trimmed to 60
+    /// lines from the front, which would otherwise shift indices.
+    @State private var lastHandledCommentaryID: UUID?
     @State private var hasFinishedHandoff = false
 
     @State private var goalFlash = false
@@ -34,6 +62,28 @@ struct LegendsLiveMatchView: View {
     @State private var confettiColors: [Color] = []
 
     private var userColor: Color { Color(rgb: store.profile.crestColorRGB) }
+
+    init(store: LegendsStore, live: LegendsLiveMatch, onFinished: @escaping () -> Void, onAbandoned: @escaping () -> Void) {
+        self.store = store
+        self.live = live
+        self.onFinished = onFinished
+        self.onAbandoned = onAbandoned
+
+        let userSlots: [(role: DetailedPosition, id: String, name: String)] = Array(
+            zip(store.startingXISlots, live.onPitchCardIDs).enumerated()
+        ).map { index, pair in
+            let (role, cardID) = pair
+            let card = cardID.flatMap { id in LegendsCardDatabase.all.first { $0.id == id } }
+            return (role, cardID ?? "user-slot-\(index)", card?.name ?? "—")
+        }
+        let opponentRoster = LegendsOpponentRoster.generateRoster(for: live.opponent)
+        _simulation = State(initialValue: LegendsMatchSimulation(
+            userSlots: userSlots,
+            userFormation: store.formation,
+            opponentFormation: opponentRoster.formation,
+            opponentPlayers: opponentRoster.players
+        ))
+    }
 
     var body: some View {
         ZStack {
@@ -49,7 +99,11 @@ struct LegendsLiveMatchView: View {
 
             VStack(spacing: 0) {
                 scoreBar
-                commentaryFeed
+                if showCommentary {
+                    commentaryFeed
+                } else {
+                    pitchContent
+                }
                 Divider().background(Retro.accent.opacity(0.2))
                 controlBar
             }
@@ -61,13 +115,112 @@ struct LegendsLiveMatchView: View {
             CRTScanlineOverlay()
         }
         .matchShake(trigger: shakeTrigger)
-        .onAppear { live.start() }
+        .onAppear {
+            live.start()
+            simulation.speedMultiplier = live.isPaused ? 0 : live.speed
+            simulation.start()
+        }
+        .onDisappear {
+            live.stop()
+            simulation.stop()
+        }
         .onChange(of: live.teamGoals) { _, _ in triggerGoalFlash(isUser: true) }
         .onChange(of: live.opponentGoals) { _, _ in triggerGoalFlash(isUser: false) }
         .onChange(of: live.isHalfTime) { _, isHalfTime in if isHalfTime { triggerHalfTimeFlash() } }
         .onChange(of: live.isFinished) { _, finished in if finished { triggerFullTimeConfettiIfWon() } }
+        .onChange(of: live.speed) { _, newSpeed in simulation.speedMultiplier = live.isPaused ? 0 : newSpeed }
+        .onChange(of: live.isPaused) { _, isPaused in simulation.speedMultiplier = isPaused ? 0 : live.speed }
+        .onChange(of: live.commentary.count) { _, _ in reactToLatestCommentary() }
+        .onChange(of: live.onPitchCardIDs) { oldIDs, newIDs in
+            applyPitchSubstitutions(from: oldIDs, to: newIDs)
+        }
         .sheet(isPresented: $showSubs) {
             LegendsSubsSheet(live: live)
+        }
+        .alert("Abandon match?", isPresented: $showAbandonConfirm) {
+            Button("Keep playing", role: .cancel) {}
+            Button("Abandon — counts as a 0–3 loss", role: .destructive) {
+                abandonMatch()
+            }
+        } message: {
+            Text("The match will end immediately and be recorded as a defeat.")
+        }
+    }
+
+    /// Ends the match early: stops the engine's live loop and the pitch
+    /// simulation (both tasks cancelled cleanly, nothing else ticks), then
+    /// hands off so the parent can record a forfeit loss. Guarded by
+    /// `hasFinishedHandoff` so a double-tap can't apply the outcome twice.
+    private func abandonMatch() {
+        guard !hasFinishedHandoff else { return }
+        hasFinishedHandoff = true
+        Haptics.warning()
+        live.stop()
+        simulation.stop()
+        onAbandoned()
+    }
+
+    private var pitchContent: some View {
+        LegendsPitchCanvas(simulation: simulation, userColor: userColor, opponentColor: opponentBadgeColor,
+                           userName: store.profile.clubName, opponentName: live.opponent.name)
+            .padding(.horizontal)
+            .padding(.vertical, 6)
+    }
+
+    /// Reads every commentary line appended since the last one this
+    /// method handled and, for each that's a goal or a big chance, fires
+    /// the matching attack sequence on the pitch — diffing against
+    /// `lastHandledCommentaryID` rather than only reading `.last`, since
+    /// `LegendsLiveMatch` can append two lines in one tick (each side is
+    /// rolled independently) and the second would otherwise hide the
+    /// first. Both sides now share the one "Big chance for X — the keeper
+    /// stands tall!" template (matching Career Mode's own big-chance line
+    /// in `LiveMatch.swift`) — a Legends near-miss is a save, not a
+    /// wayward shot, so `triggerAttack`'s `scored: false` path can send
+    /// the shot at the keeper rather than off into space. Everything else
+    /// — kick-off, half-time, substitutions (always `side: .home`
+    /// regardless of which team subs, since only the user has a bench to
+    /// draw from) — is deliberately ignored by keying off the exact
+    /// templates `LegendsLiveMatch.rollGoalChances()`/`scoreGoal(forUser:)`
+    /// use, rather than just checking `side != nil`.
+    private func reactToLatestCommentary() {
+        let lines = live.commentary
+        // The anchor may have been trimmed off the front of the 60-line
+        // cap if a large batch of lines landed at once — in that case
+        // everything still present is unhandled, so start from the top.
+        let startIndex: Int
+        if let anchor = lastHandledCommentaryID, let index = lines.firstIndex(where: { $0.id == anchor }) {
+            startIndex = index + 1
+        } else {
+            startIndex = 0
+        }
+        guard startIndex < lines.count else { return }
+        for line in lines[startIndex...] {
+            guard let side = line.side else { continue }
+            let forUser = side == .home
+            if line.text.contains("⚽︎ GOAL") {
+                simulation.triggerAttack(forUser: forUser, scored: true)
+            } else if line.text.contains("Big chance for") {
+                simulation.triggerAttack(forUser: forUser, scored: false)
+            }
+        }
+        lastHandledCommentaryID = lines.last?.id
+    }
+
+    /// Syncs the pitch's user dots with a substitution: `makeUserSub`
+    /// swaps one slot of `onPitchCardIDs` in place, so diff the old/new
+    /// lists and hand each changed slot to
+    /// `simulation.applySubstitution` — the departing card's dot becomes
+    /// the incoming card (id + name) right where it stands, and the sim
+    /// releases any active run override the departing player held.
+    private func applyPitchSubstitutions(from oldIDs: [String?], to newIDs: [String?]) {
+        guard newIDs.count == oldIDs.count else { return }
+        for index in newIDs.indices where oldIDs[index] != newIDs[index] {
+            let cardID = newIDs[index]
+            let card = cardID.flatMap { id in LegendsCardDatabase.all.first { $0.id == id } }
+            simulation.applySubstitution(slotIndex: index,
+                                         cardID: cardID ?? "user-slot-\(index)",
+                                         name: card?.name ?? "—")
         }
     }
 
@@ -143,8 +296,7 @@ struct LegendsLiveMatchView: View {
     // MARK: - Score bar
 
     private var opponentBadgeColor: Color {
-        var gen = SeededGenerator(seed: live.opponent.name)
-        return Color(hue: Double.random(in: 0...1, using: &gen), saturation: 0.5, brightness: 0.75)
+        Color.distinctOpponentColor(seed: live.opponent.name, awayFromHue: Color.hue01(ofRGB: store.profile.crestColorRGB))
     }
 
     private var clockText: String {
@@ -184,6 +336,7 @@ struct LegendsLiveMatchView: View {
                               size: 34, primaryColor: opponentBadgeColor)
 
                 playPauseButton
+                abandonButton
             }
 
             minuteProgress
@@ -191,6 +344,23 @@ struct LegendsLiveMatchView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
         .background(Retro.panel)
+    }
+
+    private var abandonButton: some View {
+        Button {
+            Haptics.tap()
+            showAbandonConfirm = true
+        } label: {
+            Image(systemName: "xmark")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(live.isFinished ? Retro.text.opacity(0.3) : Retro.warning)
+                .frame(width: 32, height: 32)
+                .background(Retro.background.opacity(0.6))
+                .clipShape(Circle())
+                .accessibilityLabel("Abandon match")
+        }
+        .buttonStyle(.plain)
+        .disabled(live.isFinished)
     }
 
     private var playPauseButton: some View {
@@ -336,6 +506,20 @@ struct LegendsLiveMatchView: View {
                 }
                 .buttonStyle(PressableButtonStyle())
                 .disabled(live.subsLeft == 0)
+
+                Button {
+                    Haptics.tap()
+                    showCommentary.toggle()
+                } label: {
+                    Text(showCommentary ? "2D" : "TEXT")
+                        .font(.system(.caption, design: .monospaced).bold())
+                        .foregroundStyle(Retro.text)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Retro.background.opacity(0.5))
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(PressableButtonStyle())
             }
         }
         .padding(.horizontal, 14)

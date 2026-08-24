@@ -10,41 +10,19 @@ import SwiftUI
 
 struct LegendsStadiumsView: View {
     let store: LegendsStore
+    var onNavigate: ((LegendsNavItem) -> Void)? = nil
     var onBack: () -> Void
 
     var body: some View {
-        ZStack {
-            Retro.background.ignoresSafeArea()
-            VStack(spacing: 14) {
-                header
-                ScrollView {
-                    VStack(spacing: 10) {
-                        ForEach(LegendsStadiumDatabase.all) { stadium in
-                            stadiumRow(stadium)
-                        }
+        LegendsMenuShell(store: store, title: "STADIUMS", subtitle: "\(store.profile.ownedStadiumIDs.count) / \(LegendsStadiumDatabase.all.count) OWNED", icon: "building.2.fill", accent: LegendsPalette.blue, onBack: onBack, currentNav: .club, onNavigate: onNavigate, scrollContent: false) {
+            ScrollView {
+                VStack(spacing: 10) {
+                    ForEach(LegendsStadiumDatabase.all) { stadium in
+                        stadiumRow(stadium)
                     }
-                    .padding(.horizontal)
-                    .padding(.bottom, 24)
                 }
+                .padding(.bottom, 24)
             }
-        }
-    }
-
-    private var header: some View {
-        VStack(spacing: 8) {
-            HStack {
-                LegendsBackButton(action: onBack)
-                Spacer()
-            }
-            .padding(.horizontal)
-            .padding(.top, 12)
-
-            Text("STADIUMS")
-                .font(.system(.title2, design: .monospaced).bold())
-                .foregroundStyle(Retro.accent)
-            Text("\(store.profile.ownedStadiumIDs.count)/\(LegendsStadiumDatabase.all.count) OWNED")
-                .font(.system(.caption, design: .monospaced).bold())
-                .foregroundStyle(Retro.text.opacity(0.6))
         }
     }
 

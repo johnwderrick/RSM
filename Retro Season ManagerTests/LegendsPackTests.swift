@@ -54,6 +54,9 @@ final class LegendsStorePackOpeningTests: XCTestCase {
         // aging penalty, so a real playthrough's cardAgeOffsets otherwise
         // leaks into "does effectiveOverall equal overall+upgrade" checks.
         store.profile.cardAgeOffsets = [:]
+        store.profile.activatedCardIDs = []
+        store.profile.pendingPackID = nil
+        store.profile.pendingPackCardIDs = []
         store.profile.hasClaimedStarterPack = false
         return store
     }
@@ -98,6 +101,30 @@ final class LegendsStorePackOpeningTests: XCTestCase {
         let card = LegendsCardDatabase.all.first!
         store.profile.cardUpgrades[card.id] = LegendsStore.maxCardUpgrade
         XCTAssertEqual(store.effectiveOverall(for: card), min(99, card.overall + LegendsStore.maxCardUpgrade))
+    }
+
+    func testPreparedPackAddsOnlyTheChosenCardToTheLibrary() async throws {
+        let store = await freshStore()
+        let pack = LegendsPackDatabase.all.first { $0.id == "bronze" }!
+        let candidates = try store.preparePack(pack)
+        XCTAssertEqual(candidates.count, pack.cardCount)
+        XCTAssertTrue(store.profile.ownedCardIDs.isEmpty)
+
+        let chosen = try store.claimPreparedPack(at: 1)
+
+        XCTAssertEqual(store.profile.ownedCardIDs, [chosen.card.id])
+        XCTAssertNil(store.profile.pendingPackID)
+        XCTAssertTrue(store.profile.pendingPackCardIDs.isEmpty)
+    }
+
+    func testCannotOpenAnotherPackWhileChoosing() async throws {
+        let store = await freshStore()
+        let first = LegendsPackDatabase.all.first { $0.id == "bronze" }!
+        let second = LegendsPackDatabase.all.first { $0.id == "silver" }!
+        _ = try store.preparePack(first)
+        XCTAssertThrowsError(try store.preparePack(second)) { error in
+            XCTAssertEqual(error as? LegendsPackError, .pendingSelection)
+        }
     }
 
     func testStarterPackCanOnlyBeClaimedOnce() async throws {

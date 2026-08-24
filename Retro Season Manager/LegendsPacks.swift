@@ -70,5 +70,15 @@ enum LegendsPackDatabase {
         LegendsPack(id: "2010s", name: "2010s Pack", subtitle: "Cards from the 2010s",
                     cost: 200, currency: .coins, cardCount: 3, guaranteedMinTier: 0,
                     pool: { $0.era == .twentyTens }),
+        LegendsPack(id: "1990s", name: "1990s Pack", subtitle: "Cards from the 1990s",
+                    cost: 200, currency: .coins, cardCount: 3, guaranteedMinTier: 1,
+                    pool: { $0.era == .nineties }),
+        // Distinct from the "icons" rarity-tier pack above (which pulls
+        // Icon-tier cards from any era) — this pulls only from the
+        // dedicated Icons era, whose cards are already exclusively
+        // Icon/Immortal tier, priced and gated to match.
+        LegendsPack(id: "icons-era", name: "Hall of Icons Pack", subtitle: "Every card from the Icons era",
+                    cost: 6, currency: .tokens, cardCount: 3, guaranteedMinTier: 6,
+                    pool: { $0.era == .icons }),
     ]
 }

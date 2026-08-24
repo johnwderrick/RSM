@@ -15,6 +15,42 @@ extension Color {
                   green: rgb.count > 1 ? rgb[1] : 0.5,
                   blue: rgb.count > 2 ? rgb[2] : 0.5)
     }
+
+    /// A colour seeded from `seed` (deterministic per name, e.g. an
+    /// opponent's name) whose hue is pushed at least ~80° around the
+    /// wheel from `hue`. Used for opponent crest/badge/pitch-token
+    /// colours, which used to pick a fully random hue and could
+    /// coincidentally land on — or dangerously close to — the user's own
+    /// crest colour, making the two teams hard to tell apart on the
+    /// score bar or 2D pitch.
+    static func distinctOpponentColor(seed: String, awayFromHue hue: Double) -> Color {
+        var gen = SeededGenerator(seed: seed)
+        let offset = Double.random(in: 0.22...0.78, using: &gen)
+        let opponentHue = (hue + offset).truncatingRemainder(dividingBy: 1)
+        return Color(hue: opponentHue, saturation: 0.5, brightness: 0.75)
+    }
+
+    /// Approximate hue (0...1) of an [r, g, b] triplet, each 0...1 — the
+    /// counterpart `distinctOpponentColor` steers away from.
+    static func hue01(ofRGB rgb: [Double]) -> Double {
+        guard rgb.count >= 3 else { return 0 }
+        let r = rgb[0], g = rgb[1], b = rgb[2]
+        let maxC = max(r, g, b)
+        let minC = min(r, g, b)
+        let delta = maxC - minC
+        guard delta > 0.0001 else { return 0 }
+        var hue: Double
+        if maxC == r {
+            hue = ((g - b) / delta).truncatingRemainder(dividingBy: 6)
+        } else if maxC == g {
+            hue = (b - r) / delta + 2
+        } else {
+            hue = (r - g) / delta + 4
+        }
+        hue *= 60
+        if hue < 0 { hue += 360 }
+        return hue / 360
+    }
 }
 
 extension GameStore {

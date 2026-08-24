@@ -10,41 +10,19 @@ import SwiftUI
 
 struct LegendsManagersView: View {
     let store: LegendsStore
+    var onNavigate: ((LegendsNavItem) -> Void)? = nil
     var onBack: () -> Void
 
     var body: some View {
-        ZStack {
-            Retro.background.ignoresSafeArea()
-            VStack(spacing: 14) {
-                header
-                ScrollView {
-                    VStack(spacing: 10) {
-                        ForEach(LegendsManagerDatabase.all) { manager in
-                            managerRow(manager)
-                        }
+        LegendsMenuShell(store: store, title: "MANAGERS", subtitle: "\(store.profile.ownedManagerIDs.count) / \(LegendsManagerDatabase.all.count) OWNED", icon: "person.crop.rectangle.stack.fill", accent: LegendsPalette.green, onBack: onBack, currentNav: .club, onNavigate: onNavigate, scrollContent: false) {
+            ScrollView {
+                VStack(spacing: 10) {
+                    ForEach(LegendsManagerDatabase.all) { manager in
+                        managerRow(manager)
                     }
-                    .padding(.horizontal)
-                    .padding(.bottom, 24)
                 }
+                .padding(.bottom, 24)
             }
-        }
-    }
-
-    private var header: some View {
-        VStack(spacing: 8) {
-            HStack {
-                LegendsBackButton(action: onBack)
-                Spacer()
-            }
-            .padding(.horizontal)
-            .padding(.top, 12)
-
-            Text("MANAGERS")
-                .font(.system(.title2, design: .monospaced).bold())
-                .foregroundStyle(Retro.accent)
-            Text("\(store.profile.ownedManagerIDs.count)/\(LegendsManagerDatabase.all.count) OWNED")
-                .font(.system(.caption, design: .monospaced).bold())
-                .foregroundStyle(Retro.text.opacity(0.6))
         }
     }
 
@@ -72,9 +50,12 @@ struct LegendsManagersView: View {
                             .font(.system(.caption2, design: .monospaced))
                             .foregroundStyle(Retro.text.opacity(0.6))
                             .lineLimit(2)
-                        Text("\(manager.nation) · Affinity: \(manager.affinityClub)")
-                            .font(.system(.caption2, design: .monospaced))
-                            .foregroundStyle(Retro.highlight)
+                        HStack(spacing: 4) {
+                            FlagView(nationality: manager.nation, width: 14)
+                            Text("\(manager.nation) · Affinity: \(manager.affinityClub)")
+                                .font(.system(.caption2, design: .monospaced))
+                                .foregroundStyle(Retro.highlight)
+                        }
                     } else {
                         Text("Win matches for a chance to unlock a manager.")
                             .font(.system(.caption2, design: .monospaced))

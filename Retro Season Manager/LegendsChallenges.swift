@@ -32,6 +32,39 @@ enum LegendsChallengeKind: Codable, Equatable {
     case winMatchesToday(Int)
     case winMatchesThisWeek(Int)
     case scoreGoalsThisWeek(Int)
+    /// Win a match against an opponent rated at or above the user's own
+    /// current team rating at kickoff.
+    case beatStrongerOpponent
+    /// Win with an active Manager set — directly rewards actually using
+    /// the Managers system, which now has a real effect on live matches
+    /// (see `LegendsLiveMatch.strengthBonus`).
+    case winWithManager
+    /// Win with an active Stadium set — same reasoning as `winWithManager`.
+    case winWithStadium
+    /// Win a match while playing in the World League, the top division.
+    case winInTopDivision
+
+    /// A small SF Symbol per challenge *category* — every challenge used
+    /// to render identically regardless of kind (win-based, squad-
+    /// composition-based, meta), which made a long list read as visually
+    /// flat. Purely presentational, read by `LegendsChallengesView`.
+    var glyph: String {
+        switch self {
+        case .winMatches, .winMatchesToday, .winMatchesThisWeek: return "trophy.fill"
+        case .winStreak: return "flame.fill"
+        case .scoreGoalsInOneMatch, .scoreGoalsThisWeek: return "soccerball"
+        case .cleanSheet: return "shield.fill"
+        case .sameNationXIWin: return "flag.fill"
+        case .sameEraXIWin: return "clock.fill"
+        case .sameClubXIWin: return "building.columns.fill"
+        case .getPromoted, .winInTopDivision: return "arrow.up.circle.fill"
+        case .ownCards: return "square.stack.fill"
+        case .playMatchesToday: return "calendar"
+        case .beatStrongerOpponent: return "bolt.fill"
+        case .winWithManager: return "person.crop.circle.fill"
+        case .winWithStadium: return "building.2.fill"
+        }
+    }
 }
 
 struct LegendsChallenge: Identifiable, Codable {
@@ -76,5 +109,16 @@ enum LegendsChallengeDatabase {
                           cadence: .weekly, kind: .winMatchesThisWeek(3), coinReward: 150, tokenReward: 1),
         LegendsChallenge(id: "weekly-goals", title: "Goal Rush", description: "Score 5 goals this week.",
                           cadence: .weekly, kind: .scoreGoalsThisWeek(5), coinReward: 100, tokenReward: 0),
+
+        LegendsChallenge(id: "giant-killer", title: "Giant Killer", description: "Beat an opponent rated as strong as or stronger than your own team.",
+                          cadence: .permanent, kind: .beatStrongerOpponent, coinReward: 200, tokenReward: 2),
+        LegendsChallenge(id: "tactical-edge", title: "Tactical Edge", description: "Win a match with an active Manager set.",
+                          cadence: .permanent, kind: .winWithManager, coinReward: 100, tokenReward: 1),
+        LegendsChallenge(id: "home-advantage", title: "Home Advantage", description: "Win a match with an active Stadium set.",
+                          cadence: .permanent, kind: .winWithStadium, coinReward: 100, tokenReward: 1),
+        LegendsChallenge(id: "top-flight", title: "Top Flight", description: "Win a match in the World League.",
+                          cadence: .permanent, kind: .winInTopDivision, coinReward: 250, tokenReward: 2),
+        LegendsChallenge(id: "weekly-giant-killer", title: "Weekly Upset", description: "Beat a stronger-rated opponent this week.",
+                          cadence: .weekly, kind: .beatStrongerOpponent, coinReward: 120, tokenReward: 1),
     ]
 }

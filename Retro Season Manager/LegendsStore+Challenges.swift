@@ -88,6 +88,10 @@ extension LegendsStore {
             case .winMatchesToday(let n): met = profile.winsToday >= n
             case .winMatchesThisWeek(let n): met = profile.winsThisWeek >= n
             case .scoreGoalsThisWeek(let n): met = profile.goalsThisWeek >= n
+            case .beatStrongerOpponent: met = summary.result.outcome == .win && summary.opponent.rating >= currentTeamRating
+            case .winWithManager: met = summary.result.outcome == .win && profile.activeManagerID != nil
+            case .winWithStadium: met = summary.result.outcome == .win && profile.activeStadiumID != nil
+            case .winInTopDivision: met = summary.result.outcome == .win && profile.division == .worldLeague
             }
             if met {
                 grant(challenge)
@@ -130,7 +134,8 @@ extension LegendsStore {
         case .winMatchesToday(let n): return min(1, Double(profile.winsToday) / Double(n))
         case .winMatchesThisWeek(let n): return min(1, Double(profile.winsThisWeek) / Double(n))
         case .scoreGoalsThisWeek(let n): return min(1, Double(profile.goalsThisWeek) / Double(n))
-        case .scoreGoalsInOneMatch, .cleanSheet, .sameNationXIWin, .sameEraXIWin, .sameClubXIWin, .getPromoted:
+        case .scoreGoalsInOneMatch, .cleanSheet, .sameNationXIWin, .sameEraXIWin, .sameClubXIWin, .getPromoted,
+             .beatStrongerOpponent, .winWithManager, .winWithStadium, .winInTopDivision:
             return 0
         }
     }

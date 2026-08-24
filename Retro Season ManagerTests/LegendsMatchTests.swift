@@ -59,6 +59,16 @@ final class LegendsStoreMatchTests: XCTestCase {
         store.profile.currentSeason = 1
         store.profile.matchesPlayedThisSeason = 0
         store.profile.cardAgeOffsets = [:]
+        store.profile.divisionTable = []
+        store.profile.divisionSchedule = []
+        store.profile.divisionSeason = 1
+        store.profile.lastDivisionSeasonResult = nil
+        store.profile.activatedCardIDs = []
+        store.profile.completedPermanentChallengeIDs = []
+        store.profile.completedDailyChallengeIDs = []
+        store.profile.completedWeeklyChallengeIDs = Set(LegendsChallengeDatabase.all.filter { $0.cadence == .weekly }.map(\.id))
+        store.profile.completedDailyChallengeIDs = Set(LegendsChallengeDatabase.all.filter { $0.cadence == .daily }.map(\.id))
+        store.profile.completedPermanentChallengeIDs = Set(LegendsChallengeDatabase.all.filter { $0.cadence == .permanent }.map(\.id))
         return store
     }
 
@@ -80,6 +90,119 @@ final class LegendsStoreMatchTests: XCTestCase {
         for (index, _) in slots.enumerated() {
             store.assign(cardID: sorted[index].id, toXISlot: index)
         }
+    }
+
+    func testDivisionScheduleIsACompleteHomeAndAwayRoundRobin() async {
+        let store = await freshStore()
+        store.ensureDivisionSchedule()
+        XCTAssertEqual(store.profile.divisionSchedule.count, 56)
+        XCTAssertEqual(Set(store.profile.divisionSchedule.map(\.round)).count, 14)
+        XCTAssertEqual(store.divisionMatchCount, 14)
+
+        var pairings = Set<String>()
+        for fixture in store.profile.divisionSchedule {
+            XCTAssertNotEqual(fixture.homeTeamID, fixture.awayTeamID)
+            pairings.insert("\(fixture.homeTeamID)|\(fixture.awayTeamID)")
+        }
+        XCTAssertEqual(pairings.count, 56)
+        for home in store.profile.divisionTable.map(\.id) {
+            for away in store.profile.divisionTable.map(\.id) where home != away {
+                XCTAssertTrue(pairings.contains("\(home)|\(away)"))
+            }
+        }
+    }
+
+    func testScheduledOpponentIsTheNextUnplayedHomeOrAwayFixture() async {
+        let store = await freshStore()
+        store.ensureDivisionSchedule()
+        guard let fixture = store.nextDivisionFixture else { return XCTFail("Expected a next fixture") }
+        let opponent = store.scheduledOpponent()
+        XCTAssertEqual(opponent.fixtureID, fixture.id)
+        XCTAssertTrue(opponent.name == fixture.homeTeamID || opponent.name == fixture.awayTeamID)
+        XCTAssertNotEqual(opponent.name, store.profile.clubName)
+    }
+
+    func testScheduledMatchClosesItsRoundAndUpdatesTheTableOnce() async {
+        let store = await freshStore()
+        store.ensureDivisionSchedule()
+        guard let fixture = store.nextDivisionFixture else { return XCTFail("Expected a next fixture") }
+        let opponent = store.scheduledOpponent()
+        let before = store.divisionStandings().reduce(0) { $0 + $1.played }
+        _ = store.applyMatchOutcome(opponent: opponent, result: LegendsMatchEngine.Result(teamGoals: 2, opponentGoals: 1))
+        let after = store.divisionStandings().reduce(0) { $0 + $1.played }
+        XCTAssertEqual(after - before, 8, "One completed round should record all four fixtures")
+        XCTAssertTrue(store.profile.divisionSchedule.filter { $0.round == fixture.round }.allSatisfy(\.isPlayed))
+        XCTAssertEqual(store.divisionMatchesPlayed, 1)
+        XCTAssertEqual(store.profile.divisionSchedule.filter { $0.homeTeamID == store.profile.clubName || $0.awayTeamID == store.profile.clubName }.filter(\.isPlayed).count, 1)
+    }
+
+    func testCompletingAllScheduledFixturesSettlesSeasonAndStartsTheNextOne() async {
+        let store = await freshStore()
+        store.ensureDivisionSchedule()
+        let initialSeason = store.profile.divisionSeason
+        var completedSeason: LegendsMatchOutcomeSummary?
+
+        for _ in 0..<store.divisionMatchCount {
+            let opponent = store.scheduledOpponent()
+            guard opponent.fixtureID != nil else {
+                return XCTFail("Expected every scheduled match to have an opponent")
+            }
+            let summary = store.applyMatchOutcome(opponent: opponent,
+                                                  result: LegendsMatchEngine.Result(teamGoals: 4, opponentGoals: 0))
+            if summary.divisionSeasonResult != nil {
+                completedSeason = summary
+            }
+        }
+
+        XCTAssertNotNil(completedSeason?.divisionSeasonResult)
+        XCTAssertEqual(store.profile.divisionSeason, initialSeason + 1)
+        XCTAssertEqual(store.divisionMatchesPlayed, 0)
+        XCTAssertEqual(store.divisionFixturesRemaining, store.divisionMatchCount)
+        let reward = completedSeason!.divisionSeasonResult!.reward
+        XCTAssertGreaterThanOrEqual(reward.coins, 50)
+        XCTAssertEqual(store.profile.lastDivisionSeasonResult?.season, initialSeason)
+    }
+
+    func testSeasonOutcomePromotesAndRelegatesAtTheCorrectRanks() {
+        XCTAssertEqual(LegendsStore.seasonOutcome(finalRank: 1, totalTeams: 8, division: .division5).outcome, .champion)
+        XCTAssertEqual(LegendsStore.seasonOutcome(finalRank: 2, totalTeams: 8, division: .division5).outcome, .promoted)
+        XCTAssertEqual(LegendsStore.seasonOutcome(finalRank: 7, totalTeams: 8, division: .division5).outcome, .relegated)
+        XCTAssertEqual(LegendsStore.seasonOutcome(finalRank: 8, totalTeams: 8, division: .division10).outcome, .retained)
+    }
+
+    func testSeasonRewardValuesReflectTheFinalOutcome() {
+        XCTAssertEqual(LegendsStore.seasonReward(for: .champion), LegendsSeasonReward(coins: 300, tokens: 3, managerXP: 100))
+        XCTAssertEqual(LegendsStore.seasonReward(for: .promoted), LegendsSeasonReward(coins: 220, tokens: 2, managerXP: 80))
+        XCTAssertEqual(LegendsStore.seasonReward(for: .retained), LegendsSeasonReward(coins: 100, tokens: 1, managerXP: 40))
+        XCTAssertEqual(LegendsStore.seasonReward(for: .relegated), LegendsSeasonReward(coins: 50, tokens: 0, managerXP: 20))
+    }
+
+    func testDivisionBoundariesPreventPromotionPastWorldLeagueAndRelegationPastDivisionTen() async {
+        let store = await freshStore()
+        store.profile.division = .worldLeague
+        XCTAssertEqual(LegendsStore.nextDivision(after: .worldLeague), .worldLeague)
+        store.profile.division = .division10
+        XCTAssertEqual(LegendsStore.previousDivision(after: .division10), .division10)
+    }
+
+    func testDivisionTableRecordsTheUserMatch() async {
+        let store = await freshStore()
+        let before = store.divisionStandings().first { $0.id == store.profile.clubName }!
+        store.recordDivisionMatch(teamGoals: 3, opponentGoals: 1, opponentName: "Northstar Athletic")
+        let standings = store.divisionStandings()
+        let user = standings.first { $0.id == store.profile.clubName }!
+        XCTAssertEqual(user.played, before.played + 1)
+        XCTAssertEqual(user.won, before.won + 1)
+        XCTAssertEqual(user.points, before.points + 3)
+        XCTAssertEqual(user.goalDifference, before.goalDifference + 2)
+    }
+
+    func testOpponentComesFromTheDivisionTable() async {
+        let store = await freshStore()
+        store.ensureDivisionTable()
+        let opponent = store.generateOpponent()
+        XCTAssertTrue(store.divisionStandings().contains { $0.name == opponent.name })
+        XCTAssertNotEqual(opponent.name, store.profile.clubName)
     }
 
     func testPlayMatchReturnsNilWithoutACompleteSquad() async {

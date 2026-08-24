@@ -41,6 +41,16 @@ final class LegendsProfileRoundTripTests: XCTestCase {
         store.profile.totalWins = 17
         store.profile.clubName = "Round Trip FC"
         store.profile.preferredMentality = .attacking
+        let lifecycleCard = LegendsCardDatabase.all.first { $0.id == "miessi-0506" }!
+        let lifecycle = LegendsStore.makeCareerState(for: lifecycleCard, signedSeason: 2)
+        store.profile.activatedCardIDs = [lifecycleCard.id]
+        store.profile.playerCareers = [lifecycleCard.id: lifecycle]
+        store.profile.legendsHall = [LegendsHallEntry(id: "hall-career", cardID: lifecycleCard.id,
+                                                        playerName: lifecycleCard.name, position: lifecycleCard.position,
+                                                        nation: lifecycleCard.nation, startingAge: 18, startingOverall: 84,
+                                                        highestOverall: 92, finalAge: 36, appearances: 100, goals: 20,
+                                                        assists: 15, cleanSheets: 0, seasonsAtClub: 18,
+                                                        signedSeason: 2, retiredSeason: 20)]
         store.persist()
 
         let reloaded = await Task { @MainActor in LegendsStore() }.value
@@ -52,6 +62,10 @@ final class LegendsProfileRoundTripTests: XCTestCase {
         XCTAssertEqual(reloaded.profile.totalWins, 17)
         XCTAssertEqual(reloaded.profile.clubName, "Round Trip FC")
         XCTAssertEqual(reloaded.profile.preferredMentality, .attacking)
+        XCTAssertEqual(reloaded.profile.playerCareers[lifecycleCard.id]?.potential, lifecycle.potential)
+        XCTAssertEqual(reloaded.profile.playerCareers[lifecycleCard.id]?.developmentProgress, lifecycle.developmentProgress)
+        XCTAssertEqual(reloaded.profile.legendsHall.first?.playerName, lifecycleCard.name)
+        XCTAssertEqual(reloaded.profile.legendsHall.first?.highestOverall, 92)
     }
 
     /// Exercises `LegendsProfile.init(from:)` directly against a hand-built
@@ -84,6 +98,8 @@ final class LegendsProfileRoundTripTests: XCTestCase {
 
         // Everything added in a later phase falls back to its documented default.
         XCTAssertEqual(profile.ownedCardIDs, [], "ownedCardIDs should default to empty when absent")
+        XCTAssertEqual(profile.playerCareers, [:], "playerCareers should default to empty when absent")
+        XCTAssertEqual(profile.legendsHall, [], "legendsHall should default to empty when absent")
         XCTAssertEqual(profile.duplicateProgress, [:], "duplicateProgress should default to empty when absent")
         XCTAssertEqual(profile.cardUpgrades, [:], "cardUpgrades should default to empty when absent")
         XCTAssertEqual(profile.formationName, "4-4-2", "formationName should default to 4-4-2 when absent")

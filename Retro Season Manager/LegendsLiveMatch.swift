@@ -73,7 +73,27 @@ final class LegendsLiveMatch {
     /// of Career's event-counted approach without needing cards/injuries.
     private var secondHalfEventCount = 0
 
-    init(store: LegendsStore, opponent: LegendsOpponent) {
+    /// Manager/stadium tactical+gameplay bonus plus a chemistry nudge,
+    /// snapshotted once at kickoff — mirrors the shape of the old instant-
+    /// sim engine's `chemistryBonus = totalChemistry * 0.3 +
+    /// matchStrengthBonus` (`LegendsMatchEngine.swift`/
+    /// `LegendsStore+ManagersAndStadiums.swift`), which this live engine
+    /// had never actually picked up despite being the only match path a
+    /// real player ever sees — managers, stadiums and chemistry were
+    /// dead weight here until now. Snapshotted rather than read live so a
+    /// manager/stadium change can't retroactively skew an in-progress
+    /// match (not that the live screen currently offers a way to change
+    /// either mid-match anyway).
+    private let strengthBonus: Double
+
+    /// Defaults to the system generator in production; tests can inject a
+    /// seeded one (e.g. `SeededGenerator`) to run two matches through the
+    /// *same* sequence of rolls and isolate the effect of a single input
+    /// (mentality, a manager bonus, ...) from ordinary match-to-match
+    /// variance — see `LegendsLiveMatchTests.pairedAverageGoalsDelta`.
+    private var rng: any RandomNumberGenerator
+
+    init(store: LegendsStore, opponent: LegendsOpponent, rng: any RandomNumberGenerator = SystemRandomNumberGenerator()) {
         self.store = store
         self.opponent = opponent
         self.slots = store.startingXISlots
@@ -81,6 +101,8 @@ final class LegendsLiveMatch {
         self.energyBySlot = Array(repeating: 100.0, count: slots.count)
         self.benchCardIDs = store.profile.benchCardIDs.compactMap { $0 }
         self.userMentality = store.profile.preferredMentality
+        self.strengthBonus = store.matchStrengthBonus + Double(store.totalChemistry) * 0.3
+        self.rng = rng
     }
 
     var totalMinutes: Int { 90 + addedTime }
@@ -108,6 +130,18 @@ final class LegendsLiveMatch {
     func resume() { isPaused = false; isHalfTime = false }
     func setSpeed(_ value: Double) { speed = value }
 
+    /// Stops the live loop immediately — the "abandon match" path. The
+    /// normal full-time flow ends the loop naturally via `isFinished`; an
+    /// abandoned match never gets there, so the background task is
+    /// cancelled outright and the engine is left paused so nothing can
+    /// tick on. The result is not computed here — the caller records the
+    /// forfeit loss itself.
+    func stop() {
+        loopTask?.cancel()
+        loopTask = nil
+        isPaused = true
+    }
+
     func skipToEnd() {
         isHalfTime = false
         isPaused = false
@@ -122,7 +156,11 @@ final class LegendsLiveMatch {
     }
 
     private func loop() async {
-        while !isFinished {
+        // `Task.isCancelled` matters as much as `isFinished`: `stop()`
+        // (the abandon path) cancels the task, and without checking it
+        // here the loop would keep sleeping forever in the paused branch
+        // — `try?` swallows the cancellation error — leaking the engine.
+        while !isFinished && !Task.isCancelled {
             if isPaused || isHalfTime {
                 try? await Task.sleep(for: .milliseconds(80))
                 continue
@@ -149,7 +187,7 @@ final class LegendsLiveMatch {
         }
 
         if minute == 90 && addedTime == 0 {
-            addedTime = min(6, 1 + secondHalfEventCount / 2 + Int.random(in: 0...1))
+            addedTime = min(6, 1 + secondHalfEventCount / 2 + Int.random(in: 0...1, using: &rng))
         }
 
         decayEnergy()
@@ -163,7 +201,7 @@ final class LegendsLiveMatch {
 
     private func decayEnergy() {
         for index in energyBySlot.indices where onPitchCardIDs[index] != nil {
-            energyBySlot[index] = max(20, energyBySlot[index] - Double.random(in: 0.2...0.5))
+            energyBySlot[index] = max(20, energyBySlot[index] - Double.random(in: 0.2...0.5, using: &rng))
         }
     }
 
@@ -171,8 +209,13 @@ final class LegendsLiveMatch {
     /// one shared ratio — lets mentality/instruction bite on "how often
     /// do I score" and "how often do I concede" separately.
     private func rollGoalChances() {
-        let liveAttack = energyWeightedAverage { $0.broad == .midfielder || $0.broad == .forward }
-        let liveDefence = energyWeightedAverage { $0 == .goalkeeper || $0.broad == .defender }
+        // The bonus applies symmetrically to attack and defence, matching
+        // how the old instant-sim engine's single `chemistryBonus` term
+        // boosted the team's overall competitiveness (it fed one shared
+        // teamRating that decided both scoring and conceding odds via the
+        // same ratio) rather than favoring one side of the ball.
+        let liveAttack = energyWeightedAverage { $0.broad == .midfielder || $0.broad == .forward } + strengthBonus
+        let liveDefence = energyWeightedAverage { $0 == .goalkeeper || $0.broad == .defender } + strengthBonus
         let oppRating = Double(opponent.rating)
 
         let effectiveAttack = max(liveAttack * userMentality.attack * userInstruction.attack, 1)
@@ -184,17 +227,20 @@ final class LegendsLiveMatch {
         let pUser = 2.7 * userRatio / 90
         let pOpponent = 2.7 * opponentRatio / 90
 
-        if Double.random(in: 0..<1) < pUser {
+        if Double.random(in: 0..<1, using: &rng) < pUser {
             scoreGoal(forUser: true)
-        } else if Double.random(in: 0..<1) < 0.025 {
-            say("Big chance for \(store.profile.clubName) — just wide!", side: .home)
+        } else if Double.random(in: 0..<1, using: &rng) < 0.025 {
+            // Matches Career Mode's own big-chance line (LiveMatch.swift) —
+            // a near-miss here is a keeper making a stop, not a wayward
+            // shot, the same convention Career already settled on.
+            say("Big chance for \(store.profile.clubName) — the keeper stands tall!", side: .home)
             bumpMomentum(towardUser: true, by: 0.05)
         }
 
-        if Double.random(in: 0..<1) < pOpponent {
+        if Double.random(in: 0..<1, using: &rng) < pOpponent {
             scoreGoal(forUser: false)
-        } else if Double.random(in: 0..<1) < 0.025 {
-            say("\(opponent.name) go close, but it drifts past the post.", side: .away)
+        } else if Double.random(in: 0..<1, using: &rng) < 0.025 {
+            say("Big chance for \(opponent.name) — the keeper stands tall!", side: .away)
             bumpMomentum(towardUser: false, by: 0.05)
         }
     }
@@ -248,7 +294,7 @@ final class LegendsLiveMatch {
         }
         let totalWeight = onPitch.reduce(0.0) { $0 + weight($1) }
         guard totalWeight > 0 else { return onPitch.randomElement() }
-        var roll = Double.random(in: 0..<totalWeight)
+        var roll = Double.random(in: 0..<totalWeight, using: &rng)
         for card in onPitch {
             roll -= weight(card)
             if roll < 0 { return card }

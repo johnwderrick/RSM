@@ -18,6 +18,7 @@ import SwiftUI
 
 struct LegendsMatchView: View {
     let store: LegendsStore
+    var onNavigate: ((LegendsNavItem) -> Void)? = nil
     var onBack: () -> Void
 
     @State private var liveMatch: LegendsLiveMatch? = nil
@@ -27,18 +28,30 @@ struct LegendsMatchView: View {
         ZStack {
             Retro.background.ignoresSafeArea()
             if let liveMatch {
-                LegendsLiveMatchView(store: store, live: liveMatch) {
+                LegendsLiveMatchView(store: store, live: liveMatch,
+                                     onFinished: {
                     let result = store.applyMatchOutcome(opponent: liveMatch.opponent, result: liveMatch.result)
                     announceResult(result)
                     withAnimation(.spring(duration: 0.5)) {
                         summary = result
                         self.liveMatch = nil
                     }
-                }
+                },
+                                     onAbandoned: {
+                    // A forfeit: the standard 0–3 registered defeat,
+                    // regardless of the scoreline at the moment of
+                    // abandonment — an abandon is always a loss, never a
+                    // way to salvage a draw from a losing position.
+                    let result = store.applyMatchOutcome(opponent: liveMatch.opponent,
+                                                         result: LegendsMatchEngine.Result(teamGoals: 0, opponentGoals: 3))
+                    announceResult(result)
+                    withAnimation(.spring(duration: 0.5)) {
+                        summary = result
+                        self.liveMatch = nil
+                    }
+                })
             } else {
-                VStack(spacing: 18) {
-                    header
-                    Spacer()
+                LegendsMenuShell(store: store, title: "PLAY MATCH", subtitle: store.profile.division.displayName, icon: "soccerball", accent: LegendsPalette.green, onBack: onBack, currentNav: .home, onNavigate: onNavigate) {
                     if let summary {
                         resultPanel(summary)
                             .transition(.scale(scale: 0.9).combined(with: .opacity))
@@ -47,25 +60,11 @@ struct LegendsMatchView: View {
                     } else {
                         notReadyPanel
                     }
-                    Spacer()
                 }
-                .padding()
             }
         }
     }
 
-    private var header: some View {
-        HStack {
-            LegendsBackButton(action: onBack)
-            Spacer()
-            Text("PLAY MATCH")
-                .font(.system(.headline, design: .monospaced).bold())
-                .foregroundStyle(Retro.accent)
-            Spacer()
-            Color.clear.frame(width: 60)
-        }
-        .padding(.top, 12)
-    }
 
     private var notReadyPanel: some View {
         Panel(title: "SQUAD NOT READY") {
@@ -85,7 +84,7 @@ struct LegendsMatchView: View {
                     .font(.system(.caption, design: .monospaced).bold())
                     .foregroundStyle(Retro.highlight)
                     .tracking(2)
-                Text("\(store.profile.divisionWins)/\(LegendsStore.winsToPromote) WINS TO PROMOTION")
+                Text("\(store.divisionFixturesRemaining) FIXTURES REMAIN · RANK TOP 2 TO PROMOTE")
                     .font(.system(.caption2, design: .monospaced))
                     .foregroundStyle(Retro.text.opacity(0.6))
             }
@@ -105,7 +104,7 @@ struct LegendsMatchView: View {
 
             Button {
                 Haptics.tap()
-                liveMatch = LegendsLiveMatch(store: store, opponent: store.generateOpponent())
+                liveMatch = LegendsLiveMatch(store: store, opponent: store.scheduledOpponent())
             } label: {
                 Text("KICK OFF")
                     .font(.system(.headline, design: .monospaced).bold())
@@ -183,19 +182,63 @@ struct LegendsMatchView: View {
                 .frame(maxWidth: 380)
             }
 
+            if let seasonAdvance = summary.seasonAdvance, !seasonAdvance.developmentReview.isEmpty {
+                Panel(title: "SEASON DEVELOPMENT REVIEW") {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(seasonAdvance.developmentReview.values.sorted { $0.playerName < $1.playerName }, id: \.cardID) { entry in
+                                VStack(alignment: .leading, spacing: 3) {
+                                    HStack(spacing: 4) {
+                                        Text(entry.playerName)
+                                            .font(.system(.caption2, design: .monospaced).bold())
+                                            .foregroundStyle(Retro.text)
+                                            .lineLimit(1)
+                                        Text(entry.overallDelta >= 0 ? "+\(entry.overallDelta)" : "\(entry.overallDelta)")
+                                            .font(.system(.caption, design: .monospaced))
+                                            .fontWeight(.black)
+                                            .foregroundStyle(entry.overallDelta > 0 ? Retro.emerald : (entry.overallDelta < 0 ? Retro.warning : Retro.gold))
+                                    }
+                                    Text("\(entry.appearances) APP · \(entry.reason)")
+                                        .font(.system(size: 8, design: .monospaced))
+                                        .foregroundStyle(Retro.text.opacity(0.6))
+                                        .lineLimit(2)
+                                        .frame(width: 150, alignment: .leading)
+                                }
+                                .padding(8)
+                                .background(Retro.panel.opacity(0.6))
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                            }
+                        }
+                    }
+                }
+                .frame(maxWidth: 520)
+            }
+
             if let seasonAdvance = summary.seasonAdvance {
                 Panel(title: "SEASON \(seasonAdvance.newSeason) BEGINS") {
-                    if seasonAdvance.retiredCards.isEmpty {
-                        Text("Every card in your collection is a year older.")
+                    if !seasonAdvance.retirementAnnouncements.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("RETIREMENT ANNOUNCEMENT")
+                                .font(.system(.caption, design: .monospaced).bold())
+                                .foregroundStyle(Retro.gold)
+                            ForEach(seasonAdvance.retirementAnnouncements, id: \.id) { card in
+                                Text("\(card.name) has announced that this will be their final season.")
+                                    .font(.system(.footnote, design: .monospaced))
+                                    .foregroundStyle(Retro.text.opacity(0.85))
+                            }
+                        }
+                    }
+                    if seasonAdvance.retiredCards.isEmpty && seasonAdvance.retirementAnnouncements.isEmpty {
+                        Text("Every signed career is a year older. Collection players remain frozen.")
                             .font(.system(.footnote, design: .monospaced))
                             .foregroundStyle(Retro.text.opacity(0.85))
-                    } else {
+                    } else if !seasonAdvance.retiredCards.isEmpty {
                         VStack(alignment: .leading, spacing: 6) {
-                            Text("These players have retired — replace them in Squad:")
-                                .font(.system(.footnote, design: .monospaced))
-                                .foregroundStyle(Retro.text.opacity(0.85))
+                            Text("CAREER COMPLETE — these players are now in Legends Hall:")
+                                .font(.system(.footnote, design: .monospaced).bold())
+                                .foregroundStyle(Retro.warning)
                             ForEach(seasonAdvance.retiredCards, id: \.id) { card in
-                                Text("• \(card.name) (\(store.effectiveAge(for: card)))")
+                                Text("• \(card.name) · final age \(seasonAdvance.retiredAges[card.id] ?? LegendsStore.retirementAge)")
                                     .font(.system(.footnote, design: .monospaced).bold())
                                     .foregroundStyle(Retro.warning)
                             }
@@ -225,20 +268,23 @@ struct LegendsMatchView: View {
                     .font(.system(.caption, design: .monospaced).bold())
                     .foregroundStyle(Retro.emerald)
             }
-
-            Button {
-                Haptics.tap()
-                onBack()
-            } label: {
-                Text("Back to Home")
-                    .font(.system(.footnote, design: .monospaced).bold())
-                    .foregroundStyle(Retro.background)
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 10)
-                    .background(Retro.accent)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            if let divisionResult = summary.divisionSeasonResult {
+                Panel(title: divisionResult.outcome.displayName) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Finished \(divisionResult.finalRank)/\(divisionResult.totalTeams) in Season \(divisionResult.season).")
+                            .font(.system(.footnote, design: .monospaced))
+                            .foregroundStyle(Retro.text.opacity(0.85))
+                        rewardRow("Season coins", "+\(divisionResult.reward.coins)")
+                        rewardRow("Season tokens", "+\(divisionResult.reward.tokens)")
+                        rewardRow("Season XP", "+\(divisionResult.reward.managerXP)")
+                        Text("Next: \(divisionResult.newDivision.displayName)")
+                            .font(.system(.caption, design: .monospaced).bold())
+                            .foregroundStyle(divisionResult.outcome == .relegated ? Retro.warning : Retro.emerald)
+                    }
+                }
+                .frame(maxWidth: 380)
             }
-            .buttonStyle(PressableButtonStyle())
+
         }
     }
 

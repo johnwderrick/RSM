@@ -26,7 +26,60 @@ final class LegendsSquadTests: XCTestCase {
         store.profile.benchCardIDs = Array(repeating: nil, count: LegendsStore.benchSize)
         store.profile.captainCardID = nil
         store.profile.formationName = "4-4-2"
+        store.profile.activatedCardIDs = []
         return store
+    }
+
+    func testSigningCardActivatesItsAgingClock() async {
+        let store = await freshStore()
+        let card = LegendsCardDatabase.all.first { store.profile.ownedCardIDs.contains($0.id) }!
+        XCTAssertFalse(store.profile.activatedCardIDs.contains(card.id))
+        store.assign(cardID: card.id, toXISlot: 0)
+        XCTAssertTrue(store.profile.activatedCardIDs.contains(card.id))
+    }
+
+    func testPositionFilterRejectsUnrelatedReplacement() async {
+        let store = await freshStore()
+        let keeper = LegendsCardDatabase.all.first { $0.position == .goalkeeper }!
+        let striker = LegendsCardDatabase.all.first { $0.position == .striker }!
+        XCTAssertTrue(store.canPlay(keeper, in: .goalkeeper))
+        XCTAssertFalse(store.canPlay(striker, in: .goalkeeper))
+    }
+
+    func testLibraryQueryFiltersByDetailedPosition() async {
+        let store = await freshStore()
+        let query = LegendsLibraryQuery(position: .goalkeeper)
+        let cards = store.libraryCards(query: query)
+        XCTAssertFalse(cards.isEmpty)
+        XCTAssertTrue(cards.allSatisfy { store.canPlay($0, in: .goalkeeper) })
+    }
+
+    func testLibraryQuerySearchesAndSortsByRating() async {
+        let store = await freshStore()
+        let query = LegendsLibraryQuery(sort: .rating, searchText: "miessi")
+        let cards = store.libraryCards(query: query)
+        XCTAssertTrue(cards.allSatisfy { $0.name.lowercased().contains("miessi") })
+        XCTAssertEqual(cards, cards.sorted { store.effectiveOverall(for: $0) > store.effectiveOverall(for: $1) })
+    }
+
+    func testLibraryGroupsDifferentSeasonsByPlayer() async {
+        let store = await freshStore()
+        let young = LegendsCardDatabase.all.first { $0.id == "miessi-0506" }!
+        let peak = LegendsCardDatabase.all.first { $0.id == "miessi-1112" }!
+        store.profile.ownedCardIDs.formUnion([young.id, peak.id])
+        let query = LegendsLibraryQuery(group: .player, searchText: "miessi")
+        let groups = store.libraryGroups(query: query)
+        let group = groups.first { $0.key == young.name }
+        XCTAssertEqual(group?.cards.count, 2)
+        XCTAssertEqual(Set(group?.cards.map(\.name) ?? []), [young.name])
+    }
+
+    func testLibraryExcludesCardsAlreadyInTheActiveSquadByDefault() async {
+        let store = await freshStore()
+        let card = LegendsCardDatabase.all.first { store.profile.ownedCardIDs.contains($0.id) }!
+        store.assign(cardID: card.id, toXISlot: 0)
+        XCTAssertFalse(store.libraryCards().contains(card))
+        XCTAssertTrue(store.libraryCards(excludingActive: false).contains(card))
     }
 
     func testStartingXISlotCountMatchesFormation() async {

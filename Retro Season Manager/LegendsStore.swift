@@ -22,6 +22,121 @@ enum LegendsDivision: Int, Codable, CaseIterable {
     }
 }
 
+struct LegendsDivisionRecord: Codable, Hashable, Identifiable {
+    let id: String
+    var name: String
+    var played: Int
+    var won: Int
+    var drawn: Int
+    var lost: Int
+    var goalsFor: Int
+    var goalsAgainst: Int
+
+    var goalDifference: Int { goalsFor - goalsAgainst }
+    var points: Int { won * 3 + drawn }
+}
+
+/// One scheduled home-and-away league fixture. The user's match is played
+/// live; the other fixtures in that round are resolved deterministically when
+/// the round closes so the table and schedule always move together.
+struct LegendsFixture: Codable, Hashable, Identifiable {
+    let id: String
+    let round: Int
+    let homeTeamID: String
+    let awayTeamID: String
+    var homeGoals: Int? = nil
+    var awayGoals: Int? = nil
+
+    var isPlayed: Bool { homeGoals != nil && awayGoals != nil }
+}
+
+struct LegendsSeasonReward: Codable, Hashable {
+    let coins: Int
+    let tokens: Int
+    let managerXP: Int
+}
+
+enum LegendsDivisionSeasonOutcome: String, Codable, Hashable {
+    case champion
+    case promoted
+    case retained
+    case relegated
+
+    var displayName: String {
+        switch self {
+        case .champion: return "DIVISION CHAMPIONS"
+        case .promoted: return "PROMOTED"
+        case .retained: return "DIVISION RETAINED"
+        case .relegated: return "RELEGATED"
+        }
+    }
+}
+
+struct LegendsDivisionSeasonResult: Codable, Hashable {
+    let season: Int
+    let finalRank: Int
+    let totalTeams: Int
+    let outcome: LegendsDivisionSeasonOutcome
+    let previousDivision: LegendsDivision
+    let newDivision: LegendsDivision
+    let reward: LegendsSeasonReward
+}
+
+enum LegendsDivisionTable {
+    private static let clubNames = [
+        "RSM Legends FC", "Northstar Athletic", "Neon Borough", "Crown City",
+        "Harbour Rovers", "Vertex United", "Silverline FC", "Atlas Town"
+    ]
+
+    static func seed(userClub: String) -> [LegendsDivisionRecord] {
+        var names = clubNames
+        if !names.contains(userClub) {
+            names[0] = userClub
+        }
+        return names.map { name in
+            LegendsDivisionRecord(id: name, name: name, played: 0, won: 0, drawn: 0, lost: 0,
+                                  goalsFor: 0, goalsAgainst: 0)
+        }
+    }
+
+    /// Generates a deterministic double round-robin using the circle method:
+    /// eight clubs, fourteen rounds, four fixtures per round, with every
+    /// pairing appearing once at home and once away.
+    static func schedule(clubIDs: [String], season: Int) -> [LegendsFixture] {
+        guard clubIDs.count >= 2, clubIDs.count.isMultiple(of: 2) else { return [] }
+        let count = clubIDs.count
+        var rotation = clubIDs
+        var fixtures: [LegendsFixture] = []
+
+        for round in 0..<(count - 1) {
+            for index in 0..<(count / 2) {
+                let first = rotation[index]
+                let second = rotation[count - 1 - index]
+                let home = (round + index).isMultiple(of: 2) ? first : second
+                let away = home == first ? second : first
+                fixtures.append(LegendsFixture(id: "S\(season)-R\(round + 1)-\(index + 1)",
+                                                round: round + 1,
+                                                homeTeamID: home,
+                                                awayTeamID: away))
+            }
+            // Keep the first club fixed and rotate every other club one
+            // place clockwise. This guarantees exactly one fixture per club
+            // in every round.
+            let last = rotation.removeLast()
+            rotation.insert(last, at: 1)
+        }
+
+        let firstHalf = fixtures
+        for fixture in firstHalf {
+            fixtures.append(LegendsFixture(id: "S\(season)-R\(fixture.round + count - 1)-\(fixture.awayTeamID)-\(fixture.homeTeamID)",
+                                            round: fixture.round + count - 1,
+                                            homeTeamID: fixture.awayTeamID,
+                                            awayTeamID: fixture.homeTeamID))
+        }
+        return fixtures
+    }
+}
+
 struct LegendsProfile: Codable {
     var clubName: String
     var crestShort: String
@@ -35,6 +150,22 @@ struct LegendsProfile: Codable {
     /// IDs into `LegendsCardDatabase.all` — populated by opening packs
     /// (Phase 4).
     var ownedCardIDs: Set<String> = []
+    /// Cards that have crossed the signing boundary. A signed card stays
+    /// active even if it is later dropped from the XI, so it can never be
+    /// returned to frozen Collection status.
+    var activatedCardIDs: Set<String> = []
+    /// One persisted record per current signed career. Unsigned collection
+    /// cards intentionally have no entry here and therefore never age.
+    var playerCareers: [String: LegendsPlayerCareer] = [:]
+    /// Completed careers remain permanently visible even after their card
+    /// is removed from the active collection and can later be packed again.
+    var legendsHall: [LegendsHallEntry] = []
+    /// All-time club records (Phase 2), persisted across seasons and
+    /// surviving the player who set them.
+    var clubRecords: [LegendsClubRecordKind: LegendsClubRecordEntry] = [:]
+    /// The most recent end-of-season development review, shown on the home
+    /// dashboard once and cleared when the player dismisses it.
+    var lastSeasonReview: [String: LegendsSeasonReviewEntry] = [:]
     /// Duplicate pulls not yet consumed into an upgrade, keyed by card ID.
     /// Resets to 0 (and bumps `cardUpgrades`) every 3rd duplicate.
     var duplicateProgress: [String: Int] = [:]
@@ -54,6 +185,13 @@ struct LegendsProfile: Codable {
     /// Wins accumulated at the current division (Phase 7) — resets on
     /// promotion. See `LegendsStore.winsToPromote`.
     var divisionWins: Int = 0
+    /// Persistent division ledger used by the Legends table and home podium.
+    var divisionTable: [LegendsDivisionRecord] = []
+    /// Full home-and-away schedule for the current Legends division season.
+    var divisionSchedule: [LegendsFixture] = []
+    /// Competition season is separate from the legacy ten-match aging cycle.
+    var divisionSeason: Int = 1
+    var lastDivisionSeasonResult: LegendsDivisionSeasonResult? = nil
     /// Challenges (Phase 8). Permanent stats plus daily/weekly windows
     /// that reset on a calendar boundary — see
     /// `LegendsStore.refreshChallengeCadences()`.
@@ -89,18 +227,31 @@ struct LegendsProfile: Codable {
     /// The free Starter Pack (LegendsPacks.swift, id "starter") can only
     /// ever be opened once per club — its cost is 0, so without this flag
     /// it would otherwise be an infinitely-repeatable free pack.
+    var pendingPackID: String? = nil
+    var pendingPackCardIDs: [String] = []
     var hasClaimedStarterPack: Bool = false
+    /// The user's persistent manager identity. Nil means this Legends save
+    /// still needs the one-time manager creation flow.
+    var managerProfile: LegendsManagerProfile? = nil
+    /// One record per owned career instance. The legacy ID sets remain
+    /// decoded for compatibility and are reconciled into this registry.
+    var ownedPlayerRecords: [String: LegendsOwnedPlayerRecord] = [:]
 
     static func starter() -> LegendsProfile {
         let squad = starterSquad()
-        return LegendsProfile(clubName: "RSM Legends FC", crestShort: "RSM",
-                               crestColorRGB: [0.10, 0.76, 0.35],
-                               managerLevel: 1, managerXP: 0,
-                               coins: 500, packTokens: 3,
-                               division: .division10, teamRating: 0,
-                               ownedCardIDs: squad.owned,
-                               startingXICardIDs: squad.xi,
-                               benchCardIDs: squad.bench)
+        var profile = LegendsProfile(clubName: "RSM Legends FC", crestShort: "RSM",
+                                      crestColorRGB: [0.10, 0.76, 0.35],
+                                      managerLevel: 1, managerXP: 0,
+                                      coins: 500, packTokens: 3,
+                                      division: .division10, teamRating: 0,
+                                      ownedCardIDs: squad.owned,
+                                      activatedCardIDs: squad.owned,
+                                      startingXICardIDs: squad.xi,
+                                      benchCardIDs: squad.bench,
+                                      divisionTable: LegendsDivisionTable.seed(userClub: "RSM Legends FC"))
+        let clubIDs = profile.divisionTable.map(\.id)
+        profile.divisionSchedule = LegendsDivisionTable.schedule(clubIDs: clubIDs, season: profile.divisionSeason)
+        return profile
     }
 
     /// Picks one low-rated (Common/Rare/Elite) card per real player so a
@@ -158,26 +309,32 @@ struct LegendsProfile: Codable {
     // an existing Legends save.
     enum CodingKeys: String, CodingKey {
         case clubName, crestShort, crestColorRGB, managerLevel, managerXP
-        case coins, packTokens, division, teamRating, ownedCardIDs
+        case coins, packTokens, division, teamRating, ownedCardIDs, activatedCardIDs
+        case playerCareers, legendsHall, clubRecords, lastSeasonReview
         case duplicateProgress, cardUpgrades
         case formationName, startingXICardIDs, benchCardIDs, captainCardID
-        case divisionWins
+        case divisionWins, divisionTable, divisionSchedule, divisionSeason, lastDivisionSeasonResult
         case totalWins, currentWinStreak, matchesToday, winsToday, winsThisWeek, goalsThisWeek
         case lastDailyReset, lastWeeklyReset
         case completedPermanentChallengeIDs, completedDailyChallengeIDs, completedWeeklyChallengeIDs
         case ownedManagerIDs, activeManagerID, ownedStadiumIDs, activeStadiumID
         case currentSeason, matchesPlayedThisSeason, cardAgeOffsets
         case preferredMentality
-        case hasClaimedStarterPack
+        case pendingPackID, pendingPackCardIDs, hasClaimedStarterPack, managerProfile, ownedPlayerRecords
     }
 
     init(clubName: String, crestShort: String, crestColorRGB: [Double],
          managerLevel: Int, managerXP: Int, coins: Int, packTokens: Int,
          division: LegendsDivision, teamRating: Int, ownedCardIDs: Set<String> = [],
+         activatedCardIDs: Set<String> = [], playerCareers: [String: LegendsPlayerCareer] = [:],
+         legendsHall: [LegendsHallEntry] = [], clubRecords: [LegendsClubRecordKind: LegendsClubRecordEntry] = [:],
+         lastSeasonReview: [String: LegendsSeasonReviewEntry] = [:],
          duplicateProgress: [String: Int] = [:], cardUpgrades: [String: Int] = [:],
          formationName: String = "4-4-2", startingXICardIDs: [String?] = Array(repeating: nil, count: 11),
          benchCardIDs: [String?] = Array(repeating: nil, count: LegendsStore.benchSize),
          captainCardID: String? = nil, divisionWins: Int = 0,
+         divisionTable: [LegendsDivisionRecord] = [], divisionSchedule: [LegendsFixture] = [], divisionSeason: Int = 1,
+         lastDivisionSeasonResult: LegendsDivisionSeasonResult? = nil,
          totalWins: Int = 0, currentWinStreak: Int = 0, matchesToday: Int = 0, winsToday: Int = 0,
          winsThisWeek: Int = 0, goalsThisWeek: Int = 0,
          lastDailyReset: Date = .distantPast, lastWeeklyReset: Date = .distantPast,
@@ -186,7 +343,10 @@ struct LegendsProfile: Codable {
          ownedManagerIDs: Set<String> = [], activeManagerID: String? = nil,
          ownedStadiumIDs: Set<String> = [], activeStadiumID: String? = nil,
          currentSeason: Int = 1, matchesPlayedThisSeason: Int = 0, cardAgeOffsets: [String: Int] = [:],
-         preferredMentality: Mentality = .balanced, hasClaimedStarterPack: Bool = false) {
+         preferredMentality: Mentality = .balanced, pendingPackID: String? = nil,
+         pendingPackCardIDs: [String] = [], hasClaimedStarterPack: Bool = false,
+         managerProfile: LegendsManagerProfile? = nil,
+         ownedPlayerRecords: [String: LegendsOwnedPlayerRecord] = [:]) {
         self.clubName = clubName
         self.crestShort = crestShort
         self.crestColorRGB = crestColorRGB
@@ -197,6 +357,11 @@ struct LegendsProfile: Codable {
         self.division = division
         self.teamRating = teamRating
         self.ownedCardIDs = ownedCardIDs
+        self.activatedCardIDs = activatedCardIDs
+        self.playerCareers = playerCareers
+        self.legendsHall = legendsHall
+        self.clubRecords = clubRecords
+        self.lastSeasonReview = lastSeasonReview
         self.duplicateProgress = duplicateProgress
         self.cardUpgrades = cardUpgrades
         self.formationName = formationName
@@ -204,6 +369,10 @@ struct LegendsProfile: Codable {
         self.benchCardIDs = benchCardIDs
         self.captainCardID = captainCardID
         self.divisionWins = divisionWins
+        self.divisionTable = divisionTable
+        self.divisionSchedule = divisionSchedule
+        self.divisionSeason = divisionSeason
+        self.lastDivisionSeasonResult = lastDivisionSeasonResult
         self.totalWins = totalWins
         self.currentWinStreak = currentWinStreak
         self.matchesToday = matchesToday
@@ -223,7 +392,11 @@ struct LegendsProfile: Codable {
         self.matchesPlayedThisSeason = matchesPlayedThisSeason
         self.cardAgeOffsets = cardAgeOffsets
         self.preferredMentality = preferredMentality
+        self.pendingPackID = pendingPackID
+        self.pendingPackCardIDs = pendingPackCardIDs
         self.hasClaimedStarterPack = hasClaimedStarterPack
+        self.managerProfile = managerProfile
+        self.ownedPlayerRecords = ownedPlayerRecords
     }
 
     init(from decoder: Decoder) throws {
@@ -238,13 +411,23 @@ struct LegendsProfile: Codable {
         division = try c.decodeIfPresent(LegendsDivision.self, forKey: .division) ?? .division10
         teamRating = try c.decodeIfPresent(Int.self, forKey: .teamRating) ?? 0
         ownedCardIDs = try c.decodeIfPresent(Set<String>.self, forKey: .ownedCardIDs) ?? []
+        startingXICardIDs = try c.decodeIfPresent([String?].self, forKey: .startingXICardIDs) ?? Array(repeating: nil, count: 11)
+        benchCardIDs = try c.decodeIfPresent([String?].self, forKey: .benchCardIDs) ?? Array(repeating: nil, count: LegendsStore.benchSize)
+        activatedCardIDs = try c.decodeIfPresent(Set<String>.self, forKey: .activatedCardIDs)
+            ?? Set((startingXICardIDs + benchCardIDs).compactMap { $0 })
+        playerCareers = try c.decodeIfPresent([String: LegendsPlayerCareer].self, forKey: .playerCareers) ?? [:]
+        legendsHall = try c.decodeIfPresent([LegendsHallEntry].self, forKey: .legendsHall) ?? []
+        clubRecords = try c.decodeIfPresent([LegendsClubRecordKind: LegendsClubRecordEntry].self, forKey: .clubRecords) ?? [:]
+        lastSeasonReview = try c.decodeIfPresent([String: LegendsSeasonReviewEntry].self, forKey: .lastSeasonReview) ?? [:]
         duplicateProgress = try c.decodeIfPresent([String: Int].self, forKey: .duplicateProgress) ?? [:]
         cardUpgrades = try c.decodeIfPresent([String: Int].self, forKey: .cardUpgrades) ?? [:]
         formationName = try c.decodeIfPresent(String.self, forKey: .formationName) ?? "4-4-2"
-        startingXICardIDs = try c.decodeIfPresent([String?].self, forKey: .startingXICardIDs) ?? Array(repeating: nil, count: 11)
-        benchCardIDs = try c.decodeIfPresent([String?].self, forKey: .benchCardIDs) ?? Array(repeating: nil, count: LegendsStore.benchSize)
         captainCardID = try c.decodeIfPresent(String.self, forKey: .captainCardID)
         divisionWins = try c.decodeIfPresent(Int.self, forKey: .divisionWins) ?? 0
+        divisionTable = try c.decodeIfPresent([LegendsDivisionRecord].self, forKey: .divisionTable) ?? []
+        divisionSchedule = try c.decodeIfPresent([LegendsFixture].self, forKey: .divisionSchedule) ?? []
+        divisionSeason = try c.decodeIfPresent(Int.self, forKey: .divisionSeason) ?? 1
+        lastDivisionSeasonResult = try c.decodeIfPresent(LegendsDivisionSeasonResult.self, forKey: .lastDivisionSeasonResult)
         totalWins = try c.decodeIfPresent(Int.self, forKey: .totalWins) ?? 0
         currentWinStreak = try c.decodeIfPresent(Int.self, forKey: .currentWinStreak) ?? 0
         matchesToday = try c.decodeIfPresent(Int.self, forKey: .matchesToday) ?? 0
@@ -264,7 +447,11 @@ struct LegendsProfile: Codable {
         matchesPlayedThisSeason = try c.decodeIfPresent(Int.self, forKey: .matchesPlayedThisSeason) ?? 0
         cardAgeOffsets = try c.decodeIfPresent([String: Int].self, forKey: .cardAgeOffsets) ?? [:]
         preferredMentality = try c.decodeIfPresent(Mentality.self, forKey: .preferredMentality) ?? .balanced
+        pendingPackID = try c.decodeIfPresent(String.self, forKey: .pendingPackID)
+        pendingPackCardIDs = try c.decodeIfPresent([String].self, forKey: .pendingPackCardIDs) ?? []
         hasClaimedStarterPack = try c.decodeIfPresent(Bool.self, forKey: .hasClaimedStarterPack) ?? false
+        managerProfile = try c.decodeIfPresent(LegendsManagerProfile.self, forKey: .managerProfile)
+        ownedPlayerRecords = try c.decodeIfPresent([String: LegendsOwnedPlayerRecord].self, forKey: .ownedPlayerRecords) ?? [:]
     }
 }
 
@@ -286,24 +473,177 @@ final class LegendsStore {
     // default-parameter expressions, which evaluate outside MainActor
     // isolation — safe, it's just a compile-time constant.
     nonisolated static let benchSize = 7
-    /// Wins needed at a division before promotion (Phase 7).
+    /// Wins needed at a division before promotion (legacy ad-hoc match path).
     static let winsToPromote = 6
+    static func nextDivision(after division: LegendsDivision) -> LegendsDivision {
+        LegendsDivision(rawValue: max(LegendsDivision.worldLeague.rawValue,
+                                       min(LegendsDivision.division10.rawValue, division.rawValue - 1))) ?? .worldLeague
+    }
+
+    static func previousDivision(after division: LegendsDivision) -> LegendsDivision {
+        LegendsDivision(rawValue: max(LegendsDivision.worldLeague.rawValue,
+                                       min(LegendsDivision.division10.rawValue, division.rawValue + 1))) ?? .division10
+    }
+
+    static func seasonReward(for outcome: LegendsDivisionSeasonOutcome) -> LegendsSeasonReward {
+        switch outcome {
+        case .champion: return LegendsSeasonReward(coins: 300, tokens: 3, managerXP: 100)
+        case .promoted: return LegendsSeasonReward(coins: 220, tokens: 2, managerXP: 80)
+        case .retained: return LegendsSeasonReward(coins: 100, tokens: 1, managerXP: 40)
+        case .relegated: return LegendsSeasonReward(coins: 50, tokens: 0, managerXP: 20)
+        }
+    }
+
+    static func seasonOutcome(finalRank: Int, totalTeams: Int, division: LegendsDivision) -> (outcome: LegendsDivisionSeasonOutcome, newDivision: LegendsDivision) {
+        if finalRank == 1 && division != .worldLeague {
+            return (.champion, nextDivision(after: division))
+        }
+        if finalRank <= 2 && division != .worldLeague {
+            return (.promoted, nextDivision(after: division))
+        }
+        if finalRank > totalTeams - 2 && division != .division10 {
+            return (.relegated, previousDivision(after: division))
+        }
+        return (.retained, division)
+    }
     /// How many Starting XI players must share a nation/era/club for the
     /// "core XI" challenges (Phase 8) — see LegendsStore+Challenges.swift.
     static let xiShareThreshold = 6
     /// A "season" for aging purposes (LegendsStore+Aging.swift) — this
     /// many Play Match results, not a calendar period.
-    static let matchesPerSeason = 10
+    ///
+    /// Kept equal to the division campaign length (a 14-match double
+    /// round-robin of the 8 clubs) so aging, retirement and the season
+    /// review all land at the same boundary as the division season.
+    static let matchesPerSeason = 14
 
     init() {
         profile = Self.load() ?? .starter()
+        // Older saves have activated IDs but no lifecycle records. Create
+        // only those signed records; collection-only cards stay untouched.
+        migrateLegacyCareerStates()
+        migrateOwnedPlayerRecords()
+    }
+
+    /// The current table, with a seeded fallback for older saves.
+    func divisionStandings() -> [LegendsDivisionRecord] {
+        let table = profile.divisionTable.isEmpty
+            ? LegendsDivisionTable.seed(userClub: profile.clubName)
+            : profile.divisionTable
+        return table.sorted {
+            if $0.points != $1.points { return $0.points > $1.points }
+            if $0.goalDifference != $1.goalDifference { return $0.goalDifference > $1.goalDifference }
+            if $0.goalsFor != $1.goalsFor { return $0.goalsFor > $1.goalsFor }
+            return $0.name < $1.name
+        }
+    }
+
+    func ensureDivisionTable() {
+        if profile.divisionTable.isEmpty {
+            profile.divisionTable = LegendsDivisionTable.seed(userClub: profile.clubName)
+        } else if !profile.divisionTable.contains(where: { $0.id == profile.clubName }) {
+            profile.divisionTable.append(LegendsDivisionRecord(id: profile.clubName, name: profile.clubName,
+                                                               played: 0, won: 0, drawn: 0, lost: 0,
+                                                               goalsFor: 0, goalsAgainst: 0))
+        }
+        ensureDivisionSchedule()
+    }
+
+    /// Migrates older saves that only had a standings ledger. The first
+    /// access creates a fresh schedule without changing any saved results.
+    func ensureDivisionSchedule() {
+        ensureDivisionTableWithoutSchedule()
+        if profile.divisionSchedule.isEmpty && isLegacySyntheticTable {
+            profile.divisionTable = LegendsDivisionTable.seed(userClub: profile.clubName)
+        }
+        let clubIDs = profile.divisionTable.map(\.id)
+        let expectedFixtureCount = max(0, clubIDs.count * (clubIDs.count - 1))
+        if profile.divisionSchedule.count != expectedFixtureCount
+            || profile.divisionSchedule.contains(where: { !clubIDs.contains($0.homeTeamID) || !clubIDs.contains($0.awayTeamID) }) {
+            profile.divisionSchedule = LegendsDivisionTable.schedule(clubIDs: clubIDs, season: profile.divisionSeason)
+        }
+    }
+
+    private var isLegacySyntheticTable: Bool {
+        guard profile.divisionTable.count == 8 else { return false }
+        return profile.divisionTable.allSatisfy { $0.played == 3 }
+    }
+
+    private func ensureDivisionTableWithoutSchedule() {
+        if profile.divisionTable.isEmpty {
+            profile.divisionTable = LegendsDivisionTable.seed(userClub: profile.clubName)
+        } else if !profile.divisionTable.contains(where: { $0.id == profile.clubName }) {
+            profile.divisionTable.append(LegendsDivisionRecord(id: profile.clubName, name: profile.clubName,
+                                                               played: 0, won: 0, drawn: 0, lost: 0,
+                                                               goalsFor: 0, goalsAgainst: 0))
+        }
+    }
+
+    func recordDivisionMatch(teamGoals: Int, opponentGoals: Int, opponentName: String) {
+        ensureDivisionTableWithoutSchedule()
+        if let index = profile.divisionTable.firstIndex(where: { $0.id == profile.clubName }) {
+            profile.divisionTable[index].played += 1
+            profile.divisionTable[index].goalsFor += teamGoals
+            profile.divisionTable[index].goalsAgainst += opponentGoals
+            if teamGoals > opponentGoals { profile.divisionTable[index].won += 1 }
+            else if teamGoals == opponentGoals { profile.divisionTable[index].drawn += 1 }
+            else { profile.divisionTable[index].lost += 1 }
+        }
+        if let index = profile.divisionTable.firstIndex(where: { $0.name == opponentName }) {
+            profile.divisionTable[index].played += 1
+            profile.divisionTable[index].goalsFor += opponentGoals
+            profile.divisionTable[index].goalsAgainst += teamGoals
+            if opponentGoals > teamGoals { profile.divisionTable[index].won += 1 }
+            else if opponentGoals == teamGoals { profile.divisionTable[index].drawn += 1 }
+            else { profile.divisionTable[index].lost += 1 }
+        }
+    }
+
+    func resetDivisionTable() {
+        profile.divisionTable = LegendsDivisionTable.seed(userClub: profile.clubName)
+        profile.divisionSchedule = LegendsDivisionTable.schedule(clubIDs: profile.divisionTable.map(\.id), season: profile.divisionSeason)
+    }
+
+    var nextDivisionFixture: LegendsFixture? {
+        ensureDivisionSchedule()
+        return profile.divisionSchedule.first { fixture in
+            !fixture.isPlayed && (fixture.homeTeamID == profile.clubName || fixture.awayTeamID == profile.clubName)
+        }
+    }
+
+    var divisionFixturesRemaining: Int {
+        ensureDivisionSchedule()
+        return profile.divisionSchedule.filter { !$0.isPlayed && ($0.homeTeamID == profile.clubName || $0.awayTeamID == profile.clubName) }.count
+    }
+
+    var divisionMatchesPlayed: Int {
+        ensureDivisionSchedule()
+        return profile.divisionSchedule.filter { $0.isPlayed && ($0.homeTeamID == profile.clubName || $0.awayTeamID == profile.clubName) }.count
+    }
+
+    var divisionMatchCount: Int {
+        ensureDivisionSchedule()
+        return profile.divisionSchedule.filter { $0.homeTeamID == profile.clubName || $0.awayTeamID == profile.clubName }.count
+    }
+
+    var divisionPressure: Double {
+        guard let rank = divisionStandings().firstIndex(where: { $0.id == profile.clubName }) else { return 0 }
+        let total = max(1, divisionStandings().count)
+        let played = divisionMatchesPlayed
+        let remaining = max(1, divisionMatchCount - played)
+        let points = divisionStandings()[rank].points
+        let leader = divisionStandings().first?.points ?? points
+        let relegationCutoff = divisionStandings().dropFirst(max(0, total - 2)).first?.points ?? 0
+        let promotionThreat = rank <= 2 ? 1.0 : Double(max(0, leader - points + remaining)) / Double(max(1, remaining * 3))
+        let relegationThreat = rank >= total - 2 ? 1.0 : Double(max(0, relegationCutoff - points + remaining)) / Double(max(1, remaining * 3))
+        return min(1, max(0, max(promotionThreat, relegationThreat)))
     }
 
     /// A card's overall including any duplicate-earned upgrade and any
     /// seasonal aging decline (LegendsStore+Aging.swift), capped at 99
     /// and floored at 1.
     func effectiveOverall(for card: LegendsCard) -> Int {
-        let upgraded = card.overall + (profile.cardUpgrades[card.id] ?? 0)
+        let upgraded = card.overall + (profile.cardUpgrades[card.id] ?? 0) + developmentBonus(for: card) + formBoost(for: card)
         return min(99, max(1, upgraded - agingPenalty(for: card)))
     }
 
@@ -335,6 +675,8 @@ final class LegendsStore {
     func deleteClub() {
         try? FileManager.default.removeItem(at: Self.fileURL)
         profile = .starter()
+        migrateLegacyCareerStates()
+        migrateOwnedPlayerRecords()
         persist()
     }
 }

@@ -197,4 +197,79 @@ final class LegendsStoreChallengeTests: XCTestCase {
         let promoted = store.recordMatchResult(winSummary(promoted: true))
         XCTAssertTrue(promoted.contains { $0.challenge.id == "promoted" })
     }
+
+    /// Fills the XI with the strongest available cards so `currentTeamRating`
+    /// is a real, high, predictable number instead of the "0 until full"
+    /// placeholder — needed for `beatStrongerOpponent`, which compares
+    /// against it directly.
+    private func fillStrongXI(_ store: LegendsStore) {
+        var seenNames = Set<String>()
+        let unique = LegendsCardDatabase.all
+            .sorted { store.effectiveOverall(for: $0) > store.effectiveOverall(for: $1) }
+            .filter { seenNames.insert($0.name).inserted }
+        let slots = store.startingXISlots
+        for i in 0..<slots.count {
+            store.assign(cardID: unique[i].id, toXISlot: i)
+        }
+    }
+
+    func testGiantKillerChallengeRequiresAnOpponentRatedAsHighAsYourTeam() async {
+        let store = await freshStore()
+        fillStrongXI(store)
+        let rating = store.currentTeamRating
+        XCTAssertGreaterThan(rating, 0, "Test setup should produce a real team rating")
+
+        let weakerOpponentSummary = LegendsMatchOutcomeSummary(
+            opponent: LegendsOpponent(name: "Rival XI", rating: rating - 5),
+            result: LegendsMatchEngine.Result(teamGoals: 2, opponentGoals: 0),
+            coinsEarned: 50, tokensEarned: 1, xpEarned: 30,
+            leveledUp: false, promoted: false, newDivision: .division10)
+        let notCompleted = store.recordMatchResult(weakerOpponentSummary)
+        XCTAssertFalse(notCompleted.contains { $0.challenge.id == "giant-killer" }, "Beating a weaker-rated opponent shouldn't count")
+
+        let strongerOpponentSummary = LegendsMatchOutcomeSummary(
+            opponent: LegendsOpponent(name: "Rival XI", rating: rating + 5),
+            result: LegendsMatchEngine.Result(teamGoals: 2, opponentGoals: 0),
+            coinsEarned: 50, tokensEarned: 1, xpEarned: 30,
+            leveledUp: false, promoted: false, newDivision: .division10)
+        let completed = store.recordMatchResult(strongerOpponentSummary)
+        XCTAssertTrue(completed.contains { $0.challenge.id == "giant-killer" })
+    }
+
+    func testWinWithManagerChallengeRequiresAnActiveManagerAtTheWin() async {
+        let store = await freshStore()
+        store.profile.activeManagerID = nil
+        let withoutManager = store.recordMatchResult(winSummary())
+        XCTAssertFalse(withoutManager.contains { $0.challenge.id == "tactical-edge" })
+
+        let manager = LegendsManagerDatabase.all.first!
+        store.profile.ownedManagerIDs = [manager.id]
+        store.setActiveManager(manager.id)
+        let withManager = store.recordMatchResult(winSummary())
+        XCTAssertTrue(withManager.contains { $0.challenge.id == "tactical-edge" })
+    }
+
+    func testWinWithStadiumChallengeRequiresAnActiveStadiumAtTheWin() async {
+        let store = await freshStore()
+        store.profile.activeStadiumID = nil
+        let withoutStadium = store.recordMatchResult(winSummary())
+        XCTAssertFalse(withoutStadium.contains { $0.challenge.id == "home-advantage" })
+
+        let stadium = LegendsStadiumDatabase.all.first!
+        store.profile.ownedStadiumIDs = [stadium.id]
+        store.setActiveStadium(stadium.id)
+        let withStadium = store.recordMatchResult(winSummary())
+        XCTAssertTrue(withStadium.contains { $0.challenge.id == "home-advantage" })
+    }
+
+    func testWinInTopDivisionChallengeRequiresTheWorldLeague() async {
+        let store = await freshStore()
+        store.profile.division = .division5
+        let elsewhere = store.recordMatchResult(winSummary())
+        XCTAssertFalse(elsewhere.contains { $0.challenge.id == "top-flight" })
+
+        store.profile.division = .worldLeague
+        let topFlight = store.recordMatchResult(winSummary())
+        XCTAssertTrue(topFlight.contains { $0.challenge.id == "top-flight" })
+    }
 }

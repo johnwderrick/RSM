@@ -12,44 +12,41 @@ import SwiftUI
 
 struct LegendsSettingsView: View {
     var store: LegendsStore
+    var onNavigate: ((LegendsNavItem) -> Void)? = nil
     var onBack: () -> Void
 
     @State private var soundEnabled = !SoundManager.shared.isMuted
     @State private var confirmingDelete = false
 
     var body: some View {
-        ZStack {
-            Retro.background.ignoresSafeArea()
+        LegendsMenuShell(store: store, title: "SETTINGS", subtitle: "SOUND & CLUB DATA", icon: "gearshape.fill", accent: LegendsPalette.purple, onBack: onBack, currentNav: .settings, onNavigate: onNavigate) {
             VStack(spacing: 14) {
-                header
-                Panel(title: "AUDIO") {
+                LegendsDashboardPanel(title: "AUDIO", icon: "speaker.wave.2.fill", color: LegendsPalette.blue) {
                     Toggle(isOn: $soundEnabled) {
                         Text("Sound Effects")
                             .font(.system(.footnote, design: .monospaced).bold())
-                            .foregroundStyle(Retro.text)
+                            .foregroundStyle(LegendsPalette.navy)
                     }
-                    .tint(Retro.accent)
+                    .tint(LegendsPalette.green)
                     .onChange(of: soundEnabled) { _, newValue in
                         SoundManager.shared.isMuted = !newValue
                         if newValue { SoundManager.shared.play(.buttonTap) }
                     }
                 }
-                .frame(maxWidth: 420)
-                .padding(.horizontal)
 
-                Panel(title: "DANGER ZONE") {
+                LegendsDashboardPanel(title: "DANGER ZONE", icon: "exclamationmark.triangle.fill", color: Retro.warning) {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Deletes your club, collection and progress. This can't be undone.")
                             .font(.system(.caption2, design: .monospaced))
-                            .foregroundStyle(Retro.text.opacity(0.7))
+                            .foregroundStyle(LegendsPalette.navy.opacity(0.68))
 
                         Button {
                             Haptics.tap()
                             confirmingDelete = true
                         } label: {
-                            Text("Delete Club")
+                            Text("DELETE CLUB")
                                 .font(.system(.footnote, design: .monospaced).bold())
-                                .foregroundStyle(Retro.pureWhite)
+                                .foregroundStyle(.white)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 10)
                                 .background(Retro.warning)
@@ -58,18 +55,15 @@ struct LegendsSettingsView: View {
                         .buttonStyle(PressableButtonStyle())
                     }
                 }
-                .frame(maxWidth: 420)
-                .padding(.horizontal)
-
-                Spacer()
 
                 Text("RSM Legends is an offline card-collecting mode built alongside Career Mode.")
                     .font(.system(.caption2, design: .monospaced))
-                    .foregroundStyle(Retro.text.opacity(0.5))
+                    .foregroundStyle(LegendsPalette.navy.opacity(0.5))
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 30)
-                    .padding(.bottom, 20)
+                    .padding(.top, 8)
             }
+            .frame(maxWidth: 520)
         }
         .alert("Delete this club?", isPresented: $confirmingDelete) {
             Button("Cancel", role: .cancel) {}
@@ -83,18 +77,4 @@ struct LegendsSettingsView: View {
         }
     }
 
-    private var header: some View {
-        VStack(spacing: 8) {
-            HStack {
-                LegendsBackButton(action: onBack)
-                Spacer()
-            }
-            .padding(.horizontal)
-            .padding(.top, 12)
-
-            Text("SETTINGS")
-                .font(.system(.title2, design: .monospaced).bold())
-                .foregroundStyle(Retro.accent)
-        }
-    }
 }

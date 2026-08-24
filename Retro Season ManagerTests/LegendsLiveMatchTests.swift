@@ -71,13 +71,60 @@ final class LegendsLiveMatchTests: XCTestCase {
         return Double(total) / Double(trials)
     }
 
+    /// Runs `trials` *paired* matches — trial `i` feeds `setupA` and
+    /// `setupB` the identical seeded roll sequence
+    /// (`SeededGenerator(seed: "pair-\(i)")`), so up until whatever
+    /// they're being compared on first causes the two matches to
+    /// diverge, both see exactly the same rolls. That cancels out
+    /// ordinary match-to-match Poisson noise and leaves (mostly) just the
+    /// effect being tested, so a genuinely small effect — a single
+    /// manager's few-point flat bonus, say — becomes statistically
+    /// reliable at a few hundred trials instead of the tens of thousands
+    /// `averageGoals`'s independent-samples comparison would need. See
+    /// `LegendsLiveMatch.rng` for the injection point this relies on.
+    private func pairedAverageGoalsDelta(trials: Int, setupA: (LegendsStore) -> Void, setupB: (LegendsStore) -> Void) async -> Double {
+        var totalDelta = 0
+        for i in 0..<trials {
+            let storeA = await freshStore()
+            setupA(storeA)
+            let liveA = LegendsLiveMatch(store: storeA, opponent: LegendsOpponent(name: "Rival XI", rating: 60),
+                                          rng: SeededGenerator(seed: "pair-\(i)"))
+            liveA.skipToEnd()
+
+            let storeB = await freshStore()
+            setupB(storeB)
+            let liveB = LegendsLiveMatch(store: storeB, opponent: LegendsOpponent(name: "Rival XI", rating: 60),
+                                          rng: SeededGenerator(seed: "pair-\(i)"))
+            liveB.skipToEnd()
+
+            totalDelta += liveA.teamGoals - liveB.teamGoals
+        }
+        return Double(totalDelta) / Double(trials)
+    }
+
     // These are statistical comparisons over independent Bernoulli trials
     // per minute — with means this small (~1.5-2 goals/match) the
     // standard error at a few hundred trials is close enough to the true
     // gap between groups that 150 trials flaked once in testing. 800
     // trials brings the standard error well below the gap being tested
     // for, at a runtime cost of well under a second per test.
-    private let statisticalTrialCount = 800
+    private let statisticalTrialCount = 1200
+
+    // The manager/stadium comparison has a much smaller effect size than
+    // the three tests above sharing `statisticalTrialCount` (a single
+    // manager+stadium bonus is a few flat points against an attack rating
+    // in the 80s-90s), which made it flake even at 2400 independent-sample
+    // trials (bumped 800→1200 during the item 10 polish pass, then flaked
+    // again 2-of-3 runs at 1200, then 1-of-3 at 2400 — the math says a
+    // reliable independent-samples version of this test would need
+    // somewhere north of 10,000 trials per side, several minutes just for
+    // this one test). It now runs as *paired* trials instead
+    // (`pairedAverageGoalsDelta`, same seeded roll sequence on both sides
+    // of each pair), which cancels out the match-to-match noise doing the
+    // damage rather than trying to out-sample it — paired trials ran green
+    // 4/4 at 2400 (vs. flaking repeatedly at 2400 unpaired), then 5/5 at
+    // this trimmed-down count, so this has real margin, not just luck.
+    private let managerStadiumTrialCount = 500
 
     func testGoalRateIncreasesWithStrongerAttackRating() async {
         let strongAvg = await averageGoals(trials: statisticalTrialCount) { self.strongestXI($0) }
@@ -95,6 +142,39 @@ final class LegendsLiveMatchTests: XCTestCase {
         let pushAvg = await averageGoals(trials: statisticalTrialCount, setup: { self.strongestXI($0) }, configure: { $0.userInstruction = .pushForward })
         let containAvg = await averageGoals(trials: statisticalTrialCount, setup: { self.strongestXI($0) }, configure: { $0.userInstruction = .containment })
         XCTAssertGreaterThan(pushAvg, containAvg, "Push Forward should out-score Containment on average, independent of mentality")
+    }
+
+    /// Regression guard for a real gap: managers/stadiums/chemistry used
+    /// to only affect the old instant-sim engine, never the live engine a
+    /// real player actually plays through — see `strengthBonus` in
+    /// `LegendsLiveMatch.swift`.
+    func testActiveManagerAndStadiumIncreaseGoalsOnAverage() async {
+        func withManagerAndStadium(_ store: LegendsStore) {
+            strongestXI(store)
+            let manager = LegendsManagerDatabase.all.first!
+            store.profile.ownedManagerIDs = [manager.id]
+            store.setActiveManager(manager.id)
+            let stadium = LegendsStadiumDatabase.all.first!
+            store.profile.ownedStadiumIDs = [stadium.id]
+            store.setActiveStadium(stadium.id)
+        }
+        func withoutManagerOrStadium(_ store: LegendsStore) {
+            strongestXI(store)
+            store.profile.ownedManagerIDs = []
+            store.profile.activeManagerID = nil
+            store.profile.ownedStadiumIDs = []
+            store.profile.activeStadiumID = nil
+        }
+
+        // A single manager's tactical bonus plus a stadium's gameplay
+        // bonus is a small flat add-on (a few points) against an attack
+        // rating in the 80s-90s — independent-samples averaging needs
+        // tens of thousands of trials to see that reliably through
+        // ordinary match-to-match noise (confirmed: 2400 trials still
+        // flaked). Paired trials cancel that noise out instead.
+        let avgDelta = await pairedAverageGoalsDelta(trials: managerStadiumTrialCount,
+                                                      setupA: withManagerAndStadium, setupB: withoutManagerOrStadium)
+        XCTAssertGreaterThan(avgDelta, 0, "An active manager and stadium should raise the live match's average goals, not just the retired instant-sim path's")
     }
 
     func testEnergyDecaysEachMinuteForOnPitchSlotsOnly() async {
@@ -216,5 +296,27 @@ final class LegendsLiveMatchTests: XCTestCase {
         guard totalGoals > 0 else { return XCTFail("Expected at least some goals across 40 near-certain-win trials") }
         XCTAssertGreaterThan(Double(forwardOrMidGoals) / Double(totalGoals), 0.8,
                               "Scorers should overwhelmingly be midfielders/forwards, not defenders or the goalkeeper")
+    }
+
+    /// `stop()` is the abandon path — it must cancel the real async loop
+    /// so no further minutes tick, and leave the engine paused. This is
+    /// the one test here that drives the live `start()` loop rather than
+    /// `testAdvanceMinute()`, since it's specifically about that loop's
+    /// teardown. Speed is set to 3× first so a *live* (uncancelled) loop
+    /// would tick roughly every ~230ms — comfortably inside the sleep
+    /// below — making a stopped engine's silence a meaningful signal.
+    func testStopCancelsTheLiveLoopSoAnAbandonedMatchGoesQuiet() async {
+        let store = await freshStore()
+        let live = LegendsLiveMatch(store: store, opponent: LegendsOpponent(name: "Rival XI", rating: 60))
+        live.setSpeed(3)
+        live.start()
+        try? await Task.sleep(for: .milliseconds(150))
+        live.stop()
+        let minuteAtStop = live.minute
+        XCTAssertTrue(live.isPaused, "stop() should leave the engine paused")
+
+        try? await Task.sleep(for: .milliseconds(800))
+        XCTAssertEqual(live.minute, minuteAtStop,
+                       "No further minutes should tick after stop() — the live loop must be cancelled, not just paused")
     }
 }

@@ -46,7 +46,7 @@ final class LegendsSeasonSoakTests: XCTestCase {
         var stoppedEarlyReason: String? = nil
         var retirementLog: [String] = []
 
-        let iterationCap = 150 // ~15 seasons at matchesPerSeason=10
+        let iterationCap = 150 // ~10 seasons at matchesPerSeason=14
 
         for i in 0..<iterationCap {
             let filled = refillSquadIfNeeded(store)
@@ -83,8 +83,10 @@ final class LegendsSeasonSoakTests: XCTestCase {
             // coinReward, not coinsEarned alone.
             let challengeCoins = summary.completedChallenges.reduce(0) { $0 + $1.challenge.coinReward }
             let challengeTokens = summary.completedChallenges.reduce(0) { $0 + $1.challenge.tokenReward }
-            XCTAssertEqual(store.profile.coins, coinsBefore + summary.coinsEarned + challengeCoins)
-            XCTAssertEqual(store.profile.packTokens, tokensBefore + summary.tokensEarned + challengeTokens)
+            let seasonCoins = summary.divisionSeasonResult?.reward.coins ?? 0
+            let seasonTokens = summary.divisionSeasonResult?.reward.tokens ?? 0
+            XCTAssertEqual(store.profile.coins, coinsBefore + summary.coinsEarned + challengeCoins + seasonCoins)
+            XCTAssertEqual(store.profile.packTokens, tokensBefore + summary.tokensEarned + challengeTokens + seasonTokens)
             XCTAssertGreaterThanOrEqual(store.profile.managerLevel, 1)
 
             if summary.promoted {
@@ -98,7 +100,7 @@ final class LegendsSeasonSoakTests: XCTestCase {
                 totalRetirements += seasonAdvance.retiredCards.count
                 XCTAssertEqual(store.profile.currentSeason, seasonAdvance.newSeason)
                 for card in seasonAdvance.retiredCards {
-                    retirementLog.append("season \(seasonAdvance.newSeason): \(card.name) (\(card.position.rawValue), retired at effective age \(store.effectiveAge(for: card)))")
+                    retirementLog.append("season \(seasonAdvance.newSeason): \(card.name) (\(card.position.rawValue), retired at effective age \(seasonAdvance.retiredAges[card.id] ?? LegendsStore.retirementAge))")
                 }
             }
 

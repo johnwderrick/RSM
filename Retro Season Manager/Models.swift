@@ -389,6 +389,10 @@ struct Player: Identifiable, Codable {
     /// flavour detail set at generation time, not tied to any gameplay
     /// mechanic.
     var nationality: String = "England"
+    /// Whether this player came through the club's own academy — set once,
+    /// at youth-prospect generation, and never cleared, so a graduate's
+    /// provenance survives long after they're promoted to the senior squad.
+    var isAcademyProduct: Bool = false
 
     /// Detailed 1...20 attributes, keyed by name.
     var attributes: [String: Int] = [:]
@@ -501,6 +505,7 @@ struct Player: Identifiable, Codable {
         case sellOnClause, buyBackClause
         case assists, cleanSheets, nationality
         case traits
+        case isAcademyProduct
     }
 }
 
@@ -563,6 +568,7 @@ extension Player {
         assists = try container.decodeIfPresent(Int.self, forKey: .assists) ?? 0
         cleanSheets = try container.decodeIfPresent(Int.self, forKey: .cleanSheets) ?? 0
         nationality = try container.decodeIfPresent(String.self, forKey: .nationality) ?? "England"
+        isAcademyProduct = try container.decodeIfPresent(Bool.self, forKey: .isAcademyProduct) ?? false
     }
 }
 
@@ -1480,4 +1486,22 @@ struct Formation: Identifiable, Hashable {
         Formation(name: "5-2-3", defenders: 5, midfielders: 2, forwards: 3),
         Formation(name: "3-6-1", defenders: 3, midfielders: 6, forwards: 1),
     ]
+
+    /// This formation's Starting XI slot roles, goalkeeper first then the
+    /// defense, midfield and attack rows — the same geometry Legends'
+    /// `startingXISlots` and Career's `PitchView` both need, factored out
+    /// once rather than duplicated per caller.
+    func slotRoles() -> [DetailedPosition] {
+        var slots: [DetailedPosition] = [.goalkeeper]
+        for i in 0..<defenders {
+            slots.append(.expected(for: .defender, indexInRow: i, rowCount: defenders))
+        }
+        for i in 0..<midfielders {
+            slots.append(.expected(for: .midfielder, indexInRow: i, rowCount: midfielders, wideIsWinger: wideMidfieldersAreWingers))
+        }
+        for i in 0..<forwards {
+            slots.append(.expected(for: .forward, indexInRow: i, rowCount: forwards))
+        }
+        return slots
+    }
 }
