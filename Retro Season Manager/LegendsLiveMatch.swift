@@ -6,20 +6,28 @@
 //  Career Mode's LiveMatch.swift structurally (tick loop, pause/speed,
 //  mentality/instruction, substitutions, commentary, momentum) but
 //  scaled to what Legends actually has: one aggregate card per Starting
-//  XI slot instead of full Player objects, no opponent roster (a
-//  generated LegendsOpponent has no bench to sub from or fatigue to
-//  track), and no cards/injuries/weather (Legends has no underlying
-//  data for any of those yet).
+//  XI slot instead of full Player objects, and no cards/injuries/weather
+//  (Legends has no underlying data for those yet).
 //
-//  Rather than a full chance-generation model, each minute rolls two
-//  independent Bernoulli trials — one per side — using
-//  `p = 2.7 * ratio / 90`. Summing ~90 independent low-probability
-//  trials approximates a Poisson(2.7*ratio) distribution, so this stays
-//  tuned to the same "2.7 goals per game" constant
-//  LegendsMatchEngine.simulate(...) already uses, while letting a
-//  mid-match mentality/instruction change genuinely shift the odds for
-//  every remaining minute — unlike pre-computing the final score and
-//  just animating it, which would make mid-match changes cosmetic only.
+//  Goal resolution is two-stage, not a single coin flip. Each minute
+//  rolls two independent Bernoulli trials — one per side — using
+//  `p = chanceRatePerGame * ratio / 90` to decide whether that side
+//  creates a genuine attacking chance this minute (unchanged in shape
+//  from the engine's original single-roll design, so mid-match
+//  mentality/instruction changes still genuinely shift the odds for
+//  every remaining minute rather than only cosmetically animating a
+//  pre-computed result). A fired chance is then *resolved* for real
+//  against the opposing side's actual players — a weighted-random
+//  attacker (by shooting/dribbling/pace/overall) against a weighted-
+//  random defender plus the defending side's goalkeeper (by
+//  defending/physical/overall) — via `resolveChance`/
+//  `conversionProbability`, using a deterministic synthetic opponent
+//  roster (`LegendsOpponentRoster`, full attributes). The two stages
+//  together still land near the same "~2.7 goals per game" baseline
+//  `LegendsMatchEngine.simulate(...)` targets, but the outcome is now
+//  attribute-grounded instead of an abstract single-roll coin flip, and
+//  the scorer is simply whoever took the shot — no second, unrelated
+//  dice roll after the goal is already decided.
 //
 
 import Foundation
@@ -86,6 +94,17 @@ final class LegendsLiveMatch {
     /// either mid-match anyway).
     private let strengthBonus: Double
 
+    /// Synthesized opponent XI (id/name/position + full attribute set),
+    /// generated once at kickoff from the same deterministic roster the
+    /// cosmetic 2D pitch already draws its 11 dots from
+    /// (`LegendsOpponentRoster.swift`) — reused here so the score engine
+    /// finally has real attributes to resolve a shot against instead of
+    /// a single flat `opponent.rating` number. Pure/deterministic on
+    /// `opponent.name`, no RNG draw, so constructing it doesn't perturb
+    /// `rng`'s sequence (matters for `pairedAverageGoalsDelta`'s seeded
+    /// A/B pairing in the tests).
+    private let opponentRoster: (formation: Formation, slots: [DetailedPosition], players: [SyntheticOpponentPlayer])
+
     /// Defaults to the system generator in production; tests can inject a
     /// seeded one (e.g. `SeededGenerator`) to run two matches through the
     /// *same* sequence of rolls and isolate the effect of a single input
@@ -102,6 +121,7 @@ final class LegendsLiveMatch {
         self.benchCardIDs = store.profile.benchCardIDs.compactMap { $0 }
         self.userMentality = store.profile.preferredMentality
         self.strengthBonus = store.matchStrengthBonus + Double(store.totalChemistry) * 0.3
+        self.opponentRoster = LegendsOpponentRoster.generateRoster(for: opponent)
         self.rng = rng
     }
 
@@ -207,7 +227,10 @@ final class LegendsLiveMatch {
 
     /// Independent attack/defence ratios (see file header) rather than
     /// one shared ratio — lets mentality/instruction bite on "how often
-    /// do I score" and "how often do I concede" separately.
+    /// do I create a chance" and "how often I concede one" separately. A
+    /// hit here used to *be* the goal directly; now it's a genuine
+    /// attacking opportunity, resolved for real against the opposing
+    /// side's actual players in `resolveChance`.
     private func rollGoalChances() {
         // The bonus applies symmetrically to attack and defence, matching
         // how the old instant-sim engine's single `chemistryBonus` term
@@ -221,27 +244,17 @@ final class LegendsLiveMatch {
         let effectiveAttack = max(liveAttack * userMentality.attack * userInstruction.attack, 1)
         let effectiveDefence = max(liveDefence * userMentality.solidity * userInstruction.solidity, 1)
 
-        let userRatio = effectiveAttack / (effectiveAttack + oppRating)
-        let opponentRatio = oppRating / (oppRating + effectiveDefence)
+        let userChanceRatio = effectiveAttack / (effectiveAttack + oppRating)
+        let opponentChanceRatio = oppRating / (oppRating + effectiveDefence)
 
-        let pUser = 2.7 * userRatio / 90
-        let pOpponent = 2.7 * opponentRatio / 90
+        let pUserChance = Self.chanceRatePerGame * userChanceRatio / 90
+        let pOpponentChance = Self.chanceRatePerGame * opponentChanceRatio / 90
 
-        if Double.random(in: 0..<1, using: &rng) < pUser {
-            scoreGoal(forUser: true)
-        } else if Double.random(in: 0..<1, using: &rng) < 0.025 {
-            // Matches Career Mode's own big-chance line (LiveMatch.swift) —
-            // a near-miss here is a keeper making a stop, not a wayward
-            // shot, the same convention Career already settled on.
-            say("Big chance for \(store.profile.clubName) — the keeper stands tall!", side: .home)
-            bumpMomentum(towardUser: true, by: 0.05)
+        if Double.random(in: 0..<1, using: &rng) < pUserChance {
+            resolveChance(forUser: true)
         }
-
-        if Double.random(in: 0..<1, using: &rng) < pOpponent {
-            scoreGoal(forUser: false)
-        } else if Double.random(in: 0..<1, using: &rng) < 0.025 {
-            say("Big chance for \(opponent.name) — the keeper stands tall!", side: .away)
-            bumpMomentum(towardUser: false, by: 0.05)
+        if Double.random(in: 0..<1, using: &rng) < pOpponentChance {
+            resolveChance(forUser: false)
         }
     }
 
@@ -259,47 +272,192 @@ final class LegendsLiveMatch {
         return total / Double(count)
     }
 
-    private func scoreGoal(forUser: Bool) {
+    // MARK: - Shot resolution
+
+    /// A single real player's shot-relevant numbers, resolved once per
+    /// fired chance — works uniformly for a user `LegendsCard` or an
+    /// opponent `SyntheticOpponentPlayer`. Not `private`: exposed
+    /// (module-internal, via `@testable import`) so tests can exercise
+    /// `conversionProbability` directly, without the statistical noise
+    /// and dilution of proving an attribute's effect indirectly through
+    /// a full paired-trial match simulation.
+    struct ShotContestant {
+        let id: String
+        let name: String
+        let shooting: Int
+        let dribbling: Int
+        let pace: Int
+        let overall: Int
+    }
+
+    struct DefenseContestant {
+        let defending: Int
+        let physical: Int
+        /// No dedicated goalkeeping attribute exists anywhere in this
+        /// codebase yet — the defending side's keeper's blended `overall`
+        /// stands in for shot-stopping/positioning. A known, flagged
+        /// limitation, not something this pass solves.
+        let keeperOverall: Int
+    }
+
+    /// Chances/game at exact parity between the two ratios above — the
+    /// replacement for the old flat `2.7` (see file header): `2.7` used
+    /// to be the *goal* rate directly; this is the *chance* rate, scaled
+    /// up so that once `baseConversion` (below) is applied at parity the
+    /// combined-team average lands back near the same ~2.7 goals/game.
+    private static let chanceRatePerGame = 7.5
+
+    private static let baseConversion = 0.35
+    private static let conversionFloor = 0.05
+    private static let conversionCeiling = 0.75
+
+    /// One fired attacking chance, resolved for real: a weighted-random
+    /// attacker against a weighted-random defender plus the defending
+    /// side's goalkeeper, using actual `LegendsCard`/`SyntheticOpponentPlayer`
+    /// attributes instead of a single blended `overall` and a pre-decided
+    /// coin flip. The attacker who takes the shot is credited as scorer
+    /// directly — no second, unrelated dice roll the way the old
+    /// `weightedScorer()` ran *after* the goal was already decided.
+    private func resolveChance(forUser: Bool) {
+        let attacker: ShotContestant
+        let energyFactor: Double
+        let defense: DefenseContestant
+        if forUser {
+            guard let picked = pickUserAttacker() else { return }
+            (attacker, energyFactor) = picked
+            defense = opponentDefenseProxy()
+        } else {
+            attacker = pickOpponentAttacker()
+            energyFactor = 1.0 // no fatigue system for the synthetic opponent roster
+            defense = userDefenseProxy()
+        }
+
+        let pConvert = conversionProbability(attacker: attacker, defense: defense, energyFactor: energyFactor)
+        if Double.random(in: 0..<1, using: &rng) < pConvert {
+            scoreGoal(forUser: forUser, scorerName: attacker.name, scorerCardID: forUser ? attacker.id : nil)
+        } else {
+            // Matches Career Mode's own big-chance line (LiveMatch.swift) —
+            // a near-miss here is a keeper making a stop, not a wayward
+            // shot, the same convention Career already settled on.
+            say("Big chance for \(forUser ? store.profile.clubName : opponent.name) — the keeper stands tall!", side: forUser ? .home : .away)
+            bumpMomentum(towardUser: forUser, by: 0.05)
+        }
+    }
+
+    private func attackerPower(_ a: ShotContestant, energyFactor: Double) -> Double {
+        (Double(a.shooting) * 1.6 + Double(a.dribbling) * 0.9 + Double(a.pace) * 0.5 + Double(a.overall) * 0.4) * energyFactor
+    }
+
+    private func defensePower(_ d: DefenseContestant) -> Double {
+        Double(d.defending) * 1.3 + Double(d.physical) * 0.9 + Double(d.keeperOverall) * 1.1
+    }
+
+    func conversionProbability(attacker: ShotContestant, defense: DefenseContestant, energyFactor: Double) -> Double {
+        let ap = attackerPower(attacker, energyFactor: energyFactor)
+        let dp = defensePower(defense)
+        let shotQuality = ap / (ap + dp) // 0...1, 0.5 at parity
+        let raw = Self.baseConversion * (shotQuality / 0.5)
+        return min(Self.conversionCeiling, max(Self.conversionFloor, raw))
+    }
+
+    private func positionWeight(_ broad: Position) -> Double {
+        switch broad {
+        case .forward: return 5
+        case .midfielder: return 2
+        case .defender: return 0.3
+        case .goalkeeper: return 0.02
+        }
+    }
+
+    /// Forward-heaviest, same shape the old `weightedScorer()` used —
+    /// extended to read `dribbling`/`pace` alongside `shooting`/`overall`
+    /// now that a real shot-quality contest exists to feed them into.
+    private func pickUserAttacker() -> (ShotContestant, energyFactor: Double)? {
+        let candidates: [(index: Int, card: LegendsCard)] = slots.indices.compactMap { index in
+            guard let cardID = onPitchCardIDs[index],
+                  let card = LegendsCardDatabase.all.first(where: { $0.id == cardID }) else { return nil }
+            return (index, card)
+        }
+        guard !candidates.isEmpty else { return nil }
+        func weight(_ card: LegendsCard) -> Double {
+            positionWeight(card.position.broad) * (Double(card.shooting) * 2.5 + Double(store.effectiveOverall(for: card)) * 0.3)
+        }
+        let totalWeight = candidates.reduce(0.0) { $0 + weight($1.card) }
+        let picked: (index: Int, card: LegendsCard)
+        if totalWeight > 0 {
+            var roll = Double.random(in: 0..<totalWeight, using: &rng)
+            picked = candidates.first { roll -= weight($0.card); return roll < 0 } ?? candidates[candidates.count - 1]
+        } else {
+            picked = candidates[Int.random(in: 0..<candidates.count, using: &rng)]
+        }
+        let energyFactor = 0.72 + 0.28 * energyBySlot[picked.index] / 100
+        let contestant = ShotContestant(id: picked.card.id, name: picked.card.name, shooting: picked.card.shooting,
+                                         dribbling: picked.card.dribbling, pace: picked.card.pace,
+                                         overall: store.effectiveOverall(for: picked.card))
+        return (contestant, energyFactor)
+    }
+
+    private func pickOpponentAttacker() -> ShotContestant {
+        let players = opponentRoster.players
+        func weight(_ player: SyntheticOpponentPlayer) -> Double {
+            positionWeight(player.position.broad) * (Double(player.shooting) * 2.5 + Double(player.overall) * 0.3)
+        }
+        let totalWeight = players.reduce(0.0) { $0 + weight($1) }
+        let picked: SyntheticOpponentPlayer
+        if totalWeight > 0 {
+            var roll = Double.random(in: 0..<totalWeight, using: &rng)
+            picked = players.first { roll -= weight($0); return roll < 0 } ?? players[players.count - 1]
+        } else {
+            picked = players[Int.random(in: 0..<players.count, using: &rng)]
+        }
+        return ShotContestant(id: picked.id, name: picked.name, shooting: picked.shooting,
+                               dribbling: picked.dribbling, pace: picked.pace, overall: picked.overall)
+    }
+
+    /// Weighted toward the on-pitch defenders' average, plus the user's
+    /// actual on-pitch goalkeeper standing in for shot-stopping.
+    private func userDefenseProxy() -> DefenseContestant {
+        let defenders: [LegendsCard] = slots.indices.compactMap { index in
+            guard slots[index].broad == .defender, let cardID = onPitchCardIDs[index] else { return nil }
+            return LegendsCardDatabase.all.first { $0.id == cardID }
+        }
+        let keeperCard: LegendsCard? = slots.indices.compactMap { index -> LegendsCard? in
+            guard slots[index] == .goalkeeper, let cardID = onPitchCardIDs[index] else { return nil }
+            return LegendsCardDatabase.all.first { $0.id == cardID }
+        }.first
+        let defending = defenders.isEmpty ? Double(opponent.rating) : defenders.map { Double($0.defending) }.reduce(0, +) / Double(defenders.count)
+        let physical = defenders.isEmpty ? Double(opponent.rating) : defenders.map { Double($0.physical) }.reduce(0, +) / Double(defenders.count)
+        let keeperOverall = keeperCard.map { store.effectiveOverall(for: $0) } ?? opponent.rating
+        return DefenseContestant(defending: Int(defending), physical: Int(physical), keeperOverall: keeperOverall)
+    }
+
+    private func opponentDefenseProxy() -> DefenseContestant {
+        let defenders = opponentRoster.players.filter { $0.position.broad == .defender }
+        let keeper = opponentRoster.players.first { $0.position == .goalkeeper }
+        let defending = defenders.isEmpty ? Double(opponent.rating) : defenders.map { Double($0.defending) }.reduce(0, +) / Double(defenders.count)
+        let physical = defenders.isEmpty ? Double(opponent.rating) : defenders.map { Double($0.physical) }.reduce(0, +) / Double(defenders.count)
+        return DefenseContestant(defending: Int(defending), physical: Int(physical), keeperOverall: keeper?.overall ?? opponent.rating)
+    }
+
+    /// `scorerCardID` is only ever supplied for the user side —
+    /// `scorerCardIDs` is user-scoped bookkeeping (nothing in the UI
+    /// reads an opponent-side equivalent), while `scorerName` names
+    /// whoever actually took the shot on both sides, finally giving
+    /// opponent goals a named scorer in commentary — they previously had
+    /// none at all.
+    private func scoreGoal(forUser: Bool, scorerName: String, scorerCardID: String?) {
         if forUser {
             teamGoals += 1
-            let scorer = weightedScorer()
-            if let scorer { scorerCardIDs.append(scorer.id) }
-            let scorerText = scorer.map { " \($0.name)!" } ?? ""
-            say("⚽︎ GOAL!\(scorerText) \(store.profile.clubName) \(teamGoals)-\(opponentGoals) \(opponent.name)", side: .home)
+            if let scorerCardID { scorerCardIDs.append(scorerCardID) }
+            say("⚽︎ GOAL! \(scorerName)! \(store.profile.clubName) \(teamGoals)-\(opponentGoals) \(opponent.name)", side: .home)
             bumpMomentum(towardUser: true, by: 0.22)
             SoundManager.shared.play(.goalCrowd)
         } else {
             opponentGoals += 1
-            say("⚽︎ GOAL! \(opponent.name) \(opponentGoals)-\(teamGoals) \(store.profile.clubName)", side: .away)
+            say("⚽︎ GOAL! \(scorerName)! \(opponent.name) \(opponentGoals)-\(teamGoals) \(store.profile.clubName)", side: .away)
             bumpMomentum(towardUser: false, by: 0.22)
         }
         if minute > 45 { secondHalfEventCount += 1 }
-    }
-
-    /// Forward-heaviest, matching Career's `attributeGoals` shape —
-    /// weighted by each card's own `shooting` and overall rather than a
-    /// second attribute system Legends doesn't have.
-    private func weightedScorer() -> LegendsCard? {
-        let onPitch = userOnPitchCards
-        guard !onPitch.isEmpty else { return nil }
-        func weight(_ card: LegendsCard) -> Double {
-            let positionWeight: Double
-            switch card.position.broad {
-            case .forward: positionWeight = 5
-            case .midfielder: positionWeight = 2
-            case .defender: positionWeight = 0.3
-            case .goalkeeper: positionWeight = 0.02
-            }
-            return positionWeight * (Double(card.shooting) * 2.5 + Double(store.effectiveOverall(for: card)) * 0.3)
-        }
-        let totalWeight = onPitch.reduce(0.0) { $0 + weight($1) }
-        guard totalWeight > 0 else { return onPitch.randomElement() }
-        var roll = Double.random(in: 0..<totalWeight, using: &rng)
-        for card in onPitch {
-            roll -= weight(card)
-            if roll < 0 { return card }
-        }
-        return onPitch.last
     }
 
     private func bumpMomentum(towardUser: Bool, by amount: Double) {
