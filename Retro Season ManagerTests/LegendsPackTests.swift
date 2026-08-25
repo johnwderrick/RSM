@@ -50,10 +50,19 @@ final class LegendsStorePackOpeningTests: XCTestCase {
         store.profile.duplicateProgress = [:]
         store.profile.cardUpgrades = [:]
         // LegendsStore() loads whatever's actually on disk (e.g. from a
-        // manual Simulator run) — effectiveOverall() also subtracts an
-        // aging penalty, so a real playthrough's cardAgeOffsets otherwise
-        // leaks into "does effectiveOverall equal overall+upgrade" checks.
+        // manual Simulator run, or an earlier test class in the same
+        // xcodebuild test invocation that signed/played this exact card
+        // and persisted the result to the same shared on-disk profile) —
+        // effectiveOverall() also folds in aging penalty, development
+        // bonus and form boost, so leftover cardAgeOffsets *or* a
+        // leftover playerCareers entry for this card otherwise leaks into
+        // "does effectiveOverall equal overall+upgrade" checks. Clearing
+        // cardAgeOffsets alone isn't enough: agingPenalty(for:) and
+        // formBoost(for:) both read profile.playerCareers[card.id]
+        // directly, with no activatedCardIDs gate the way
+        // developmentBonus(for:) has.
         store.profile.cardAgeOffsets = [:]
+        store.profile.playerCareers = [:]
         store.profile.activatedCardIDs = []
         store.profile.pendingPackID = nil
         store.profile.pendingPackCardIDs = []

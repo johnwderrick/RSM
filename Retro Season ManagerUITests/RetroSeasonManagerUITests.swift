@@ -156,17 +156,33 @@ final class RetroSeasonManagerUITests: XCTestCase {
         XCTAssertFalse(app.images[pressedImageID].exists,
                        "Pressed art '\(pressedImageID)' should not be present before pressing")
 
-        // Assert while the press is still held: the artwork swaps in for the
-        // duration of the hold, well before `press(forDuration:)` returns.
+        // Poll repeatedly during the hold rather than checking at one fixed
+        // instant. A single point-in-time check (this used to be scheduled
+        // for exactly 0.5s into the 1.2s hold) is timing-sensitive: on a
+        // slower/loaded CI runner, the synthesized touch-down event and
+        // the SwiftUI re-render that swaps in the pressed image can
+        // together take longer than that fixed offset, so the check could
+        // fire before the pressed artwork has actually appeared even
+        // though the button genuinely is still being held — exactly what
+        // was seen on CI ("Pressed art ... was not visible while ... was
+        // held"). Polling verifies the same real behavior — the pressed
+        // artwork appears at some point during a genuine hold, before
+        // release — without assuming any particular render latency.
+        let holdDuration: TimeInterval = 1.2
+        let pollInterval: TimeInterval = 0.1
         let visibleWhileHeld = expectation(description: "pressed art visible while held: \(buttonID)")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        var fulfilledAlready = false
+        func poll(elapsed: TimeInterval) {
+            guard !fulfilledAlready, elapsed < holdDuration else { return }
             if app.images[pressedImageID].exists {
+                fulfilledAlready = true
                 visibleWhileHeld.fulfill()
-            } else {
-                XCTFail("Pressed art '\(pressedImageID)' was not visible while '\(buttonID)' was held")
+                return
             }
+            DispatchQueue.main.asyncAfter(deadline: .now() + pollInterval) { poll(elapsed: elapsed + pollInterval) }
         }
-        button.press(forDuration: 1.2)
-        wait(for: [visibleWhileHeld], timeout: 3)
+        DispatchQueue.main.asyncAfter(deadline: .now() + pollInterval) { poll(elapsed: pollInterval) }
+        button.press(forDuration: holdDuration)
+        wait(for: [visibleWhileHeld], timeout: holdDuration + 2)
     }
 }
