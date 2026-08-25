@@ -31,3 +31,8 @@ __MACOSX/
 
 # Local-only Claude Code settings (permissions, machine-specific)
 .claude/settings.local.json
+
+# Keep camera-roll and development screenshots out of the repository root
+/IMG_*.PNG
+/IMG_*.jpg
+/Screenshot *.png
