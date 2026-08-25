@@ -64,11 +64,16 @@ extension GameStore {
         return ties
     }
 
-    /// Simulates a knockout tie, deciding drawn ties on penalties. `magic`
-    /// flattens the strength gap toward a coin-flip, so higher values produce
-    /// more cup upsets.
-    func simCupTie(_ homeIndex: Int, _ awayIndex: Int, magic: Double = 0) -> (hg: Int, ag: Int, winner: Int, pens: Bool) {
-        if homeIndex == awayIndex { return (0, 0, homeIndex, false) }   // bye
+    /// The deterministic half of a cup tie's odds: both clubs' best-XI
+    /// strength (home getting its `+30` advantage), the Cup Specialist
+    /// multiplier applied to whichever side(s) hold that identity, the
+    /// resulting home strength ratio, and `magic`'s upset-flattening
+    /// blend toward a coin-flip. Pulled out of `simCupTie` so this exact
+    /// formula — the only place a club identity actually touches the
+    /// odds — can be exercised directly, deterministically, without also
+    /// rolling the Poisson goals/penalty-shootout randomness that
+    /// follows it.
+    func cupTieHomeStrengthShare(_ homeIndex: Int, _ awayIndex: Int, magic: Double = 0) -> Double {
         var homeStrength = strengthValue(bestXI(for: clubs[homeIndex], formation: aiFormation(for: clubs[homeIndex]))) + 30
         var awayStrength = strengthValue(bestXI(for: clubs[awayIndex], formation: aiFormation(for: clubs[awayIndex])))
         // A Cup Specialist genuinely raises its game in cup competition —
@@ -80,6 +85,15 @@ extension GameStore {
         if clubIdentity(forClubIndex: awayIndex) == .cupSpecialist { awayStrength *= 1.08 }
         var ratio = homeStrength / (homeStrength + awayStrength)
         ratio = ratio * (1 - magic) + 0.5 * magic
+        return ratio
+    }
+
+    /// Simulates a knockout tie, deciding drawn ties on penalties. `magic`
+    /// flattens the strength gap toward a coin-flip, so higher values produce
+    /// more cup upsets.
+    func simCupTie(_ homeIndex: Int, _ awayIndex: Int, magic: Double = 0) -> (hg: Int, ag: Int, winner: Int, pens: Bool) {
+        if homeIndex == awayIndex { return (0, 0, homeIndex, false) }   // bye
+        let ratio = cupTieHomeStrengthShare(homeIndex, awayIndex, magic: magic)
         let hg = poisson(2.6 * ratio)
         let ag = poisson(2.6 * (1 - ratio))
         if hg != ag { return (hg, ag, hg > ag ? homeIndex : awayIndex, false) }
