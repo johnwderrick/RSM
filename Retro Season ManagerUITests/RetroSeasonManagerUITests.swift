@@ -156,17 +156,46 @@ final class RetroSeasonManagerUITests: XCTestCase {
         XCTAssertFalse(app.images[pressedImageID].exists,
                        "Pressed art '\(pressedImageID)' should not be present before pressing")
 
-        // Assert while the press is still held: the artwork swaps in for the
-        // duration of the hold, well before `press(forDuration:)` returns.
+        // Poll repeatedly during the hold rather than checking at one fixed
+        // instant. A single point-in-time check (this used to be scheduled
+        // for exactly 0.5s into the 1.2s hold) is timing-sensitive: on a
+        // slower/loaded CI runner, the synthesized touch-down event and
+        // the SwiftUI re-render that swaps in the pressed image can
+        // together take longer than that fixed offset, so the check could
+        // fire before the pressed artwork has actually appeared even
+        // though the button genuinely is still being held — exactly what
+        // was seen on CI ("Pressed art ... was not visible while ... was
+        // held"). Polling verifies the same real behavior — the pressed
+        // artwork appears at some point during a genuine hold, before
+        // release — without assuming any particular render latency.
+        //
+        // The poll loop runs on its own background queue with a real
+        // Thread.sleep, not chained DispatchQueue.main.asyncAfter calls —
+        // `button.press(forDuration:)` below blocks the main thread/run
+        // loop for the duration of the hold, and a *recursive* asyncAfter
+        // (each poll rescheduling the next one from inside the previous
+        // callback) turned out not to reliably get past its first
+        // invocation while that block was in effect on the CI runner
+        // (confirmed: the very first, and only, poll fired, then the
+        // expectation just timed out with no further checks ever
+        // running). A plain background thread doesn't depend on the main
+        // run loop processing anything at all, so it isn't affected by
+        // whatever `press(forDuration:)` does to it.
+        let holdDuration: TimeInterval = 1.2
+        let pollInterval: TimeInterval = 0.1
         let visibleWhileHeld = expectation(description: "pressed art visible while held: \(buttonID)")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            if app.images[pressedImageID].exists {
-                visibleWhileHeld.fulfill()
-            } else {
-                XCTFail("Pressed art '\(pressedImageID)' was not visible while '\(buttonID)' was held")
+        DispatchQueue.global(qos: .userInitiated).async {
+            var elapsed: TimeInterval = 0
+            while elapsed < holdDuration {
+                Thread.sleep(forTimeInterval: pollInterval)
+                elapsed += pollInterval
+                if app.images[pressedImageID].exists {
+                    visibleWhileHeld.fulfill()
+                    return
+                }
             }
         }
-        button.press(forDuration: 1.2)
-        wait(for: [visibleWhileHeld], timeout: 3)
+        button.press(forDuration: holdDuration)
+        wait(for: [visibleWhileHeld], timeout: holdDuration + 2)
     }
 }

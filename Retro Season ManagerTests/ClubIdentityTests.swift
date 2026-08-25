@@ -169,21 +169,36 @@ final class ClubIdentityTests: XCTestCase {
 
     // MARK: - Cup performance
 
-    func testCupSpecialistIncreasesWinProbabilityRelativeToBaseline() async {
+    /// `simCupTie` itself is Monte Carlo (Poisson goals, a penalty-shootout
+    /// coin flip on a draw) — comparing two independent 800-trial batches
+    /// of *match outcomes* was flaky by construction: the Cup Specialist
+    /// multiplier is a modest 8% strength bump, small enough that ordinary
+    /// sample-to-sample variance across two unrelated random batches could
+    /// (and did, on CI) outweigh it and flip the comparison. The
+    /// multiplier's actual effect lives entirely in the deterministic
+    /// strength-ratio calculation, not in the goals/penalties randomness
+    /// layered on top of it — so this asserts on that calculation directly,
+    /// via the `cupTieHomeStrengthShare` helper `simCupTie` itself now
+    /// calls, rather than on a statistical proxy for it. Same real
+    /// gameplay path, zero sampling noise.
+    func testCupSpecialistRaisesCupTieStrengthShare() async {
         let store = await freshStore()
         guard let a = store.clubs.indices.first(where: { $0 != store.userClubIndex }),
               let b = store.clubs.indices.first(where: { $0 != store.userClubIndex && $0 != a }) else {
             return XCTFail("Expected at least two AI clubs")
         }
-        let trials = 800
-        var baselineWins = 0
-        for _ in 0..<trials where store.simCupTie(a, b).winner == a { baselineWins += 1 }
+        // Both clubs start from a controlled, non-Cup-Specialist identity
+        // so the baseline reading can't already be inflated by whatever
+        // identity newGame() happened to assign either club.
+        store.clubIdentities[a] = .underdog
+        store.clubIdentities[b] = .underdog
+
+        let baselineShare = store.cupTieHomeStrengthShare(a, b)
 
         store.clubIdentities[a] = .cupSpecialist
-        var boostedWins = 0
-        for _ in 0..<trials where store.simCupTie(a, b).winner == a { boostedWins += 1 }
+        let boostedShare = store.cupTieHomeStrengthShare(a, b)
 
-        XCTAssertGreaterThan(boostedWins, baselineWins,
-                             "Flagging club A as Cup Specialist should raise its win rate against the same opponent")
+        XCTAssertGreaterThan(boostedShare, baselineShare,
+                             "Flagging club A as Cup Specialist should raise its home strength share against the same opponent")
     }
 }
