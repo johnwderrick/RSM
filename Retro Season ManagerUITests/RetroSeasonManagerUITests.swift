@@ -168,20 +168,33 @@ final class RetroSeasonManagerUITests: XCTestCase {
         // held"). Polling verifies the same real behavior — the pressed
         // artwork appears at some point during a genuine hold, before
         // release — without assuming any particular render latency.
+        //
+        // The poll loop runs on its own background queue with a real
+        // Thread.sleep, not chained DispatchQueue.main.asyncAfter calls —
+        // `button.press(forDuration:)` below blocks the main thread/run
+        // loop for the duration of the hold, and a *recursive* asyncAfter
+        // (each poll rescheduling the next one from inside the previous
+        // callback) turned out not to reliably get past its first
+        // invocation while that block was in effect on the CI runner
+        // (confirmed: the very first, and only, poll fired, then the
+        // expectation just timed out with no further checks ever
+        // running). A plain background thread doesn't depend on the main
+        // run loop processing anything at all, so it isn't affected by
+        // whatever `press(forDuration:)` does to it.
         let holdDuration: TimeInterval = 1.2
         let pollInterval: TimeInterval = 0.1
         let visibleWhileHeld = expectation(description: "pressed art visible while held: \(buttonID)")
-        var fulfilledAlready = false
-        func poll(elapsed: TimeInterval) {
-            guard !fulfilledAlready, elapsed < holdDuration else { return }
-            if app.images[pressedImageID].exists {
-                fulfilledAlready = true
-                visibleWhileHeld.fulfill()
-                return
+        DispatchQueue.global(qos: .userInitiated).async {
+            var elapsed: TimeInterval = 0
+            while elapsed < holdDuration {
+                Thread.sleep(forTimeInterval: pollInterval)
+                elapsed += pollInterval
+                if app.images[pressedImageID].exists {
+                    visibleWhileHeld.fulfill()
+                    return
+                }
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + pollInterval) { poll(elapsed: elapsed + pollInterval) }
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + pollInterval) { poll(elapsed: pollInterval) }
         button.press(forDuration: holdDuration)
         wait(for: [visibleWhileHeld], timeout: holdDuration + 2)
     }
