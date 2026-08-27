@@ -13,6 +13,17 @@ final class LegendsRetirementTimingTests: XCTestCase {
         store.profile.legendsHall = []
         store.profile.cardAgeOffsets = [:]
         store.profile.matchesPlayedThisSeason = 0
+        // `.starter()` ships with its own default lineup. Clear every slot
+        // (preserving array sizes) so lineup-cleanup assertions actually
+        // prove something about the card under test, instead of always
+        // finding the untouched starter fixture's own card sitting there.
+        for index in store.profile.startingXICardIDs.indices {
+            store.profile.startingXICardIDs[index] = nil
+        }
+        for index in store.profile.benchCardIDs.indices {
+            store.profile.benchCardIDs[index] = nil
+        }
+        store.profile.captainCardID = nil
         return store
     }
 
@@ -51,6 +62,11 @@ final class LegendsRetirementTimingTests: XCTestCase {
         store.profile.cardAgeOffsets[card.id] = 34 - card.age
         store.migrateOwnedPlayerRecords()
         store.profile.matchesPlayedThisSeason = LegendsStore.matchesPerSeason - 1
+        // Place the retiring card where retirement cleanup actually has
+        // something to remove, so the assertions below prove the cleanup
+        // ran rather than trivially passing against an already-empty slot.
+        store.profile.startingXICardIDs[0] = card.id
+        store.profile.captainCardID = card.id
 
         let result = store.advanceSeasonIfNeeded()
 
@@ -59,8 +75,9 @@ final class LegendsRetirementTimingTests: XCTestCase {
         XCTAssertEqual(store.profile.legendsHall.first?.finalAge, 35)
         XCTAssertNil(store.profile.playerCareers[card.id])
         XCTAssertFalse(store.profile.ownedCardIDs.contains(card.id))
-        XCTAssertNil(store.profile.startingXICardIDs.first ?? nil)
-        XCTAssertNil(store.profile.captainCardID)
+        XCTAssertFalse(store.profile.startingXICardIDs.contains(where: { $0 == card.id }))
+        XCTAssertFalse(store.profile.benchCardIDs.contains(where: { $0 == card.id }))
+        XCTAssertNotEqual(store.profile.captainCardID, card.id)
     }
 
     func testUnsignedPlayerNeverGetsFinalSeason() async {
@@ -92,8 +109,20 @@ final class LegendsRetirementTimingTests: XCTestCase {
             peakStartAge: legacy.peakStartAge, peakEndAge: legacy.peakEndAge,
             developmentRate: legacy.developmentRate, declineRate: legacy.declineRate,
             signedSeason: legacy.signedSeason)
-        store.profile.cardAgeOffsets[card.id] = 30 - card.age
+        // The manual initialiser above defaults `lifecycleProfile` to
+        // `.standardDeveloper` and `intendedRetirementAge` to the legacy
+        // sentinel (`LegendsStore.retirementAge`, 36) — exactly the
+        // pre-migration shape `migrateLegacyCareerStates()` looks for.
+        // Compute the same deterministic target it will generate, from the
+        // same inputs (card ID, position, lifecycle profile), so the
+        // fixture can position the player genuinely overdue instead of
+        // assuming a hard-coded age that may land under the target.
+        let generatedTarget = LegendsCareerLifecyclePolicy.retirementAge(
+            for: card.id, position: card.position, profile: .standardDeveloper)
+        store.profile.cardAgeOffsets[card.id] = (generatedTarget + 2) - card.age
         let before = store.effectiveAge(for: card)
+        XCTAssertGreaterThan(before, generatedTarget,
+                              "fixture must be overdue relative to the generated target to exercise grace")
         store.migrateLegacyCareerStates()
         XCTAssertEqual(store.profile.playerCareers[card.id]?.intendedRetirementAge, before + 1)
         XCTAssertEqual(store.effectiveAge(for: card), before)

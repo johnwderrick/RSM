@@ -955,7 +955,7 @@ extension LegendsStore {
             // delta is the season's real development — not just the aging
             // boundary the roll itself would otherwise measure.
             let delta = endOverall - state.seasonStartOverall
-                let stageReason = (age - 1) == state.intendedRetirementAge - 1 ? "Entered Final Season" : nil
+            let stageReason = age == state.intendedRetirementAge - 1 ? "Entered Final Season" : nil
             let review = LegendsSeasonReviewEntry(cardID: id, playerName: card.name, position: card.position,
                                                   overallDelta: delta, appearances: state.seasonAppearances,
                                                   starts: state.seasonAppearances,
