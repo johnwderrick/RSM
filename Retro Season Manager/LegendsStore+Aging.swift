@@ -980,18 +980,27 @@ extension LegendsStore {
 
         profile.lastSeasonReview = developmentReview
         let reportEntries = developmentReview.values.map { entry in
-            let oldAge = max(0, effectiveAge(for: LegendsCardDatabase.all.first { $0.id == entry.cardID } ?? LegendsCardDatabase.all[0]) - 1)
+            let card = LegendsCardDatabase.all.first { $0.id == entry.cardID }
+            let career = profile.playerCareers[entry.cardID]
+            let afterAge = card.map { effectiveAge(for: $0) } ?? entry.overallDelta
+            let beforeAge = max(0, afterAge - 1)
+            let afterOverall = card.map { effectiveOverall(for: $0) } ?? entry.overallDelta
+            let beforeOverall = afterOverall - entry.overallDelta
             return LegendsSeasonReportEntry(cardID: entry.cardID, playerName: entry.playerName,
-                                            completedSeason: finishingSeason, ageBefore: oldAge,
-                                            ageAfter: oldAge + 1, overallBefore: entry.overallDelta == 0 ? entry.overallDelta : entry.overallDelta - entry.overallDelta + entry.overallDelta,
-                                            overallAfter: entry.overallDelta, previousStage: "ACTIVE",
-                                            newStage: entry.reason, developmentProfile: profile.playerCareers[entry.cardID]?.lifecycleProfile ?? .standardDeveloper,
+                                            completedSeason: finishingSeason, ageBefore: beforeAge,
+                                            ageAfter: afterAge, overallBefore: beforeOverall,
+                                            overallAfter: afterOverall, previousStage: "ACTIVE",
+                                            newStage: entry.reason, developmentProfile: career?.lifecycleProfile ?? .standardDeveloper,
                                             improved: entry.overallDelta > 0, stable: entry.overallDelta == 0,
                                             declined: entry.overallDelta < 0, enteredFinalSeason: entry.reason.contains("Final Season"),
-                                            retired: false, retirementRecordID: nil)
+                                            retired: false, retirementRecordID: nil, position: entry.position,
+                                            favourite: profile.favouriteCardIDs.contains(entry.cardID))
         }
+        let plan = squadCareerPlan()
         profile.seasonReports[finishingSeason] = LegendsSeasonDevelopmentReport(season: finishingSeason, entries: reportEntries,
-                                                                                  squadAgeWarning: nil, positionsNeedingReplacements: [])
+                                                                                  squadAgeWarning: plan.warning,
+                                                                                  positionsNeedingReplacements: plan.positionsNeedingReplacements,
+                                                                                  signedAverageAgeAfter: plan.signedAverageAge)
         persist()
         return LegendsSeasonAdvanceResult(newSeason: profile.currentSeason, retiredCards: retiredCards,
                                           divisionResult: divisionResult,
