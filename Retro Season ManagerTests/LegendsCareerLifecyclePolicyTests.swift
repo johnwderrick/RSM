@@ -1,6 +1,11 @@
 import XCTest
 @testable import Retro_Season_Manager
 
+// `LegendsStore.makeCareerState` is @MainActor-isolated (like `LegendsStore`
+// itself); this class only compiled before because it was never actually
+// part of the test target's build phase. Match the same @MainActor
+// convention already used by the sibling lifecycle test files.
+@MainActor
 final class LegendsCareerLifecyclePolicyTests: XCTestCase {
     func testProfileAssignmentIsDeterministic() {
         for card in LegendsCardDatabase.all {
