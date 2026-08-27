@@ -234,6 +234,7 @@ final class LegendsLifecyclePhase2Tests: XCTestCase {
         store.profile.ownedCardIDs.insert(other.id)
         store.profile.playerCareers[other.id] = LegendsStore.makeCareerState(for: other, signedSeason: store.profile.currentSeason)
         store.profile.activatedCardIDs.insert(other.id)
+        store.profile.playerCareers[other.id]!.intendedRetirementAge = LegendsStore.retirementAge
         store.profile.cardAgeOffsets[other.id] = LegendsStore.retirementAge - other.age
         for _ in 0..<(LegendsStore.matchesPerSeason * 2) {
             _ = store.advanceSeasonIfNeeded()
