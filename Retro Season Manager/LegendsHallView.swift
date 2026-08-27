@@ -161,6 +161,11 @@ struct LegendsHallView: View {
                 Text("\(entry.position.rawValue) · \(entry.nation) · AGE \(entry.startingAge) → \(entry.finalAge)")
                     .font(.system(size: 9, weight: .bold, design: .monospaced))
                     .foregroundStyle(LegendsPalette.navy.opacity(0.58))
+                if store.isFavourite(entry.cardID) {
+                    Label("FAVOURITE", systemImage: "star.fill")
+                        .font(.system(size: 8, weight: .black, design: .monospaced))
+                        .foregroundStyle(LegendsPalette.goldDeep)
+                }
                 Text("CAREER \(entry.signedSeason)–\(entry.retiredSeason) · \(entry.seasonsAtClub) SEASONS")
                     .font(.system(size: 9, weight: .black, design: .monospaced))
                     .foregroundStyle(LegendsPalette.goldDeep)
@@ -221,6 +226,7 @@ private struct LegendsHallEntryDetailView: View {
     let store: LegendsStore
     let entry: LegendsHallEntry
     @Environment(\.dismiss) private var dismiss
+    @State private var isFavourite = false
 
     private var records: [(LegendsClubRecordKind, LegendsClubRecordEntry)] {
         store.profile.clubRecords
@@ -257,6 +263,13 @@ private struct LegendsHallEntryDetailView: View {
                             .font(.system(.caption, design: .monospaced).bold())
                             .foregroundStyle(entry.isClubLegend ? Retro.gold : Retro.text.opacity(0.7))
                         Text("CAREER COMPLETE — LEGACY SCORE \(entry.legacyScore)")
+                        Button {
+                            isFavourite = store.toggleFavourite(cardID: entry.cardID) ? store.isFavourite(entry.cardID) : isFavourite
+                        } label: {
+                            Label(isFavourite ? "FAVOURITED" : "FAVOURITE", systemImage: isFavourite ? "star.fill" : "star")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .accessibilityIdentifier("legends.alumni.favourite")
                             .font(.system(size: 9, weight: .black, design: .monospaced))
                             .foregroundStyle(Retro.highlight)
                     }
@@ -345,6 +358,7 @@ private struct LegendsHallEntryDetailView: View {
                 .padding(16)
             }
         }
+        .onAppear { isFavourite = store.isFavourite(entry.cardID) }
     }
 
     private func detailLine(_ label: String, _ value: String) -> some View {
