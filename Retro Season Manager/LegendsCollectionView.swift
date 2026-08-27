@@ -37,6 +37,11 @@ struct LegendsCollectionView: View {
     @State private var highPotentialOnly = false
     @State private var ownedOnly = false
     @State private var selectedCard: LegendsCard? = nil
+    @State private var searchText = ""
+    @State private var sort: LegendsLibrarySort = .rating
+    @State private var favouritesOnly = false
+    @State private var duplicatesOnly = false
+    @State private var finalSeasonOnly = false
     @State private var showingFilters = false
     @State private var showingComparison = false
     @State private var comparisonCard: LegendsCard? = nil
@@ -45,7 +50,14 @@ struct LegendsCollectionView: View {
 
     private var cards: [LegendsCard] {
         let retiredIDs = Set(store.profile.legendsHall.map(\.cardID))
-        return LegendsCardDatabase.all.filter { card in
+        let query = LegendsLibraryQuery(position: nil, rarity: selectedRarity, era: selectedEra,
+                                        sort: sort, searchText: searchText,
+                                        signed: selectedStatus == .signed ? true : (selectedStatus == .unsigned ? false : nil),
+                                        favouriteOnly: favouritesOnly, duplicateOnly: duplicatesOnly,
+                                        finalSeasonOnly: finalSeasonOnly,
+                                        minimumOverall: minimumOverall > 0 ? minimumOverall : nil)
+        let library = store.libraryCards(query: query, excludingActive: false)
+        return library.filter { card in
             let owned = store.profile.ownedCardIDs.contains(card.id)
             let retired = retiredIDs.contains(card.id) && !owned
             let signed = owned && store.isSigned(card)
@@ -94,6 +106,7 @@ struct LegendsCollectionView: View {
         .sheet(item: $selectedCard) { card in
             LegendsPlayerDetailView(store: store, card: card)
         }
+        .accessibilityIdentifier("legends.library")
     }
 
     private var browserModePicker: some View {
@@ -296,7 +309,9 @@ struct LegendsCollectionView: View {
             .accessibilityIdentifier("legends.library.filters")
             Spacer()
             Menu("SORT") {
-                ForEach(LegendsLibrarySort.allCases) { sort in Button(sort.rawValue) { } }
+                ForEach(LegendsLibrarySort.allCases) { option in
+                    Button(option.rawValue) { sort = option }
+                }
             }
             .accessibilityIdentifier("legends.library.sort")
         }
@@ -306,13 +321,19 @@ struct LegendsCollectionView: View {
 
     private var filterPanel: some View {
         VStack(alignment: .leading, spacing: 8) {
-            TextField("SEARCH PLAYERS", text: .constant(""))
+            TextField("SEARCH PLAYERS", text: $searchText)
                 .textFieldStyle(.roundedBorder)
-            Toggle("FAVOURITES ONLY", isOn: .constant(false))
-            Toggle("EXACT DUPLICATES", isOn: .constant(false))
+                .accessibilityIdentifier("legends.library.search")
+            Toggle("FAVOURITES ONLY", isOn: $favouritesOnly)
+                .accessibilityIdentifier("legends.library.favourites")
+            Toggle("EXACT DUPLICATES", isOn: $duplicatesOnly)
+                .accessibilityIdentifier("legends.library.duplicates")
+            Toggle("FINAL SEASON ONLY", isOn: $finalSeasonOnly)
+                .accessibilityIdentifier("legends.library.finalSeason")
             Button("RESET FILTERS") {
                 selectedStatus = .all; selectedEra = nil; selectedRarity = nil; selectedNation = nil
                 minimumOverall = 0; highPotentialOnly = false; ownedOnly = false
+                searchText = ""; favouritesOnly = false; duplicatesOnly = false; finalSeasonOnly = false; sort = .rating
             }
             .accessibilityIdentifier("legends.library.resetFilters")
         }
@@ -368,8 +389,26 @@ struct LegendsCollectionView: View {
             Haptics.tap()
             selectedCard = card
         } label: {
-            LegendsPlayerCardView(store: store, card: card, variant: .grid, showsStatus: true)
-                .frame(maxWidth: .infinity)
+            ZStack(alignment: .topTrailing) {
+                LegendsPlayerCardView(store: store, card: card, variant: .grid, showsStatus: true)
+                    .frame(maxWidth: .infinity)
+                if store.isFavourite(card.id) {
+                    Image(systemName: "star.fill")
+                        .foregroundStyle(LegendsPalette.gold)
+                        .padding(6)
+                        .accessibilityLabel("Favourite")
+                }
+                if store.isExactDuplicate(card) {
+                    Text("DUP")
+                        .font(.system(size: 7, weight: .black, design: .monospaced))
+                        .foregroundStyle(.white)
+                        .padding(4)
+                        .background(LegendsPalette.orange)
+                        .clipShape(Capsule())
+                        .padding(.top, 28)
+                        .accessibilityLabel("Exact duplicate")
+                }
+            }
         }
         .buttonStyle(PressableButtonStyle())
     }

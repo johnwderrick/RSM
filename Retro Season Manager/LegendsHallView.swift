@@ -14,8 +14,31 @@ struct LegendsHallView: View {
     var onNavigate: ((LegendsNavItem) -> Void)? = nil
     var onBack: () -> Void
     @State private var selectedEntry: LegendsHallEntry? = nil
+    @State private var searchText = ""
+    @State private var favouritesOnly = false
+    @State private var sort: AlumniSort = .retirement
 
-    private var entries: [LegendsHallEntry] { Array(store.profile.legendsHall.reversed()) }
+    private var entries: [LegendsHallEntry] {
+        store.profile.legendsHall.filter { entry in
+            (!favouritesOnly || store.isFavourite(entry.cardID)) &&
+            (searchText.isEmpty || entry.playerName.localizedCaseInsensitiveContains(searchText))
+        }.sorted { lhs, rhs in
+            switch sort {
+            case .peak: return lhs.highestOverall > rhs.highestOverall
+            case .appearances: return lhs.appearances > rhs.appearances
+            case .goals: return lhs.goals > rhs.goals
+            case .seasons: return lhs.seasonsAtClub > rhs.seasonsAtClub
+            case .retirement: return lhs.retiredSeason > rhs.retiredSeason
+            case .legacy: return lhs.legacyScore > rhs.legacyScore
+            case .name: return lhs.playerName < rhs.playerName
+            }
+        }
+    }
+
+    private enum AlumniSort: String, CaseIterable, Identifiable {
+        case peak = "PEAK OVR", appearances = "APPEARANCES", goals = "GOALS", seasons = "SEASONS AT CLUB", retirement = "RETIREMENT SEASON", legacy = "LEGACY", name = "NAME"
+        var id: String { rawValue }
+    }
 
     private var ranking: [LegendsHallEntry] {
         store.profile.legendsHall.sorted { $0.legacyScore > $1.legacyScore }
@@ -28,6 +51,7 @@ struct LegendsHallView: View {
                          onBack: onBack, currentNav: .hall, onNavigate: onNavigate) {
             VStack(alignment: .leading, spacing: 14) {
                 header
+                controls
                 if entries.isEmpty {
                     emptyState
                 } else {
@@ -46,6 +70,24 @@ struct LegendsHallView: View {
         }
         .sheet(item: $selectedEntry) { entry in
             LegendsHallEntryDetailView(store: store, entry: entry)
+        }
+    }
+
+    private var controls: some View {
+        VStack(spacing: 8) {
+            TextField("SEARCH ALUMNI", text: $searchText)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("legends.alumni.search")
+            HStack {
+                Toggle("FAVOURITES", isOn: $favouritesOnly)
+                    .accessibilityIdentifier("legends.alumni.favourites")
+                Spacer()
+                Menu("SORT") {
+                    ForEach(AlumniSort.allCases) { option in Button(option.rawValue) { sort = option } }
+                }
+                .accessibilityIdentifier("legends.alumni.sort")
+            }
+            .font(.system(size: 10, weight: .bold, design: .monospaced))
         }
     }
 

@@ -118,7 +118,7 @@ extension LegendsStore {
         return max(0, career.intendedRetirementAge - effectiveAge(for: card))
     }
 
-    private func playerCareerStage(for card: LegendsCard) -> String {
+    func playerCareerStage(for card: LegendsCard) -> String {
         if isFinalSeason(card) { return "FINAL SEASON" }
         guard let career = profile.playerCareers[card.id] else { return "UNSIGNED" }
         let age = effectiveAge(for: card)
