@@ -394,6 +394,7 @@ enum LegendsNavItem: String, CaseIterable, Identifiable {
     case table = "DIVISION"
     case club = "CLUB"
     case hall = "HALL"
+    case planning = "PLANNING"
     case profile = "MANAGER"
     case settings = "SETTINGS"
 
@@ -409,6 +410,7 @@ enum LegendsNavItem: String, CaseIterable, Identifiable {
         case .table: return "trophy.fill"
         case .club: return "building.columns.fill"
         case .hall: return "rosette"
+        case .planning: return "chart.bar.xaxis"
         case .profile: return "person.crop.circle.fill"
         case .settings: return "gearshape.fill"
         }
@@ -419,7 +421,7 @@ enum LegendsNavItem: String, CaseIterable, Identifiable {
 /// the dashboard itself; the other cases are the full-screen menus that
 /// previously used modal covers.
 enum LegendsScreen {
-    case squad, packs, collection, match, challenges, table, club, managers, stadiums, hall, profile, settings
+    case squad, packs, collection, match, challenges, table, club, managers, stadiums, hall, profile, settings, planning
 }
 
 /// The real RSM Legends home screen. All displayed progression values are
@@ -497,6 +499,9 @@ struct LegendsHomeView: View {
                         navigateFromDestination(item, current: .hall)
                     }) { requestExit() }
                     .transition(.opacity)
+                case .planning:
+                    LegendsCareerPlanningView(store: store, onBack: { screen = nil })
+                        .transition(.opacity)
                 case .profile:
                     LegendsManagerProfileView(store: store, onNavigate: { item in
                         navigateFromDestination(item, current: .profile)
@@ -898,6 +903,7 @@ struct LegendsHomeView: View {
         case .hall: screen = .hall
         case .profile: screen = .profile
         case .settings: screen = .settings
+        case .planning: screen = .planning
         }
     }
 }

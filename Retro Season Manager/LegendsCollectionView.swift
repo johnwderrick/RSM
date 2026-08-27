@@ -37,6 +37,11 @@ struct LegendsCollectionView: View {
     @State private var highPotentialOnly = false
     @State private var ownedOnly = false
     @State private var selectedCard: LegendsCard? = nil
+    @State private var showingFilters = false
+    @State private var showingComparison = false
+    @State private var comparisonCard: LegendsCard? = nil
+    @State private var releaseCandidate: LegendsCard? = nil
+    @State private var releaseFavouriteConfirmation = false
 
     private var cards: [LegendsCard] {
         let retiredIDs = Set(store.profile.legendsHall.map(\.cardID))
@@ -79,7 +84,10 @@ struct LegendsCollectionView: View {
                 if browserMode == .activeClub { activeClubSummary }
                 eraPicker
                 rarityPicker
-                collectionFilterBar
+                capacityBanner
+                toolbar
+                if showingFilters { filterPanel }
+                activeFilterSummary
                 cardGrid
             }
         }
@@ -262,6 +270,61 @@ struct LegendsCollectionView: View {
         .padding(.vertical, 7)
         .background(active ? tint : Retro.panel)
         .clipShape(Capsule())
+    }
+
+    private var capacityBanner: some View {
+        HStack {
+            Image(systemName: "archivebox.fill")
+            Text("LIBRARY \(unsignedCount) / \(store.unsignedLibraryCapacity)")
+                .font(.system(size: 10, weight: .black, design: .monospaced))
+            Spacer()
+            if store.isUnsignedLibraryFull { Text("FULL").foregroundStyle(.red) }
+        }
+        .foregroundStyle(LegendsPalette.navy)
+        .padding(10)
+        .background(store.isUnsignedLibraryFull ? Color.red.opacity(0.1) : LegendsPalette.blue.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .padding(.horizontal)
+        .accessibilityLabel("Unsigned player library capacity, \(unsignedCount) of \(store.unsignedLibraryCapacity)")
+    }
+
+    private var toolbar: some View {
+        HStack(spacing: 8) {
+            Button { showingFilters.toggle() } label: {
+                Label(showingFilters ? "HIDE FILTERS" : "FILTERS", systemImage: "line.3.horizontal.decrease.circle")
+            }
+            .accessibilityIdentifier("legends.library.filters")
+            Spacer()
+            Menu("SORT") {
+                ForEach(LegendsLibrarySort.allCases) { sort in Button(sort.rawValue) { } }
+            }
+            .accessibilityIdentifier("legends.library.sort")
+        }
+        .font(.system(size: 10, weight: .black, design: .monospaced))
+        .padding(.horizontal)
+    }
+
+    private var filterPanel: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            TextField("SEARCH PLAYERS", text: .constant(""))
+                .textFieldStyle(.roundedBorder)
+            Toggle("FAVOURITES ONLY", isOn: .constant(false))
+            Toggle("EXACT DUPLICATES", isOn: .constant(false))
+            Button("RESET FILTERS") {
+                selectedStatus = .all; selectedEra = nil; selectedRarity = nil; selectedNation = nil
+                minimumOverall = 0; highPotentialOnly = false; ownedOnly = false
+            }
+            .accessibilityIdentifier("legends.library.resetFilters")
+        }
+        .padding(.horizontal)
+    }
+
+    private var activeFilterSummary: some View {
+        Text("\(cards.count) PLAYERS")
+            .font(.system(size: 10, weight: .bold, design: .monospaced))
+            .foregroundStyle(LegendsPalette.navy.opacity(0.6))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal)
     }
 
     private var cardGrid: some View {
