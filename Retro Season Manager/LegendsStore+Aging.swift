@@ -147,6 +147,7 @@ struct LegendsPlayerCareer: Codable, Hashable {
     var condition: LegendsPlayerCondition
     var honours: [LegendsHonour]
     var individualAwards: [LegendsIndividualAward]
+    var identitySnapshot: LegendsPlayerIdentityProfile?
     var seasonAppearances: Int
     var seasonGoals: Int
     var seasonAssists: Int
@@ -176,7 +177,7 @@ struct LegendsPlayerCareer: Codable, Hashable {
          minutesPlayed: Int = 0, starts: Int = 0, seasonStartOverall: Int = 0,
          developmentMultiplier: Double = 1.0, formBoost: Int = 0,
          condition: LegendsPlayerCondition = LegendsPlayerCondition(),
-         honours: [LegendsHonour] = [], individualAwards: [LegendsIndividualAward] = [],
+         honours: [LegendsHonour] = [], individualAwards: [LegendsIndividualAward] = [], identitySnapshot: LegendsPlayerIdentityProfile? = nil,
          seasonAppearances: Int = 0, seasonGoals: Int = 0, seasonAssists: Int = 0,
          seasonCleanSheets: Int = 0, seasonRecords: [LegendsSeasonRecord] = [],
          milestones: Set<LegendsCareerMilestone> = [], isClubLegend: Bool = false,
@@ -212,6 +213,7 @@ struct LegendsPlayerCareer: Codable, Hashable {
         self.condition = condition
         self.honours = honours
         self.individualAwards = individualAwards
+        self.identitySnapshot = identitySnapshot
         self.seasonAppearances = seasonAppearances
         self.seasonGoals = seasonGoals
         self.seasonAssists = seasonAssists
@@ -230,7 +232,7 @@ struct LegendsPlayerCareer: Codable, Hashable {
         case developmentRate, declineRate, signedSeason, developmentProgress, trainingSessions
         case trainingSessionsThisSeason, trainingSeason, appearances, goals, assists, cleanSheets
         case highestOverall, retirementAnnounced, announcementSeason, minutesPlayed, starts
-        case seasonStartOverall, developmentMultiplier, formBoost, condition, honours, individualAwards, seasonAppearances, seasonGoals
+        case seasonStartOverall, developmentMultiplier, formBoost, condition, honours, individualAwards, identitySnapshot, seasonAppearances, seasonGoals
         case seasonAssists, seasonCleanSheets, seasonRecords, milestones, isClubLegend
         case seasonStartAppearances, seasonStartGoals, lifecycleProfile, intendedRetirementAge
     }
@@ -269,6 +271,7 @@ struct LegendsPlayerCareer: Codable, Hashable {
         condition = try c.decodeIfPresent(LegendsPlayerCondition.self, forKey: .condition) ?? LegendsPlayerCondition()
         honours = try c.decodeIfPresent([LegendsHonour].self, forKey: .honours) ?? []
         individualAwards = try c.decodeIfPresent([LegendsIndividualAward].self, forKey: .individualAwards) ?? []
+        identitySnapshot = try c.decodeIfPresent(LegendsPlayerIdentityProfile.self, forKey: .identitySnapshot)
         seasonAppearances = try c.decodeIfPresent(Int.self, forKey: .seasonAppearances) ?? 0
         seasonGoals = try c.decodeIfPresent(Int.self, forKey: .seasonGoals) ?? 0
         seasonAssists = try c.decodeIfPresent(Int.self, forKey: .seasonAssists) ?? 0
@@ -292,6 +295,9 @@ struct LegendsPlayerCareer: Codable, Hashable {
 /// A permanent record of a completed career. The card can be packed again
 /// later; the new pull starts a new `careerID` and gets a new story.
 struct LegendsHallEntry: Codable, Hashable, Identifiable {
+    private enum CodingKeys: String, CodingKey {
+        case id, cardID, playerName, position, nation, startingAge, startingOverall, highestOverall, finalAge, appearances, goals, assists, cleanSheets, seasonsAtClub, signedSeason, retiredSeason, finalOverall, trophies, milestones, isClubLegend, legacyScore, careerHistory, identityProfile, finalCondition, honours, individualAwards
+    }
     let id: String
     let cardID: String
     let playerName: String
@@ -315,6 +321,10 @@ struct LegendsHallEntry: Codable, Hashable, Identifiable {
     let isClubLegend: Bool
     let legacyScore: Int
     let careerHistory: [LegendsSeasonRecord]
+    let identityProfile: LegendsPlayerIdentityProfile?
+    let finalCondition: LegendsPlayerCondition
+    let honours: [LegendsHonour]
+    let individualAwards: [LegendsIndividualAward]
 
     init(id: String, cardID: String, playerName: String, position: DetailedPosition,
          nation: String, startingAge: Int, startingOverall: Int, highestOverall: Int,
@@ -322,7 +332,7 @@ struct LegendsHallEntry: Codable, Hashable, Identifiable {
          seasonsAtClub: Int, signedSeason: Int, retiredSeason: Int,
          finalOverall: Int = 0, trophies: Int = 0,
          milestones: Set<LegendsCareerMilestone> = [], isClubLegend: Bool = false,
-         legacyScore: Int = 0, careerHistory: [LegendsSeasonRecord] = []) {
+         legacyScore: Int = 0, careerHistory: [LegendsSeasonRecord] = [], identityProfile: LegendsPlayerIdentityProfile? = nil, finalCondition: LegendsPlayerCondition = LegendsPlayerCondition(), honours: [LegendsHonour] = [], individualAwards: [LegendsIndividualAward] = []) {
         self.id = id
         self.cardID = cardID
         self.playerName = playerName
@@ -345,6 +355,10 @@ struct LegendsHallEntry: Codable, Hashable, Identifiable {
         self.isClubLegend = isClubLegend
         self.legacyScore = legacyScore
         self.careerHistory = careerHistory
+        self.identityProfile = identityProfile
+        self.finalCondition = finalCondition
+        self.honours = honours
+        self.individualAwards = individualAwards
     }
 
     /// Lenient decode: keeps pre-14-match saves loading (the old milestone
@@ -378,6 +392,10 @@ struct LegendsHallEntry: Codable, Hashable, Identifiable {
         isClubLegend = try c.decodeIfPresent(Bool.self, forKey: .isClubLegend) ?? false
         legacyScore = try c.decodeIfPresent(Int.self, forKey: .legacyScore) ?? 0
         careerHistory = try c.decodeIfPresent([LegendsSeasonRecord].self, forKey: .careerHistory) ?? []
+        identityProfile = try c.decodeIfPresent(LegendsPlayerIdentityProfile.self, forKey: .identityProfile)
+        finalCondition = try c.decodeIfPresent(LegendsPlayerCondition.self, forKey: .finalCondition) ?? LegendsPlayerCondition()
+        honours = try c.decodeIfPresent([LegendsHonour].self, forKey: .honours) ?? []
+        individualAwards = try c.decodeIfPresent([LegendsIndividualAward].self, forKey: .individualAwards) ?? []
     }
 }
 
@@ -628,6 +646,7 @@ extension LegendsStore {
                                    developmentRate: rate, declineRate: 1 + seed % 2,
                                    signedSeason: signedSeason, trainingSeason: signedSeason,
                                    seasonStartOverall: card.overall,
+                                   identitySnapshot: LegendsIdentityEngine.profile(for: card),
                                    lifecycleProfile: lifecycleProfile,
                                    intendedRetirementAge: LegendsCareerLifecyclePolicy.retirementAge(for: card.id, position: card.position, profile: lifecycleProfile))
     }
@@ -638,8 +657,12 @@ extension LegendsStore {
 
     func identityProfile(for card: LegendsCard) -> LegendsPlayerIdentityProfile {
         if let stored = profile.playerIdentityProfiles[card.id] { return stored }
-        let generated = LegendsIdentityEngine.profile(for: card)
+        let generated = profile.playerCareers[card.id]?.identitySnapshot ?? LegendsIdentityEngine.profile(for: card)
         profile.playerIdentityProfiles[card.id] = generated
+        if var career = profile.playerCareers[card.id], career.identitySnapshot == nil {
+            career.identitySnapshot = generated
+            profile.playerCareers[card.id] = career
+        }
         return generated
     }
 
@@ -862,7 +885,11 @@ extension LegendsStore {
                                                      finalOverall: effectiveOverall(for: card),
                                                      trophies: trophies, milestones: state.milestones,
                                                      isClubLegend: legend, legacyScore: score,
-                                                     careerHistory: state.seasonRecords))
+                                                     careerHistory: state.seasonRecords,
+                                                     identityProfile: state.identitySnapshot,
+                                                     finalCondition: state.condition,
+                                                     honours: state.honours,
+                                                     individualAwards: state.individualAwards))
     }
 
     /// Call once per completed match. Only active/signed careers age; an
