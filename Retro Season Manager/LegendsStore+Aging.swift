@@ -156,6 +156,11 @@ struct LegendsPlayerCareer: Codable, Hashable {
     /// season instead of comparing the roll snapshot against itself.
     var seasonStartAppearances: Int
     var seasonStartGoals: Int
+    /// Stable lifecycle profile selected when the career begins. Optional
+    /// decoding keeps older Legends saves compatible.
+    var lifecycleProfile: LegendsCareerLifecyclePolicy.DevelopmentProfile
+    /// Deterministic retirement target selected at signing.
+    var intendedRetirementAge: Int
 
     init(careerID: String = UUID().uuidString, cardID: String, startingAge: Int,
          startingOverall: Int, potential: Int, peakStartAge: Int, peakEndAge: Int,
@@ -170,7 +175,9 @@ struct LegendsPlayerCareer: Codable, Hashable {
          seasonAppearances: Int = 0, seasonGoals: Int = 0, seasonAssists: Int = 0,
          seasonCleanSheets: Int = 0, seasonRecords: [LegendsSeasonRecord] = [],
          milestones: Set<LegendsCareerMilestone> = [], isClubLegend: Bool = false,
-         seasonStartAppearances: Int = 0, seasonStartGoals: Int = 0) {
+         seasonStartAppearances: Int = 0, seasonStartGoals: Int = 0,
+         lifecycleProfile: LegendsCareerLifecyclePolicy.DevelopmentProfile = .standardDeveloper,
+         intendedRetirementAge: Int = 36) {
         self.careerID = careerID
         self.cardID = cardID
         self.startingAge = startingAge
@@ -206,6 +213,18 @@ struct LegendsPlayerCareer: Codable, Hashable {
         self.isClubLegend = isClubLegend
         self.seasonStartAppearances = seasonStartAppearances
         self.seasonStartGoals = seasonStartGoals
+        self.lifecycleProfile = lifecycleProfile
+        self.intendedRetirementAge = intendedRetirementAge
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case careerID, cardID, startingAge, startingOverall, potential, peakStartAge, peakEndAge
+        case developmentRate, declineRate, signedSeason, developmentProgress, trainingSessions
+        case trainingSessionsThisSeason, trainingSeason, appearances, goals, assists, cleanSheets
+        case highestOverall, retirementAnnounced, announcementSeason, minutesPlayed, starts
+        case seasonStartOverall, developmentMultiplier, formBoost, seasonAppearances, seasonGoals
+        case seasonAssists, seasonCleanSheets, seasonRecords, milestones, isClubLegend
+        case seasonStartAppearances, seasonStartGoals, lifecycleProfile, intendedRetirementAge
     }
 
     /// Lenient decode — every field added after the career record first
@@ -254,6 +273,8 @@ struct LegendsPlayerCareer: Codable, Hashable {
         isClubLegend = try c.decodeIfPresent(Bool.self, forKey: .isClubLegend) ?? false
         seasonStartAppearances = try c.decodeIfPresent(Int.self, forKey: .seasonStartAppearances) ?? 0
         seasonStartGoals = try c.decodeIfPresent(Int.self, forKey: .seasonStartGoals) ?? 0
+        lifecycleProfile = try c.decodeIfPresent(LegendsCareerLifecyclePolicy.DevelopmentProfile.self, forKey: .lifecycleProfile) ?? .standardDeveloper
+        intendedRetirementAge = try c.decodeIfPresent(Int.self, forKey: .intendedRetirementAge) ?? LegendsStore.retirementAge
     }
 }
 
@@ -381,6 +402,8 @@ extension LegendsStore {
     /// exists (old saves and unsigned cards retain the previous rule).
     static let declineStartAge = 30
     static let declinePerYearOverPeak = 1
+    /// Legacy fallback only for pre-profile records. New careers always
+    /// receive their target from LegendsCareerLifecyclePolicy.
     static let retirementAge = 36
     static let maxTrainingSessionsPerSeason = 3
 
@@ -454,6 +477,7 @@ extension LegendsStore {
     /// no gameplay bonus, driven by ability, age, playing time and service.
     func playerStatus(for card: LegendsCard) -> LegendsPlayerStatus {
         guard let state = profile.playerCareers[card.id] else { return .prospect }
+        if effectiveAge(for: card) == state.intendedRetirementAge - 1 { return .veteran }
         let age = effectiveAge(for: card)
         let overall = effectiveOverall(for: card)
         let seasons = profile.currentSeason - state.signedSeason
@@ -549,9 +573,16 @@ extension LegendsStore {
     func migrateLegacyCareerStates() {
         let signedIDs = profile.activatedCardIDs
         for id in signedIDs {
-            guard profile.playerCareers[id] == nil,
-                  let card = LegendsCardDatabase.all.first(where: { $0.id == id }) else { continue }
-            profile.playerCareers[id] = Self.makeCareerState(for: card, signedSeason: profile.currentSeason)
+            guard let card = LegendsCardDatabase.all.first(where: { $0.id == id }) else { continue }
+            if profile.playerCareers[id] == nil {
+                profile.playerCareers[id] = Self.makeCareerState(for: card, signedSeason: profile.currentSeason)
+            } else if var state = profile.playerCareers[id], state.intendedRetirementAge == LegendsStore.retirementAge {
+                // Migration only: do not age or retire while decoding. An
+                // already-old legacy career receives one final season grace.
+                let generated = LegendsCareerLifecyclePolicy.retirementAge(for: card.id, position: card.position, profile: state.lifecycleProfile)
+                state.intendedRetirementAge = max(generated, effectiveAge(for: card) + 1)
+                profile.playerCareers[id] = state
+            }
         }
     }
 
@@ -560,6 +591,8 @@ extension LegendsStore {
     }
 
     static func makeCareerState(for card: LegendsCard, signedSeason: Int) -> LegendsPlayerCareer {
+        let lifecycleProfile = LegendsCareerLifecyclePolicy.profile(for: card.id)
+        let lifecyclePolicy = LegendsCareerLifecyclePolicy.configuration(for: lifecycleProfile)
         let seed = stableSeed(card.id)
         let gap: Int
         switch card.age {
@@ -575,15 +608,17 @@ extension LegendsStore {
         case .midfielder: primeBase = 27
         default: primeBase = 25
         }
-        let peakStart = primeBase + seed % 3
-        let peakLength = card.position.broad == .goalkeeper ? 5 : 4
+        let peakStart = max(18, primeBase + lifecyclePolicy.peakStartOffset + seed % 3)
+        let peakLength = max(3, lifecyclePolicy.peakEndOffset - lifecyclePolicy.peakStartOffset)
         let rate = card.age <= 20 ? 10 : card.age <= 23 ? 8 : card.age <= 27 ? 5 : 2
         return LegendsPlayerCareer(cardID: card.id, startingAge: card.age,
                                    startingOverall: card.overall, potential: potential,
                                    peakStartAge: peakStart, peakEndAge: peakStart + peakLength,
                                    developmentRate: rate, declineRate: 1 + seed % 2,
                                    signedSeason: signedSeason, trainingSeason: signedSeason,
-                                   seasonStartOverall: card.overall)
+                                   seasonStartOverall: card.overall,
+                                   lifecycleProfile: lifecycleProfile,
+                                   intendedRetirementAge: LegendsCareerLifecyclePolicy.retirementAge(for: card.id, position: card.position, profile: lifecycleProfile))
     }
 
     func careerState(for card: LegendsCard) -> LegendsPlayerCareer? {
@@ -649,8 +684,20 @@ extension LegendsStore {
     }
 
     /// A card's age including every season it's aged since signing.
+    /// The single source of truth for a card instance's active-career age.
+    /// `cardAgeOffsets` is keyed by the stable card-instance ID; the static
+    /// database age is never mutated.
+    func currentAge(for cardID: String) -> Int? {
+        guard let card = LegendsCardDatabase.all.first(where: { $0.id == cardID }) else { return nil }
+        return card.age + (profile.cardAgeOffsets[cardID] ?? 0)
+    }
+
+    func currentAge(for card: LegendsCard) -> Int {
+        currentAge(for: card.id) ?? card.age
+    }
+
     func effectiveAge(for card: LegendsCard) -> Int {
-        card.age + (profile.cardAgeOffsets[card.id] ?? 0)
+        currentAge(for: card.id) ?? card.age
     }
 
     /// OVR lost to age alone (before the duplicate-upgrade cap in
@@ -689,7 +736,14 @@ extension LegendsStore {
 
     func isRetired(_ card: LegendsCard) -> Bool {
         guard !Self.agingExemptEras.contains(card.era) else { return false }
-        return effectiveAge(for: card) >= Self.retirementAge
+        return effectiveAge(for: card) >= (profile.playerCareers[card.id]?.intendedRetirementAge ?? Self.retirementAge)
+    }
+
+    func isFinalSeason(_ card: LegendsCard) -> Bool {
+        guard profile.activatedCardIDs.contains(card.id),
+              let state = profile.playerCareers[card.id] else { return false }
+        let age = currentAge(for: card.id) ?? card.age
+        return age < state.intendedRetirementAge && age == state.intendedRetirementAge - 1
     }
 
     func recordCareerMatch(_ result: LegendsMatchEngine.Result) {
@@ -779,9 +833,8 @@ extension LegendsStore {
         let finishingSeason = profile.currentSeason
         profile.currentSeason += 1
 
-        let activeIDs = profile.activatedCardIDs.union(
-            (profile.startingXICardIDs + profile.benchCardIDs).compactMap { $0 }
-        )
+        let activeIDs = profile.activatedCardIDs
+            .union((profile.startingXICardIDs + profile.benchCardIDs).compactMap { $0 })
 
         // Prepare every active career for the season about to begin: fresh
         // development flavour and the age increment. The season-start
@@ -797,7 +850,9 @@ extension LegendsStore {
                 state.formBoost = Self.developmentEvent(for: card, season: finishingSeason, seed: Self.stableSeed(state.careerID)) == .careerBest ? 1 : 0
                 profile.playerCareers[id] = state
             }
-            profile.cardAgeOffsets[id, default: 0] += 1
+            // Age is evaluated from the pre-rollover state below. Only
+            // active players receive the next-season age after the outcome
+            // has been selected; retiring players are never left active at T.
         }
 
         var retiredCards: [LegendsCard] = []
@@ -810,15 +865,26 @@ extension LegendsStore {
         for id in activeIDs {
             guard let card = LegendsCardDatabase.all.first(where: { $0.id == id }),
                   var state = profile.playerCareers[id] else { continue }
-            let age = effectiveAge(for: card)
-            if age == Self.retirementAge - 1 && !state.retirementAnnounced {
-                state.retirementAnnounced = true
-                state.announcementSeason = profile.currentSeason
-                retirementAnnouncements.append(card)
+            let currentAge = effectiveAge(for: card)
+            let nextAge = currentAge + 1
+            let targetAge = state.intendedRetirementAge
+            let nextAgeForCard = nextAge
+            let shouldRetireAtBoundary = nextAgeForCard >= targetAge
+            guard shouldRetireAtBoundary else {
+                profile.cardAgeOffsets[id] = (profile.cardAgeOffsets[id] ?? 0) + 1
+                if nextAgeForCard == targetAge - 1 && !state.retirementAnnounced {
+                    state.retirementAnnounced = true
+                    state.announcementSeason = profile.currentSeason
+                    retirementAnnouncements.append(card)
+                }
                 profile.playerCareers[id] = state
+                continue
             }
-            guard isRetired(card) else { continue }
-            archiveRetiredCareer(card: card, state: state, finalAge: age)
+            // `nextAge` is the retirement age. The final-season player was
+            // evaluated at currentAge T-1 above; archive the completed
+            // season now without leaving an active T-aged copy behind.
+            profile.cardAgeOffsets[id] = max(0, targetAge - card.age)
+            archiveRetiredCareer(card: card, state: state, finalAge: targetAge)
             profile.playerCareers.removeValue(forKey: id)
             markRetired(cardID: id)
             profile.activatedCardIDs.remove(id)
@@ -837,7 +903,7 @@ extension LegendsStore {
             }
             if profile.captainCardID == id { profile.captainCardID = nil }
             retiredCards.append(card)
-            retiredAges[id] = age
+            retiredAges[id] = nextAgeForCard
         }
 
         // Second pass over the survivors: finalise season records, status,
@@ -889,10 +955,11 @@ extension LegendsStore {
             // delta is the season's real development — not just the aging
             // boundary the roll itself would otherwise measure.
             let delta = endOverall - state.seasonStartOverall
+            let stageReason = age == state.intendedRetirementAge - 1 ? "Entered Final Season" : nil
             let review = LegendsSeasonReviewEntry(cardID: id, playerName: card.name, position: card.position,
                                                   overallDelta: delta, appearances: state.seasonAppearances,
                                                   starts: state.seasonAppearances,
-                                                  reason: Self.reviewReason(for: card, state: state, delta: delta, seasonAppearances: state.seasonAppearances))
+                                                  reason: stageReason ?? Self.reviewReason(for: card, state: state, delta: delta, seasonAppearances: state.seasonAppearances))
             developmentReview[id] = review
 
             // Club records.
@@ -912,6 +979,28 @@ extension LegendsStore {
         }
 
         profile.lastSeasonReview = developmentReview
+        let reportEntries = developmentReview.values.map { entry in
+            let card = LegendsCardDatabase.all.first { $0.id == entry.cardID }
+            let career = profile.playerCareers[entry.cardID]
+            let afterAge = card.map { effectiveAge(for: $0) } ?? entry.overallDelta
+            let beforeAge = max(0, afterAge - 1)
+            let afterOverall = card.map { effectiveOverall(for: $0) } ?? entry.overallDelta
+            let beforeOverall = afterOverall - entry.overallDelta
+            return LegendsSeasonReportEntry(cardID: entry.cardID, playerName: entry.playerName,
+                                            completedSeason: finishingSeason, ageBefore: beforeAge,
+                                            ageAfter: afterAge, overallBefore: beforeOverall,
+                                            overallAfter: afterOverall, previousStage: "ACTIVE",
+                                            newStage: entry.reason, developmentProfile: career?.lifecycleProfile ?? .standardDeveloper,
+                                            improved: entry.overallDelta > 0, stable: entry.overallDelta == 0,
+                                            declined: entry.overallDelta < 0, enteredFinalSeason: entry.reason.contains("Final Season"),
+                                            retired: false, retirementRecordID: nil, position: entry.position,
+                                            favourite: profile.favouriteCardIDs.contains(entry.cardID))
+        }
+        let plan = squadCareerPlan()
+        profile.seasonReports[finishingSeason] = LegendsSeasonDevelopmentReport(season: finishingSeason, entries: reportEntries,
+                                                                                  squadAgeWarning: plan.warning,
+                                                                                  positionsNeedingReplacements: plan.positionsNeedingReplacements,
+                                                                                  signedAverageAgeAfter: plan.signedAverageAge)
         persist()
         return LegendsSeasonAdvanceResult(newSeason: profile.currentSeason, retiredCards: retiredCards,
                                           divisionResult: divisionResult,

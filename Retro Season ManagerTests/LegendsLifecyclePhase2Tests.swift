@@ -215,9 +215,19 @@ final class LegendsLifecyclePhase2Tests: XCTestCase {
         let store = await freshStore()
         let young = card("miessi-0506")
         store.assign(cardID: young.id, toXISlot: 0)
+        // Signing/assigning alone doesn't create a career record (see
+        // `startCareerIfNeeded`); force it now so we can read the
+        // deterministic, profile-specific retirement target the lifecycle
+        // system actually assigned this card, instead of assuming the old
+        // fixed `LegendsStore.retirementAge` still applies to every player.
+        store.startCareerIfNeeded(for: young)
+        guard let targetAge = store.profile.playerCareers[young.id]?.intendedRetirementAge else {
+            XCTFail("Expected a persisted career state with an intended retirement age for \(young.id)")
+            return
+        }
         // Age to the season before the retirement cutoff, then roll two
         // full seasons: the announcement season, then the retiring one.
-        store.profile.cardAgeOffsets[young.id] = LegendsStore.retirementAge - 2 - young.age
+        store.profile.cardAgeOffsets[young.id] = targetAge - 2 - young.age
         var result: LegendsSeasonAdvanceResult?
         for _ in 0..<(LegendsStore.matchesPerSeason * 2) {
             result = store.advanceSeasonIfNeeded() ?? result
@@ -226,7 +236,7 @@ final class LegendsLifecyclePhase2Tests: XCTestCase {
         let entry = store.profile.legendsHall.first
         XCTAssertEqual(entry?.playerName, young.name)
         XCTAssertGreaterThan(entry?.legacyScore ?? 0, 0, "A completed career must produce a Legacy Score")
-        XCTAssertEqual(entry?.finalAge, LegendsStore.retirementAge)
+        XCTAssertEqual(entry?.finalAge, targetAge)
         XCTAssertFalse(entry?.careerHistory.isEmpty ?? true, "Hall entries carry the full season history")
 
         // A second, lesser career ranks below the first by Legacy Score.
@@ -234,6 +244,7 @@ final class LegendsLifecyclePhase2Tests: XCTestCase {
         store.profile.ownedCardIDs.insert(other.id)
         store.profile.playerCareers[other.id] = LegendsStore.makeCareerState(for: other, signedSeason: store.profile.currentSeason)
         store.profile.activatedCardIDs.insert(other.id)
+        store.profile.playerCareers[other.id]!.intendedRetirementAge = LegendsStore.retirementAge
         store.profile.cardAgeOffsets[other.id] = LegendsStore.retirementAge - other.age
         for _ in 0..<(LegendsStore.matchesPerSeason * 2) {
             _ = store.advanceSeasonIfNeeded()
