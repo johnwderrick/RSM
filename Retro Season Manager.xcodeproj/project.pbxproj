@@ -51,6 +51,12 @@
 		BF46F3172EADD73F1F06096A /* LegendsCareerLifecyclePolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2885090C281E81798DD97DA /* LegendsCareerLifecyclePolicyTests.swift */; };
 		BC03B0021252BAA3786CE769 /* LegendsPoint1MigrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E255DADC17C62F55BE66BD28 /* LegendsPoint1MigrationTests.swift */; };
 		360D0278ACA8C2CA8B15C0E1 /* LegendsRetirementTimingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D3A2109355E202CBE0586A1 /* LegendsRetirementTimingTests.swift */; };
+		2A0E7115C0DE00B1B2C3D4E1 /* LegendsPoint2IdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0E7115C0DE00A1B2C3D4E1 /* LegendsPoint2IdentityTests.swift */; };
+		2A0E7115C0DE00B1B2C3D4E2 /* LegendsPoint2MatchSelectorsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0E7115C0DE00A1B2C3D4E2 /* LegendsPoint2MatchSelectorsTests.swift */; };
+		2A0E7115C0DE00B1B2C3D4E3 /* LegendsPoint2ConditionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0E7115C0DE00A1B2C3D4E3 /* LegendsPoint2ConditionTests.swift */; };
+		2A0E7115C0DE00B1B2C3D4E4 /* LegendsPoint2HonoursTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0E7115C0DE00A1B2C3D4E4 /* LegendsPoint2HonoursTests.swift */; };
+		2A0E7115C0DE00B1B2C3D4E5 /* LegendsPoint2MigrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0E7115C0DE00A1B2C3D4E5 /* LegendsPoint2MigrationTests.swift */; };
+		2A0E7115C0DE00B1B2C3D4E6 /* LegendsPoint2SeasonAwardsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0E7115C0DE00A1B2C3D4E6 /* LegendsPoint2SeasonAwardsTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -118,6 +124,12 @@
 		B2885090C281E81798DD97DA /* LegendsCareerLifecyclePolicyTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendsCareerLifecyclePolicyTests.swift; sourceTree = "<group>"; };
 		E255DADC17C62F55BE66BD28 /* LegendsPoint1MigrationTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendsPoint1MigrationTests.swift; sourceTree = "<group>"; };
 		3D3A2109355E202CBE0586A1 /* LegendsRetirementTimingTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendsRetirementTimingTests.swift; sourceTree = "<group>"; };
+		2A0E7115C0DE00A1B2C3D4E1 /* LegendsPoint2IdentityTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendsPoint2IdentityTests.swift; sourceTree = "<group>"; };
+		2A0E7115C0DE00A1B2C3D4E2 /* LegendsPoint2MatchSelectorsTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendsPoint2MatchSelectorsTests.swift; sourceTree = "<group>"; };
+		2A0E7115C0DE00A1B2C3D4E3 /* LegendsPoint2ConditionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendsPoint2ConditionTests.swift; sourceTree = "<group>"; };
+		2A0E7115C0DE00A1B2C3D4E4 /* LegendsPoint2HonoursTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendsPoint2HonoursTests.swift; sourceTree = "<group>"; };
+		2A0E7115C0DE00A1B2C3D4E5 /* LegendsPoint2MigrationTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendsPoint2MigrationTests.swift; sourceTree = "<group>"; };
+		2A0E7115C0DE00A1B2C3D4E6 /* LegendsPoint2SeasonAwardsTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendsPoint2SeasonAwardsTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -199,6 +211,12 @@
 				B2885090C281E81798DD97DA /* LegendsCareerLifecyclePolicyTests.swift */,
 				E255DADC17C62F55BE66BD28 /* LegendsPoint1MigrationTests.swift */,
 				3D3A2109355E202CBE0586A1 /* LegendsRetirementTimingTests.swift */,
+				2A0E7115C0DE00A1B2C3D4E1 /* LegendsPoint2IdentityTests.swift */,
+				2A0E7115C0DE00A1B2C3D4E2 /* LegendsPoint2MatchSelectorsTests.swift */,
+				2A0E7115C0DE00A1B2C3D4E3 /* LegendsPoint2ConditionTests.swift */,
+				2A0E7115C0DE00A1B2C3D4E4 /* LegendsPoint2HonoursTests.swift */,
+				2A0E7115C0DE00A1B2C3D4E5 /* LegendsPoint2MigrationTests.swift */,
+				2A0E7115C0DE00A1B2C3D4E6 /* LegendsPoint2SeasonAwardsTests.swift */,
 			);
 			path = "Retro Season ManagerTests";
 			sourceTree = "<group>";
@@ -418,6 +436,12 @@
 				BF46F3172EADD73F1F06096A /* LegendsCareerLifecyclePolicyTests.swift in Sources */,
 				BC03B0021252BAA3786CE769 /* LegendsPoint1MigrationTests.swift in Sources */,
 				360D0278ACA8C2CA8B15C0E1 /* LegendsRetirementTimingTests.swift in Sources */,
+				2A0E7115C0DE00B1B2C3D4E1 /* LegendsPoint2IdentityTests.swift in Sources */,
+				2A0E7115C0DE00B1B2C3D4E2 /* LegendsPoint2MatchSelectorsTests.swift in Sources */,
+				2A0E7115C0DE00B1B2C3D4E3 /* LegendsPoint2ConditionTests.swift in Sources */,
+				2A0E7115C0DE00B1B2C3D4E4 /* LegendsPoint2HonoursTests.swift in Sources */,
+				2A0E7115C0DE00B1B2C3D4E5 /* LegendsPoint2MigrationTests.swift in Sources */,
+				2A0E7115C0DE00B1B2C3D4E6 /* LegendsPoint2SeasonAwardsTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -186,6 +186,23 @@ struct LegendsHallView: View {
                         .font(.system(size: 7, weight: .black, design: .monospaced))
                         .foregroundStyle(LegendsPalette.navy.opacity(0.5))
                 }
+                if !entry.honours.isEmpty || !entry.individualAwards.isEmpty {
+                    HStack(spacing: 6) {
+                        if !entry.honours.isEmpty {
+                            Label("\(entry.honours.count)", systemImage: "trophy.fill")
+                                .font(.system(size: 9, weight: .black, design: .monospaced))
+                                .foregroundStyle(LegendsPalette.goldDeep)
+                                .accessibilityLabel("\(entry.honours.count) career honours")
+                        }
+                        if !entry.individualAwards.isEmpty {
+                            Label("\(entry.individualAwards.count)", systemImage: "medal.fill")
+                                .font(.system(size: 9, weight: .black, design: .monospaced))
+                                .foregroundStyle(LegendsPalette.goldDeep)
+                                .accessibilityLabel("\(entry.individualAwards.count) individual awards")
+                        }
+                    }
+                    .accessibilityIdentifier("legends.alumni.badges")
+                }
             }
         }
         .overlay(alignment: .topLeading) {
@@ -285,6 +302,95 @@ private struct LegendsHallEntryDetailView: View {
                             detailLine("Trophies", "\(entry.trophies)")
                             detailLine("Legacy Score", "\(entry.legacyScore)")
                         }
+                    }
+
+                    if let identity = entry.identityProfile {
+                        Panel(title: "IDENTITY & PROFILE") {
+                            VStack(alignment: .leading, spacing: 6) {
+                                detailLine("Preferred foot", identity.identity.preferredFoot.rawValue)
+                                detailLine("Archetype", identity.identity.archetype.rawValue)
+                                Text(identity.identity.biography)
+                                    .font(.system(.caption2, design: .monospaced))
+                                    .foregroundStyle(Retro.text.opacity(0.65))
+                            }
+                        }
+                        .accessibilityIdentifier("legends.alumni.identity")
+                    }
+
+                    Panel(title: "FINAL CONDITION") {
+                        VStack(alignment: .leading, spacing: 6) {
+                            detailLine("Form", "\(entry.finalCondition.form)/100")
+                            detailLine("Morale", "\(entry.finalCondition.morale)/100")
+                            detailLine("Teamwork", "\(entry.finalCondition.teamwork)/100")
+                            detailLine("Fame", "\(entry.finalCondition.fame)/100")
+                        }
+                    }
+                    .accessibilityIdentifier("legends.alumni.condition")
+
+                    if !entry.honours.isEmpty {
+                        Panel(title: "HONOURS") {
+                            VStack(alignment: .leading, spacing: 6) {
+                                ForEach(entry.honours) { honour in
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "trophy.fill")
+                                            .font(.system(size: 10))
+                                            .foregroundStyle(Retro.gold)
+                                        Text("\(honour.type) · \(honour.competitionName)")
+                                            .font(.system(.caption2, design: .monospaced).bold())
+                                            .foregroundStyle(Retro.text.opacity(0.9))
+                                            .lineLimit(1)
+                                            .minimumScaleFactor(0.7)
+                                        Spacer()
+                                        Text("S\(honour.season)")
+                                            .font(.system(.caption2, design: .monospaced))
+                                            .foregroundStyle(Retro.text.opacity(0.6))
+                                    }
+                                }
+                            }
+                        }
+                        .accessibilityIdentifier("legends.alumni.honours")
+                    }
+
+                    if !entry.individualAwards.isEmpty {
+                        Panel(title: "INDIVIDUAL AWARDS") {
+                            VStack(alignment: .leading, spacing: 6) {
+                                ForEach(entry.individualAwards) { award in
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "medal.fill")
+                                            .font(.system(size: 10))
+                                            .foregroundStyle(Retro.gold)
+                                        Text(award.type)
+                                            .font(.system(.caption2, design: .monospaced).bold())
+                                            .foregroundStyle(Retro.text.opacity(0.9))
+                                        Spacer()
+                                        Text("S\(award.season) · \(award.value)")
+                                            .font(.system(.caption2, design: .monospaced))
+                                            .foregroundStyle(Retro.text.opacity(0.6))
+                                    }
+                                }
+                            }
+                        }
+                        .accessibilityIdentifier("legends.alumni.awards")
+                    }
+
+                    if let attributes = entry.identityProfile?.attributes {
+                        Panel(title: "FINAL DETAILED ATTRIBUTES") {
+                            VStack(alignment: .leading, spacing: 8) {
+                                ForEach(LegendsAttributeGroup.allCases, id: \.self) { group in
+                                    Text(group.rawValue)
+                                        .font(.system(size: 9, weight: .black, design: .monospaced))
+                                        .foregroundStyle(Retro.gold)
+                                    ForEach(attributes.values(in: group), id: \.0) { item in
+                                        HStack {
+                                            Text(item.0).font(.system(.caption2, design: .monospaced))
+                                            Spacer()
+                                            Text("\(item.1)").font(.system(.caption2, design: .monospaced).bold())
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        .accessibilityIdentifier("legends.alumni.attributes")
                     }
 
                     if !entry.careerHistory.isEmpty {

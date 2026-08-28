@@ -106,7 +106,19 @@ enum LegendsIdentityEngine {
     static func profile(for card: LegendsCard) -> LegendsPlayerIdentityProfile {
         let personID: String = {
             let suffixes = ["-tots", "-golden", "-retro", "-immortal", "-icon"]
-            return suffixes.reduce(card.id) { value, suffix in value.hasSuffix(suffix) ? String(value.dropLast(suffix.count)) : value }
+            var value = suffixes.reduce(card.id) { value, suffix in value.hasSuffix(suffix) ? String(value.dropLast(suffix.count)) : value }
+            // Seasonal variants append a four-digit season code (e.g.
+            // "miessi-0506", "miessi-1112", "cantina-9596-retro"). Strip it
+            // so every legitimate version of the same fictional person
+            // resolves to one stable person identity, while the card
+            // definitions themselves stay distinct ownership units.
+            if let lastHyphen = value.lastIndex(of: "-") {
+                let tail = value[value.index(after: lastHyphen)...]
+                if tail.count == 4, tail.allSatisfy(\.isNumber) {
+                    value = String(value[..<lastHyphen])
+                }
+            }
+            return value
         }()
         let broad = card.position.broad
         let archetype: LegendsPlayingArchetype = {
