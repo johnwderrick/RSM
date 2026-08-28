@@ -16,6 +16,7 @@ struct LegendsPlayerDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var confirmingSign = false
     @State private var showingWelcome = false
+    @State private var showingComparison = false
 
     private var owned: Bool { store.profile.ownedCardIDs.contains(card.id) }
     private var effectiveOverall: Int { store.effectiveOverall(for: card) }
@@ -46,6 +47,7 @@ struct LegendsPlayerDetailView: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 14) {
                     header
+                    actionBar
                     if retired {
                         careerCompletePanel
                     } else if signed {
@@ -123,6 +125,25 @@ struct LegendsPlayerDetailView: View {
                     metric("\(state.appearances)", "APPS", color: Retro.text)
                 }
             }
+        }
+    }
+
+    private var actionBar: some View {
+        HStack(spacing: 10) {
+            Button {
+                store.toggleFavourite(cardID: card.id)
+            } label: {
+                Label(store.isFavourite(card.id) ? "FAVOURITED" : "FAVOURITE", systemImage: store.isFavourite(card.id) ? "star.fill" : "star")
+            }
+            .accessibilityIdentifier("legends.player.favourite")
+            .buttonStyle(.borderedProminent)
+            Button("COMPARE") { showingComparison = true }
+                .accessibilityIdentifier("legends.player.compare")
+                .buttonStyle(.bordered)
+        }
+        .foregroundStyle(Retro.text)
+        .sheet(isPresented: $showingComparison) {
+            LegendsPlayerComparisonView(store: store, primary: card)
         }
     }
 

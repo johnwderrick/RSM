@@ -17,6 +17,13 @@ enum LegendsLibrarySort: String, CaseIterable, Identifiable {
     case rating = "RATING"
     case name = "NAME"
     case age = "AGE"
+    case position = "POSITION"
+    case projectedPrime = "PRIME AGE"
+    case profile = "PROFILE"
+    case careerStage = "CAREER STAGE"
+    case seasonsAtClub = "SEASONS AT CLUB"
+    case retirement = "RETIREMENT"
+    case favourite = "FAVOURITES"
     case rarity = "RARITY"
 
     var id: String { rawValue }
@@ -37,33 +44,55 @@ struct LegendsLibraryQuery {
     var sort: LegendsLibrarySort
     var group: LegendsLibraryGroup
     var searchText: String
+    var signed: Bool?
+    var favouriteOnly: Bool
+    var duplicateOnly: Bool
+    var finalSeasonOnly: Bool
+    var minimumOverall: Int?
+    var maximumOverall: Int?
 
     nonisolated init(position: DetailedPosition? = nil,
                      rarity: LegendsRarity? = nil,
                      era: LegendsEra? = nil,
                      sort: LegendsLibrarySort = .rating,
                      group: LegendsLibraryGroup = .none,
-                     searchText: String = "") {
+                     searchText: String = "",
+                     signed: Bool? = nil,
+                     favouriteOnly: Bool = false,
+                     duplicateOnly: Bool = false,
+                     finalSeasonOnly: Bool = false,
+                     minimumOverall: Int? = nil,
+                     maximumOverall: Int? = nil) {
         self.position = position
         self.rarity = rarity
         self.era = era
         self.sort = sort
         self.group = group
         self.searchText = searchText
+        self.signed = signed
+        self.favouriteOnly = favouriteOnly
+        self.duplicateOnly = duplicateOnly
+        self.finalSeasonOnly = finalSeasonOnly
+        self.minimumOverall = minimumOverall
+        self.maximumOverall = maximumOverall
     }
 }
 
 extension LegendsStore {
     func libraryCards(query: LegendsLibraryQuery = LegendsLibraryQuery(),
                       excludingActive: Bool = true) -> [LegendsCard] {
-        let signedIDs = profile.activatedCardIDs.union(
-            (profile.startingXICardIDs + profile.benchCardIDs).compactMap { $0 }
-        )
+        let signedIDs = profile.activatedCardIDs
         let search = query.searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let filtered = LegendsCardDatabase.all.filter { card in
             profile.ownedCardIDs.contains(card.id)
                 && (!excludingActive || !signedIDs.contains(card.id))
                 && !isRetired(card)
+                && (query.signed == nil || query.signed == signedIDs.contains(card.id))
+                && (!query.favouriteOnly || profile.favouriteCardIDs.contains(card.id))
+                && (!query.duplicateOnly || isExactDuplicate(card))
+                && (!query.finalSeasonOnly || isFinalSeason(card))
+                && (query.minimumOverall == nil || effectiveOverall(for: card) >= query.minimumOverall!)
+                && (query.maximumOverall == nil || effectiveOverall(for: card) <= query.maximumOverall!)
                 && (query.position == nil || canPlay(card, in: query.position!))
                 && (query.rarity == nil || card.rarity == query.rarity!)
                 && (query.era == nil || card.era == query.era!)
@@ -83,6 +112,32 @@ extension LegendsStore {
                 let left = effectiveAge(for: lhs)
                 let right = effectiveAge(for: rhs)
                 return left != right ? left < right : lhs.name < rhs.name
+            case .position:
+                return lhs.position.rawValue != rhs.position.rawValue ? lhs.position.rawValue < rhs.position.rawValue : lhs.name < rhs.name
+            case .projectedPrime:
+                let left = profile.playerCareers[lhs.id]?.peakStartAge ?? lhs.age
+                let right = profile.playerCareers[rhs.id]?.peakStartAge ?? rhs.age
+                return left != right ? left < right : lhs.name < rhs.name
+            case .profile:
+                let left = profile.playerCareers[lhs.id]?.lifecycleProfile.rawValue ?? "UNSIGNED"
+                let right = profile.playerCareers[rhs.id]?.lifecycleProfile.rawValue ?? "UNSIGNED"
+                return left != right ? left < right : lhs.name < rhs.name
+            case .careerStage:
+                let left = profile.playerCareers[lhs.id].map { _ in playerCareerStage(for: lhs) } ?? "UNSIGNED"
+                let right = profile.playerCareers[rhs.id].map { _ in playerCareerStage(for: rhs) } ?? "UNSIGNED"
+                return left != right ? left < right : lhs.name < rhs.name
+            case .seasonsAtClub:
+                let left = profile.playerCareers[lhs.id]?.appearances ?? 0
+                let right = profile.playerCareers[rhs.id]?.appearances ?? 0
+                return left != right ? left > right : lhs.name < rhs.name
+            case .retirement:
+                let left = profile.playerCareers[lhs.id].map { $0.intendedRetirementAge - effectiveAge(for: lhs) } ?? Int.max
+                let right = profile.playerCareers[rhs.id].map { $0.intendedRetirementAge - effectiveAge(for: rhs) } ?? Int.max
+                return left != right ? left < right : lhs.name < rhs.name
+            case .favourite:
+                let left = profile.favouriteCardIDs.contains(lhs.id)
+                let right = profile.favouriteCardIDs.contains(rhs.id)
+                return left != right ? left && !right : lhs.name < rhs.name
             case .rarity:
                 return lhs.rarity.tier != rhs.rarity.tier ? lhs.rarity.tier > rhs.rarity.tier : lhs.name < rhs.name
             }

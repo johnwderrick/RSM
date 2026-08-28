@@ -37,10 +37,27 @@ struct LegendsCollectionView: View {
     @State private var highPotentialOnly = false
     @State private var ownedOnly = false
     @State private var selectedCard: LegendsCard? = nil
+    @State private var searchText = ""
+    @State private var sort: LegendsLibrarySort = .rating
+    @State private var favouritesOnly = false
+    @State private var duplicatesOnly = false
+    @State private var finalSeasonOnly = false
+    @State private var showingFilters = false
+    @State private var showingComparison = false
+    @State private var comparisonCard: LegendsCard? = nil
+    @State private var releaseCandidate: LegendsCard? = nil
+    @State private var releaseFavouriteConfirmation = false
 
     private var cards: [LegendsCard] {
         let retiredIDs = Set(store.profile.legendsHall.map(\.cardID))
-        return LegendsCardDatabase.all.filter { card in
+        let query = LegendsLibraryQuery(position: nil, rarity: selectedRarity, era: selectedEra,
+                                        sort: sort, searchText: searchText,
+                                        signed: selectedStatus == .signed ? true : (selectedStatus == .unsigned ? false : nil),
+                                        favouriteOnly: favouritesOnly, duplicateOnly: duplicatesOnly,
+                                        finalSeasonOnly: finalSeasonOnly,
+                                        minimumOverall: minimumOverall > 0 ? minimumOverall : nil)
+        let library = store.libraryCards(query: query, excludingActive: false)
+        return library.filter { card in
             let owned = store.profile.ownedCardIDs.contains(card.id)
             let retired = retiredIDs.contains(card.id) && !owned
             let signed = owned && store.isSigned(card)
@@ -79,13 +96,17 @@ struct LegendsCollectionView: View {
                 if browserMode == .activeClub { activeClubSummary }
                 eraPicker
                 rarityPicker
-                collectionFilterBar
+                capacityBanner
+                toolbar
+                if showingFilters { filterPanel }
+                activeFilterSummary
                 cardGrid
             }
         }
         .sheet(item: $selectedCard) { card in
             LegendsPlayerDetailView(store: store, card: card)
         }
+        .accessibilityIdentifier("legends.library")
     }
 
     private var browserModePicker: some View {
@@ -264,6 +285,69 @@ struct LegendsCollectionView: View {
         .clipShape(Capsule())
     }
 
+    private var capacityBanner: some View {
+        HStack {
+            Image(systemName: "archivebox.fill")
+            Text("LIBRARY \(unsignedCount) / \(store.unsignedLibraryCapacity)")
+                .font(.system(size: 10, weight: .black, design: .monospaced))
+            Spacer()
+            if store.isUnsignedLibraryFull { Text("FULL").foregroundStyle(.red) }
+        }
+        .foregroundStyle(LegendsPalette.navy)
+        .padding(10)
+        .background(store.isUnsignedLibraryFull ? Color.red.opacity(0.1) : LegendsPalette.blue.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .padding(.horizontal)
+        .accessibilityLabel("Unsigned player library capacity, \(unsignedCount) of \(store.unsignedLibraryCapacity)")
+    }
+
+    private var toolbar: some View {
+        HStack(spacing: 8) {
+            Button { showingFilters.toggle() } label: {
+                Label(showingFilters ? "HIDE FILTERS" : "FILTERS", systemImage: "line.3.horizontal.decrease.circle")
+            }
+            .accessibilityIdentifier("legends.library.filters")
+            Spacer()
+            Menu("SORT") {
+                ForEach(LegendsLibrarySort.allCases) { option in
+                    Button(option.rawValue) { sort = option }
+                }
+            }
+            .accessibilityIdentifier("legends.library.sort")
+        }
+        .font(.system(size: 10, weight: .black, design: .monospaced))
+        .padding(.horizontal)
+    }
+
+    private var filterPanel: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            TextField("SEARCH PLAYERS", text: $searchText)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("legends.library.search")
+            Toggle("FAVOURITES ONLY", isOn: $favouritesOnly)
+                .accessibilityIdentifier("legends.library.favourites")
+            Toggle("EXACT DUPLICATES", isOn: $duplicatesOnly)
+                .accessibilityIdentifier("legends.library.duplicates")
+            Toggle("FINAL SEASON ONLY", isOn: $finalSeasonOnly)
+                .accessibilityIdentifier("legends.library.finalSeason")
+            Button("RESET FILTERS") {
+                selectedStatus = .all; selectedEra = nil; selectedRarity = nil; selectedNation = nil
+                minimumOverall = 0; highPotentialOnly = false; ownedOnly = false
+                searchText = ""; favouritesOnly = false; duplicatesOnly = false; finalSeasonOnly = false; sort = .rating
+            }
+            .accessibilityIdentifier("legends.library.resetFilters")
+        }
+        .padding(.horizontal)
+    }
+
+    private var activeFilterSummary: some View {
+        Text("\(cards.count) PLAYERS")
+            .font(.system(size: 10, weight: .bold, design: .monospaced))
+            .foregroundStyle(LegendsPalette.navy.opacity(0.6))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal)
+    }
+
     private var cardGrid: some View {
         ScrollView {
             if cards.isEmpty {
@@ -305,8 +389,26 @@ struct LegendsCollectionView: View {
             Haptics.tap()
             selectedCard = card
         } label: {
-            LegendsPlayerCardView(store: store, card: card, variant: .grid, showsStatus: true)
-                .frame(maxWidth: .infinity)
+            ZStack(alignment: .topTrailing) {
+                LegendsPlayerCardView(store: store, card: card, variant: .grid, showsStatus: true)
+                    .frame(maxWidth: .infinity)
+                if store.isFavourite(card.id) {
+                    Image(systemName: "star.fill")
+                        .foregroundStyle(LegendsPalette.gold)
+                        .padding(6)
+                        .accessibilityLabel("Favourite")
+                }
+                if store.isExactDuplicate(card) {
+                    Text("DUP")
+                        .font(.system(size: 7, weight: .black, design: .monospaced))
+                        .foregroundStyle(.white)
+                        .padding(4)
+                        .background(LegendsPalette.orange)
+                        .clipShape(Capsule())
+                        .padding(.top, 28)
+                        .accessibilityLabel("Exact duplicate")
+                }
+            }
         }
         .buttonStyle(PressableButtonStyle())
     }

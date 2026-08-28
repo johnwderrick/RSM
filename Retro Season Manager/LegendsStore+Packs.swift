@@ -27,6 +27,7 @@ enum LegendsPackError: Error, Equatable {
     case alreadyClaimed
     case pendingSelection
     case invalidPendingSelection
+    case libraryFull
 }
 
 extension LegendsStore {
@@ -44,6 +45,10 @@ extension LegendsStore {
         }
         let eligible = LegendsCardDatabase.all.filter(pack.pool)
         guard !eligible.isEmpty else { throw LegendsPackError.emptyPool }
+        let newEligibleIDs = Set(eligible.map(\.id)).subtracting(profile.ownedCardIDs)
+        guard unsignedLibraryUsed + min(newEligibleIDs.count, pack.cardCount) <= unsignedLibraryCapacity || newEligibleIDs.isEmpty else {
+            throw LegendsPackError.libraryFull
+        }
         var available = eligible
         var pulls: [LegendsCard] = []
         for _ in 0..<min(pack.cardCount, available.count) {
@@ -142,6 +147,10 @@ extension LegendsStore {
 
         let eligible = LegendsCardDatabase.all.filter(pack.pool)
         guard !eligible.isEmpty else { throw LegendsPackError.emptyPool }
+        let newEligibleIDs = Set(eligible.map(\.id)).subtracting(profile.ownedCardIDs)
+        guard unsignedLibraryUsed + min(newEligibleIDs.count, pack.cardCount) <= unsignedLibraryCapacity || newEligibleIDs.isEmpty else {
+            throw LegendsPackError.libraryFull
+        }
 
         var pulls = (0..<pack.cardCount).compactMap { _ in Self.weightedPull(from: eligible) }
 
