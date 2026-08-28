@@ -14,8 +14,31 @@ struct LegendsHallView: View {
     var onNavigate: ((LegendsNavItem) -> Void)? = nil
     var onBack: () -> Void
     @State private var selectedEntry: LegendsHallEntry? = nil
+    @State private var searchText = ""
+    @State private var favouritesOnly = false
+    @State private var sort: AlumniSort = .retirement
 
-    private var entries: [LegendsHallEntry] { Array(store.profile.legendsHall.reversed()) }
+    private var entries: [LegendsHallEntry] {
+        store.profile.legendsHall.filter { entry in
+            (!favouritesOnly || store.isFavourite(entry.cardID)) &&
+            (searchText.isEmpty || entry.playerName.localizedCaseInsensitiveContains(searchText))
+        }.sorted { lhs, rhs in
+            switch sort {
+            case .peak: return lhs.highestOverall > rhs.highestOverall
+            case .appearances: return lhs.appearances > rhs.appearances
+            case .goals: return lhs.goals > rhs.goals
+            case .seasons: return lhs.seasonsAtClub > rhs.seasonsAtClub
+            case .retirement: return lhs.retiredSeason > rhs.retiredSeason
+            case .legacy: return lhs.legacyScore > rhs.legacyScore
+            case .name: return lhs.playerName < rhs.playerName
+            }
+        }
+    }
+
+    private enum AlumniSort: String, CaseIterable, Identifiable {
+        case peak = "PEAK OVR", appearances = "APPEARANCES", goals = "GOALS", seasons = "SEASONS AT CLUB", retirement = "RETIREMENT SEASON", legacy = "LEGACY", name = "NAME"
+        var id: String { rawValue }
+    }
 
     private var ranking: [LegendsHallEntry] {
         store.profile.legendsHall.sorted { $0.legacyScore > $1.legacyScore }
@@ -28,6 +51,7 @@ struct LegendsHallView: View {
                          onBack: onBack, currentNav: .hall, onNavigate: onNavigate) {
             VStack(alignment: .leading, spacing: 14) {
                 header
+                controls
                 if entries.isEmpty {
                     emptyState
                 } else {
@@ -46,6 +70,24 @@ struct LegendsHallView: View {
         }
         .sheet(item: $selectedEntry) { entry in
             LegendsHallEntryDetailView(store: store, entry: entry)
+        }
+    }
+
+    private var controls: some View {
+        VStack(spacing: 8) {
+            TextField("SEARCH ALUMNI", text: $searchText)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("legends.alumni.search")
+            HStack {
+                Toggle("FAVOURITES", isOn: $favouritesOnly)
+                    .accessibilityIdentifier("legends.alumni.favourites")
+                Spacer()
+                Menu("SORT") {
+                    ForEach(AlumniSort.allCases) { option in Button(option.rawValue) { sort = option } }
+                }
+                .accessibilityIdentifier("legends.alumni.sort")
+            }
+            .font(.system(size: 10, weight: .bold, design: .monospaced))
         }
     }
 
@@ -119,6 +161,11 @@ struct LegendsHallView: View {
                 Text("\(entry.position.rawValue) · \(entry.nation) · AGE \(entry.startingAge) → \(entry.finalAge)")
                     .font(.system(size: 9, weight: .bold, design: .monospaced))
                     .foregroundStyle(LegendsPalette.navy.opacity(0.58))
+                if store.isFavourite(entry.cardID) {
+                    Label("FAVOURITE", systemImage: "star.fill")
+                        .font(.system(size: 8, weight: .black, design: .monospaced))
+                        .foregroundStyle(LegendsPalette.goldDeep)
+                }
                 Text("CAREER \(entry.signedSeason)–\(entry.retiredSeason) · \(entry.seasonsAtClub) SEASONS")
                     .font(.system(size: 9, weight: .black, design: .monospaced))
                     .foregroundStyle(LegendsPalette.goldDeep)
@@ -179,6 +226,7 @@ private struct LegendsHallEntryDetailView: View {
     let store: LegendsStore
     let entry: LegendsHallEntry
     @Environment(\.dismiss) private var dismiss
+    @State private var isFavourite = false
 
     private var records: [(LegendsClubRecordKind, LegendsClubRecordEntry)] {
         store.profile.clubRecords
@@ -215,6 +263,13 @@ private struct LegendsHallEntryDetailView: View {
                             .font(.system(.caption, design: .monospaced).bold())
                             .foregroundStyle(entry.isClubLegend ? Retro.gold : Retro.text.opacity(0.7))
                         Text("CAREER COMPLETE — LEGACY SCORE \(entry.legacyScore)")
+                        Button {
+                            isFavourite = store.toggleFavourite(cardID: entry.cardID) ? store.isFavourite(entry.cardID) : isFavourite
+                        } label: {
+                            Label(isFavourite ? "FAVOURITED" : "FAVOURITE", systemImage: isFavourite ? "star.fill" : "star")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .accessibilityIdentifier("legends.alumni.favourite")
                             .font(.system(size: 9, weight: .black, design: .monospaced))
                             .foregroundStyle(Retro.highlight)
                     }
@@ -303,6 +358,7 @@ private struct LegendsHallEntryDetailView: View {
                 .padding(16)
             }
         }
+        .onAppear { isFavourite = store.isFavourite(entry.cardID) }
     }
 
     private func detailLine(_ label: String, _ value: String) -> some View {

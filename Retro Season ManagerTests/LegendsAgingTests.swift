@@ -66,13 +66,65 @@ final class LegendsAgingTests: XCTestCase {
         XCTAssertEqual(store.agingPenalty(for: young), 3 * LegendsStore.declinePerYearOverPeak)
     }
 
-    func testCardRetiresExactlyAtRetirementAge() async {
+    // The old universal age-36 ceiling was superseded by profile-based
+    // career lengths. These assertions protect the authoritative ranges.
+    func testProfileRetirementRangesAndDeterministicTargets() async {
         let store = await freshStore()
-        let young = card("miessi-0506")
-        store.profile.cardAgeOffsets[young.id] = (LegendsStore.retirementAge - young.age) - 1
-        XCTAssertFalse(store.isRetired(young), "Not yet retired one year below the cutoff")
-        store.profile.cardAgeOffsets[young.id] = LegendsStore.retirementAge - young.age
-        XCTAssertTrue(store.isRetired(young))
+        let cards = LegendsCardDatabase.all.filter { !LegendsStore.agingExemptEras.contains($0.era) }
+        for profile in LegendsCareerLifecyclePolicy.DevelopmentProfile.allCases {
+            let policy = LegendsCareerLifecyclePolicy.configuration(for: profile)
+            for card in cards {
+                let target = LegendsCareerLifecyclePolicy.retirementAge(for: card.id, position: card.position, profile: profile)
+                if card.position.broad == .goalkeeper {
+                    XCTAssertGreaterThanOrEqual(target, policy.minimumRetirementAge + 2)
+                    XCTAssertLessThanOrEqual(target, 41)
+                } else {
+                    XCTAssertTrue(policy.retirementAgeRange.contains(target))
+                }
+                let second = LegendsCareerLifecyclePolicy.retirementAge(for: card.id, position: card.position, profile: profile)
+                XCTAssertEqual(target, second)
+                let state = LegendsStore.makeCareerState(for: card, signedSeason: 1)
+                if state.lifecycleProfile == profile {
+                    XCTAssertGreaterThan(target, state.peakEndAge)
+                }
+            }
+        }
+    }
+
+    func testCareerIsFinalSeasonBeforeRetirementAndArchivesOnce() async {
+        let store = await freshStore()
+        let card = card("miessi-0506")
+        store.profile.ownedCardIDs = [card.id]
+        store.signAllOwnedCardsForTesting()
+        store.startCareerIfNeeded(for: card)
+        let targetAge = 35
+        var configuredCareer = store.profile.playerCareers[card.id]!
+        configuredCareer.intendedRetirementAge = targetAge
+        store.profile.playerCareers[card.id] = configuredCareer
+        let target = targetAge
+        store.profile.cardAgeOffsets[card.id] = target - 2 - card.age
+        store.profile.currentSeason = 1
+        store.profile.matchesPlayedThisSeason = LegendsStore.matchesPerSeason - 1
+        store.profile.startingXICardIDs = Array(repeating: nil, count: 11)
+        store.profile.benchCardIDs = Array(repeating: nil, count: LegendsStore.benchSize)
+        store.profile.activatedCardIDs.insert(card.id)
+        XCTAssertFalse(store.isRetired(card))
+        XCTAssertFalse(store.isFinalSeason(card))
+        XCTAssertEqual(store.effectiveAge(for: card), target - 2)
+        XCTAssertEqual(store.profile.cardAgeOffsets[card.id], target - 2 - card.age)
+        store.profile.matchesPlayedThisSeason = LegendsStore.matchesPerSeason - 1
+        for _ in 0..<LegendsStore.matchesPerSeason {
+            _ = store.advanceSeasonIfNeeded()
+        }
+        XCTAssertTrue(store.isFinalSeason(card))
+        XCTAssertEqual(store.effectiveAge(for: card), target - 1)
+        XCTAssertEqual(store.profile.legendsHall.filter { $0.cardID == card.id }.count, 0)
+        for _ in 0..<LegendsStore.matchesPerSeason {
+            _ = store.advanceSeasonIfNeeded()
+        }
+        XCTAssertEqual(store.profile.legendsHall.filter { $0.cardID == card.id }.count, 1)
+        XCTAssertNil(store.profile.playerCareers[card.id])
+        XCTAssertFalse(store.profile.ownedCardIDs.contains(card.id))
     }
 
     func testSeasonOnlyAdvancesEveryMatchesPerSeasonCalls() async {
@@ -106,17 +158,27 @@ final class LegendsAgingTests: XCTestCase {
     func testRetiredCardIsAutoClearedFromSquadAndCaptaincy() async {
         let store = await freshStore()
         let young = card("miessi-0506")
+        store.profile.ownedCardIDs = [young.id]
+        store.signAllOwnedCardsForTesting()
+        store.startCareerIfNeeded(for: young)
         store.assign(cardID: young.id, toXISlot: 0)
         store.setCaptain(cardID: young.id)
         XCTAssertEqual(store.profile.captainCardID, young.id)
 
-        // Age the card up to one season short of retirement, confirming
-        // it's still fielded right up to the cutoff.
-        let seasonsToRetirement = LegendsStore.retirementAge - young.age
-        for _ in 0..<((seasonsToRetirement - 1) * LegendsStore.matchesPerSeason) {
+        // Age the card to Final Season, confirming it remains fielded for
+        // the complete T-1 season before the retirement rollover.
+        var configuredCareer = store.profile.playerCareers[young.id]!
+        configuredCareer.intendedRetirementAge = 35
+        store.profile.playerCareers[young.id] = configuredCareer
+        let target = configuredCareer.intendedRetirementAge
+        let seasonsToRetirement = target - young.age
+        store.profile.cardAgeOffsets[young.id] = target - 1 - young.age
+        store.profile.matchesPlayedThisSeason = LegendsStore.matchesPerSeason - 1
+        for _ in 0..<0 {
             store.advanceSeasonIfNeeded()
         }
         XCTAssertEqual(store.profile.startingXICardIDs[0], young.id, "Still fielded a season before retiring")
+        store.profile.matchesPlayedThisSeason = LegendsStore.matchesPerSeason - 1
 
         // The season that actually crosses the retirement age.
         var result: LegendsSeasonAdvanceResult?
@@ -131,6 +193,14 @@ final class LegendsAgingTests: XCTestCase {
     func testRetiredCardCannotBeAssigned() async {
         let store = await freshStore()
         let young = card("miessi-0506")
+        store.profile.activatedCardIDs.insert(young.id)
+        store.startCareerIfNeeded(for: young)
+        store.profile.ownedCardIDs = [young.id]
+        store.profile.activatedCardIDs = [young.id]
+        store.startCareerIfNeeded(for: young)
+        var career = store.profile.playerCareers[young.id]!
+        career.intendedRetirementAge = LegendsStore.retirementAge
+        store.profile.playerCareers[young.id] = career
         store.profile.cardAgeOffsets[young.id] = LegendsStore.retirementAge - young.age
         XCTAssertTrue(store.isRetired(young))
 
@@ -195,10 +265,16 @@ final class LegendsAgingTests: XCTestCase {
         let card = card("miessi-0506")
         store.profile.ownedCardIDs = [card.id]
         store.signAllOwnedCardsForTesting()
+        store.startCareerIfNeeded(for: card)
         store.assign(cardID: card.id, toXISlot: 1)
-        // Bring the signed career to age 34, then observe the final-season
-        // announcement at 35 and Hall archival at 36.
-        store.profile.cardAgeOffsets[card.id] = 16
+        // Bring the signed career to T-2, then observe Final Season at
+        // T-1 before Hall archival at the following rollover.
+        var configuredCareer = store.profile.playerCareers[card.id]!
+        configuredCareer.intendedRetirementAge = 35
+        store.profile.playerCareers[card.id] = configuredCareer
+        let target = configuredCareer.intendedRetirementAge
+        store.profile.cardAgeOffsets[card.id] = target - 2 - card.age
+        store.profile.matchesPlayedThisSeason = LegendsStore.matchesPerSeason - 1
         var announcement: LegendsSeasonAdvanceResult?
         for _ in 0..<LegendsStore.matchesPerSeason {
             announcement = store.advanceSeasonIfNeeded() ?? announcement
@@ -212,7 +288,7 @@ final class LegendsAgingTests: XCTestCase {
         }
         XCTAssertEqual(completion?.retiredCards.map(\.id), [card.id])
         XCTAssertEqual(store.profile.legendsHall.count, 1)
-        XCTAssertEqual(store.profile.legendsHall.first?.finalAge, LegendsStore.retirementAge)
+        XCTAssertEqual(store.profile.legendsHall.first?.finalAge, target)
         XCTAssertFalse(store.profile.ownedCardIDs.contains(card.id))
         XCTAssertNil(store.profile.playerCareers[card.id])
 

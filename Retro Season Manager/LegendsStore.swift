@@ -236,6 +236,11 @@ struct LegendsProfile: Codable {
     /// One record per owned career instance. The legacy ID sets remain
     /// decoded for compatibility and are reconciled into this registry.
     var ownedPlayerRecords: [String: LegendsOwnedPlayerRecord] = [:]
+    /// Unsigned-library capacity. Existing saves retain every card even if
+    /// they exceed this value; the bonus is reserved for future progression.
+    var libraryCapacityBonus: Int = 0
+    var favouriteCardIDs: Set<String> = []
+    var seasonReports: [Int: LegendsSeasonDevelopmentReport] = [:]
 
     static func starter() -> LegendsProfile {
         let squad = starterSquad()
@@ -321,6 +326,7 @@ struct LegendsProfile: Codable {
         case currentSeason, matchesPlayedThisSeason, cardAgeOffsets
         case preferredMentality
         case pendingPackID, pendingPackCardIDs, hasClaimedStarterPack, managerProfile, ownedPlayerRecords
+        case libraryCapacityBonus, favouriteCardIDs, seasonReports
     }
 
     init(clubName: String, crestShort: String, crestColorRGB: [Double],
@@ -346,7 +352,8 @@ struct LegendsProfile: Codable {
          preferredMentality: Mentality = .balanced, pendingPackID: String? = nil,
          pendingPackCardIDs: [String] = [], hasClaimedStarterPack: Bool = false,
          managerProfile: LegendsManagerProfile? = nil,
-         ownedPlayerRecords: [String: LegendsOwnedPlayerRecord] = [:]) {
+         ownedPlayerRecords: [String: LegendsOwnedPlayerRecord] = [:], libraryCapacityBonus: Int = 0,
+         favouriteCardIDs: Set<String> = [], seasonReports: [Int: LegendsSeasonDevelopmentReport] = [:]) {
         self.clubName = clubName
         self.crestShort = crestShort
         self.crestColorRGB = crestColorRGB
@@ -397,6 +404,9 @@ struct LegendsProfile: Codable {
         self.hasClaimedStarterPack = hasClaimedStarterPack
         self.managerProfile = managerProfile
         self.ownedPlayerRecords = ownedPlayerRecords
+        self.libraryCapacityBonus = libraryCapacityBonus
+        self.favouriteCardIDs = favouriteCardIDs
+        self.seasonReports = seasonReports
     }
 
     init(from decoder: Decoder) throws {
@@ -452,6 +462,9 @@ struct LegendsProfile: Codable {
         hasClaimedStarterPack = try c.decodeIfPresent(Bool.self, forKey: .hasClaimedStarterPack) ?? false
         managerProfile = try c.decodeIfPresent(LegendsManagerProfile.self, forKey: .managerProfile)
         ownedPlayerRecords = try c.decodeIfPresent([String: LegendsOwnedPlayerRecord].self, forKey: .ownedPlayerRecords) ?? [:]
+        libraryCapacityBonus = max(0, try c.decodeIfPresent(Int.self, forKey: .libraryCapacityBonus) ?? 0)
+        favouriteCardIDs = try c.decodeIfPresent(Set<String>.self, forKey: .favouriteCardIDs) ?? []
+        seasonReports = try c.decodeIfPresent([Int: LegendsSeasonDevelopmentReport].self, forKey: .seasonReports) ?? [:]
     }
 }
 
