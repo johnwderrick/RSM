@@ -426,7 +426,15 @@ struct ClubConfirmView: View {
     private var clubColor: Color { Color(rgb: preview.colorRGB) }
 
     var body: some View {
-        VStack(spacing: 16) {
+        // A plain VStack left the "MANAGE [CLUB]" button — the only way to
+        // actually start a new career — unreachable on a landscape iPhone:
+        // the back-button row + both Spacers + club info + two Panels +
+        // the button group together exceed the ~402pt of landscape height,
+        // and with no scroll container the button was simply clipped
+        // off-screen. Same failure class already fixed elsewhere (the
+        // post-match Continue button, RSM Legends manager onboarding).
+        ScrollView {
+            VStack(spacing: 16) {
             HStack {
                 Button {
                     Haptics.tap()
@@ -441,8 +449,6 @@ struct ClubConfirmView: View {
             }
             .padding(.horizontal)
             .padding(.top, 12)
-
-            Spacer()
 
             VStack(spacing: 14) {
                 CrestView(shortName: preview.short, size: 72, color: clubColor)
@@ -476,8 +482,6 @@ struct ClubConfirmView: View {
             }
             .frame(maxWidth: 420)
 
-            Spacer()
-
             VStack(spacing: 10) {
                 Button {
                     Haptics.success()
@@ -510,6 +514,7 @@ struct ClubConfirmView: View {
                 .buttonStyle(PressableButtonStyle())
             }
             .padding(.bottom, 24)
+            }
         }
     }
 
