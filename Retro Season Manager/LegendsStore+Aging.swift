@@ -144,6 +144,9 @@ struct LegendsPlayerCareer: Codable, Hashable {
     /// stable seed so it never over-powers the underlying curve.
     var developmentMultiplier: Double
     var formBoost: Int
+    var condition: LegendsPlayerCondition
+    var honours: [LegendsHonour]
+    var individualAwards: [LegendsIndividualAward]
     var seasonAppearances: Int
     var seasonGoals: Int
     var seasonAssists: Int
@@ -172,6 +175,8 @@ struct LegendsPlayerCareer: Codable, Hashable {
          retirementAnnounced: Bool = false, announcementSeason: Int? = nil,
          minutesPlayed: Int = 0, starts: Int = 0, seasonStartOverall: Int = 0,
          developmentMultiplier: Double = 1.0, formBoost: Int = 0,
+         condition: LegendsPlayerCondition = LegendsPlayerCondition(),
+         honours: [LegendsHonour] = [], individualAwards: [LegendsIndividualAward] = [],
          seasonAppearances: Int = 0, seasonGoals: Int = 0, seasonAssists: Int = 0,
          seasonCleanSheets: Int = 0, seasonRecords: [LegendsSeasonRecord] = [],
          milestones: Set<LegendsCareerMilestone> = [], isClubLegend: Bool = false,
@@ -204,6 +209,9 @@ struct LegendsPlayerCareer: Codable, Hashable {
         self.seasonStartOverall = seasonStartOverall
         self.developmentMultiplier = developmentMultiplier
         self.formBoost = formBoost
+        self.condition = condition
+        self.honours = honours
+        self.individualAwards = individualAwards
         self.seasonAppearances = seasonAppearances
         self.seasonGoals = seasonGoals
         self.seasonAssists = seasonAssists
@@ -222,7 +230,7 @@ struct LegendsPlayerCareer: Codable, Hashable {
         case developmentRate, declineRate, signedSeason, developmentProgress, trainingSessions
         case trainingSessionsThisSeason, trainingSeason, appearances, goals, assists, cleanSheets
         case highestOverall, retirementAnnounced, announcementSeason, minutesPlayed, starts
-        case seasonStartOverall, developmentMultiplier, formBoost, seasonAppearances, seasonGoals
+        case seasonStartOverall, developmentMultiplier, formBoost, condition, honours, individualAwards, seasonAppearances, seasonGoals
         case seasonAssists, seasonCleanSheets, seasonRecords, milestones, isClubLegend
         case seasonStartAppearances, seasonStartGoals, lifecycleProfile, intendedRetirementAge
     }
@@ -258,6 +266,9 @@ struct LegendsPlayerCareer: Codable, Hashable {
         seasonStartOverall = try c.decodeIfPresent(Int.self, forKey: .seasonStartOverall) ?? startingOverall
         developmentMultiplier = try c.decodeIfPresent(Double.self, forKey: .developmentMultiplier) ?? 1.0
         formBoost = try c.decodeIfPresent(Int.self, forKey: .formBoost) ?? 0
+        condition = try c.decodeIfPresent(LegendsPlayerCondition.self, forKey: .condition) ?? LegendsPlayerCondition()
+        honours = try c.decodeIfPresent([LegendsHonour].self, forKey: .honours) ?? []
+        individualAwards = try c.decodeIfPresent([LegendsIndividualAward].self, forKey: .individualAwards) ?? []
         seasonAppearances = try c.decodeIfPresent(Int.self, forKey: .seasonAppearances) ?? 0
         seasonGoals = try c.decodeIfPresent(Int.self, forKey: .seasonGoals) ?? 0
         seasonAssists = try c.decodeIfPresent(Int.self, forKey: .seasonAssists) ?? 0
@@ -625,6 +636,24 @@ extension LegendsStore {
         profile.playerCareers[card.id]
     }
 
+    func identityProfile(for card: LegendsCard) -> LegendsPlayerIdentityProfile {
+        if let stored = profile.playerIdentityProfiles[card.id] { return stored }
+        let generated = LegendsIdentityEngine.profile(for: card)
+        profile.playerIdentityProfiles[card.id] = generated
+        return generated
+    }
+
+    func detailedAttributes(for card: LegendsCard) -> LegendsDetailedAttributes {
+        identityProfile(for: card).attributes
+    }
+
+    func effectiveDetailedAttributes(for card: LegendsCard) -> LegendsDetailedAttributes {
+        let base = detailedAttributes(for: card)
+        let modifier = max(-3, min(3, formBoost(for: card)))
+        func adjusted(_ value: Int) -> Int { min(99, max(0, value + modifier)) }
+        return LegendsDetailedAttributes(finishing: adjusted(base.finishing), longShots: adjusted(base.longShots), passing: adjusted(base.passing), crossing: adjusted(base.crossing), dribbling: adjusted(base.dribbling), firstTouch: adjusted(base.firstTouch), tackling: adjusted(base.tackling), heading: adjusted(base.heading), setPieces: adjusted(base.setPieces), vision: adjusted(base.vision), decisions: adjusted(base.decisions), positioning: adjusted(base.positioning), anticipation: adjusted(base.anticipation), composure: adjusted(base.composure), workRate: adjusted(base.workRate), leadership: adjusted(base.leadership), teamwork: adjusted(base.teamwork), acceleration: adjusted(base.acceleration), sprintSpeed: adjusted(base.sprintSpeed), agility: adjusted(base.agility), balance: adjusted(base.balance), stamina: adjusted(base.stamina), strength: adjusted(base.strength), handling: adjusted(base.handling), reflexes: adjusted(base.reflexes), oneOnOnes: adjusted(base.oneOnOnes), aerialReach: adjusted(base.aerialReach), distribution: adjusted(base.distribution), goalkeeperPositioning: adjusted(base.goalkeeperPositioning))
+    }
+
     func isCareerStarted(_ card: LegendsCard) -> Bool {
         profile.activatedCardIDs.contains(card.id) || profile.playerCareers[card.id] != nil
     }
@@ -723,7 +752,12 @@ extension LegendsStore {
     /// The temporary career-best form OVR lift, applied only for the
     /// season the event is active.
     func formBoost(for card: LegendsCard) -> Int {
-        profile.playerCareers[card.id]?.formBoost ?? 0
+        guard let state = profile.playerCareers[card.id] else { return 0 }
+        return max(-3, min(3, (state.condition.form - 50) / 10 + (state.condition.morale - 50) / 20 + (state.condition.teamwork - 50) / 25))
+    }
+
+    func condition(for card: LegendsCard) -> LegendsPlayerCondition {
+        profile.playerCareers[card.id]?.condition ?? LegendsPlayerCondition()
     }
 
     /// A player's current season development event, or nil when their
@@ -754,6 +788,7 @@ extension LegendsStore {
             startCareerIfNeeded(for: card)
             guard var state = profile.playerCareers[id] else { continue }
             state.appearances += 1
+            state.condition.applyMatch(outcome: result.outcome, goals: 0, assists: 0, cleanSheet: result.opponentGoals == 0 && card.position.broad == .goalkeeper)
             state.starts += 1
             state.minutesPlayed += 90
             state.seasonAppearances += 1
@@ -833,8 +868,7 @@ extension LegendsStore {
         let finishingSeason = profile.currentSeason
         profile.currentSeason += 1
 
-        let activeIDs = profile.activatedCardIDs
-            .union((profile.startingXICardIDs + profile.benchCardIDs).compactMap { $0 })
+        let activeIDs = profile.activatedCardIDs.filter { profile.ownedCardIDs.contains($0) }
 
         // Prepare every active career for the season about to begin: fresh
         // development flavour and the age increment. The season-start
@@ -955,6 +989,8 @@ extension LegendsStore {
             // delta is the season's real development — not just the aging
             // boundary the roll itself would otherwise measure.
             let delta = endOverall - state.seasonStartOverall
+            state.condition.closeSeason(improved: delta > 0, declined: delta < 0, appearances: state.seasonAppearances)
+            profile.playerCareers[id] = state
             let stageReason = age == state.intendedRetirementAge - 1 ? "Entered Final Season" : nil
             let review = LegendsSeasonReviewEntry(cardID: id, playerName: card.name, position: card.position,
                                                   overallDelta: delta, appearances: state.seasonAppearances,
