@@ -850,12 +850,16 @@ extension LegendsStore {
             guard let scorer = scorers[safe: goalIndex], var state = profile.playerCareers[scorer.id] else { continue }
             state.goals += 1
             state.seasonGoals += 1
+            // Goals and assists feed condition exactly once per contribution,
+            // on top of the single per-appearance result delta above.
+            state.condition.applyPerformance(goals: 1)
             profile.playerCareers[scorer.id] = state
             if let assister = xiIDs.compactMap({ id in LegendsCardDatabase.all.first { $0.id == id } })
                 .first(where: { $0.id != scorer.id && ($0.position.broad == .midfielder || $0.position.broad == .forward) }),
                var assistState = profile.playerCareers[assister.id] {
                 assistState.assists += 1
                 assistState.seasonAssists += 1
+                assistState.condition.applyPerformance(assists: 1)
                 profile.playerCareers[assister.id] = assistState
             }
         }
@@ -892,6 +896,132 @@ extension LegendsStore {
                                                      individualAwards: state.individualAwards))
     }
 
+    // Fame granted once per newly inserted achievement — deliberately
+    // modest so a decorated career accumulates fame gradually instead of
+    // instantly maximising, and duplicates never re-grant anything.
+    static let fameForLeagueChampion = 6
+    static let fameForTopScorerAward = 4
+    static let fameForPlayerOfSeasonAward = 5
+
+    /// Inserts a career honour exactly once. Returns false when the card is
+    /// not an active signed career (unsigned library and retired cards are
+    /// protected) or the honour already exists — so repeated season
+    /// finalisation, report reopening and save/load never duplicate a record
+    /// or re-grant fame.
+    @discardableResult
+    func insertHonour(_ honour: LegendsHonour, fameGain: Int) -> Bool {
+        guard var state = profile.playerCareers[honour.cardID],
+              profile.activatedCardIDs.contains(honour.cardID),
+              profile.ownedCardIDs.contains(honour.cardID) else { return false }
+        guard !state.honours.contains(where: { $0.id == honour.id }) else { return false }
+        state.honours.append(honour)
+        state.condition.fame = min(100, state.condition.fame + fameGain)
+        profile.playerCareers[honour.cardID] = state
+        return true
+    }
+
+    /// Inserts an individual award exactly once, under the same active-career
+    /// and duplicate protections as `insertHonour`.
+    @discardableResult
+    func insertAward(_ award: LegendsIndividualAward, fameGain: Int) -> Bool {
+        guard var state = profile.playerCareers[award.cardID],
+              profile.activatedCardIDs.contains(award.cardID),
+              profile.ownedCardIDs.contains(award.cardID) else { return false }
+        guard !state.individualAwards.contains(where: { $0.id == award.id }) else { return false }
+        state.individualAwards.append(award)
+        state.condition.fame = min(100, state.condition.fame + fameGain)
+        profile.playerCareers[award.cardID] = state
+        return true
+    }
+
+    /// Deterministic Player-of-the-Season score built only from real tracked
+    /// season statistics: goal contributions outweigh appearance volume and
+    /// clean sheets credit defensive and goalkeeping seasons.
+    static func playerOfTheSeasonScore(_ career: LegendsPlayerCareer) -> Int {
+        career.seasonGoals * 3 + career.seasonAssists * 2 + career.seasonCleanSheets * 2 + career.seasonAppearances
+    }
+
+    /// Authoritative season award generation, called from the rollover after
+    /// the division result is settled and before any retirement archival, so
+    /// a player retiring in this rollover still banks this season's
+    /// achievements. Everything comes from data the game actually tracks: the
+    /// settled `LegendsDivisionSeasonResult` for team honours and the season
+    /// accumulators fed by `recordCareerMatch` for individual awards. Stable
+    /// IDs (season + award type + career identity) make re-running
+    /// finalisation, reopening reports and reloading saves idempotent.
+    /// Returns the record IDs inserted this call (empty when nothing was new).
+    @discardableResult
+    func finalizeSeasonAwards(divisionResult: LegendsDivisionSeasonResult?, finishingSeason: Int) -> [String] {
+        var inserted: [String] = []
+
+        // Team honours — the settled division season result is the only
+        // authoritative competition outcome Legends tracks, so it is the only
+        // team honour generated. No cup or continental data exists here yet.
+        if let divisionResult, divisionResult.outcome == .champion {
+            let competitionID = "legends.division.\(divisionResult.previousDivision.rawValue)"
+            let competitionName = "\(divisionResult.previousDivision.displayName) TITLE"
+            for id in profile.activatedCardIDs where profile.ownedCardIDs.contains(id) {
+                guard let career = profile.playerCareers[id] else { continue }
+                let honour = LegendsHonour(id: "H-S\(finishingSeason)-\(competitionID)-\(career.careerID)",
+                                           season: finishingSeason, competitionID: competitionID,
+                                           competitionName: competitionName, type: "LEAGUE CHAMPION",
+                                           clubName: profile.clubName, cardID: id,
+                                           careerID: career.careerID)
+                if insertHonour(honour, fameGain: Self.fameForLeagueChampion) {
+                    inserted.append(honour.id)
+                }
+            }
+        }
+
+        let seasonStats = profile.activatedCardIDs
+            .filter { profile.ownedCardIDs.contains($0) }
+            .compactMap { id -> (id: String, career: LegendsPlayerCareer)? in
+                guard let career = profile.playerCareers[id] else { return nil }
+                return (id, career)
+            }
+
+        // Top Scorer — most season goals, ties broken by fewer appearances,
+        // then the stable career ID so the winner never depends on iteration
+        // order or repeated runs.
+        if let topScorer = seasonStats
+            .filter({ $0.career.seasonGoals > 0 })
+            .max(by: {
+                if $0.career.seasonGoals != $1.career.seasonGoals { return $0.career.seasonGoals < $1.career.seasonGoals }
+                if $0.career.seasonAppearances != $1.career.seasonAppearances { return $0.career.seasonAppearances > $1.career.seasonAppearances }
+                return $0.career.careerID > $1.career.careerID
+            }) {
+            let award = LegendsIndividualAward(id: "A-S\(finishingSeason)-TOPSCORER-\(topScorer.career.careerID)",
+                                               season: finishingSeason, type: "TOP SCORER",
+                                               cardID: topScorer.id, careerID: topScorer.career.careerID,
+                                               value: topScorer.career.seasonGoals)
+            if insertAward(award, fameGain: Self.fameForTopScorerAward) {
+                inserted.append(award.id)
+            }
+        }
+
+        // Player of the Season — the highest deterministic performance score
+        // among players who actually took the pitch this season.
+        if let best = seasonStats
+            .filter({ $0.career.seasonAppearances > 0 })
+            .max(by: {
+                let lhsScore = Self.playerOfTheSeasonScore($0.career)
+                let rhsScore = Self.playerOfTheSeasonScore($1.career)
+                if lhsScore != rhsScore { return lhsScore < rhsScore }
+                if $0.career.seasonAppearances != $1.career.seasonAppearances { return $0.career.seasonAppearances > $1.career.seasonAppearances }
+                return $0.career.careerID > $1.career.careerID
+            }) {
+            let award = LegendsIndividualAward(id: "A-S\(finishingSeason)-POTS-\(best.career.careerID)",
+                                               season: finishingSeason, type: "PLAYER OF THE SEASON",
+                                               cardID: best.id, careerID: best.career.careerID,
+                                               value: Self.playerOfTheSeasonScore(best.career))
+            if insertAward(award, fameGain: Self.fameForPlayerOfSeasonAward) {
+                inserted.append(award.id)
+            }
+        }
+
+        return inserted
+    }
+
     /// Call once per completed match. Only active/signed careers age; an
     /// unsigned collection card never receives an offset or development.
     @discardableResult
@@ -925,6 +1055,12 @@ extension LegendsStore {
             // active players receive the next-season age after the outcome
             // has been selected; retiring players are never left active at T.
         }
+
+        // Season achievements are generated from the authoritative settled
+        // division result and the completed season's real statistics BEFORE
+        // any retirement archival, so a player retiring in this rollover
+        // still banks this season's honour and awards exactly once.
+        finalizeSeasonAwards(divisionResult: divisionResult, finishingSeason: finishingSeason)
 
         var retiredCards: [LegendsCard] = []
         var retirementAnnouncements: [LegendsCard] = []

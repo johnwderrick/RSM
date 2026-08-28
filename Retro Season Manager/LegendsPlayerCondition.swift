@@ -14,6 +14,16 @@ struct LegendsPlayerCondition: Codable, Hashable {
         fame = min(100, fame + goals + assists + (cleanSheet ? 1 : 0))
     }
 
+    /// Performance-only update for goal/assist contributions recorded after
+    /// the per-appearance `applyMatch` call. Deliberately skips the result
+    /// delta and the teamwork bump so one completed match applies each
+    /// component exactly once.
+    mutating func applyPerformance(goals: Int = 0, assists: Int = 0, cleanSheet: Bool = false) {
+        form = min(100, max(0, form + goals * 3 + assists * 2 + (cleanSheet ? 2 : 0)))
+        morale = min(100, max(0, morale + goals + assists))
+        fame = min(100, fame + goals + assists + (cleanSheet ? 1 : 0))
+    }
+
     mutating func closeSeason(improved: Bool, declined: Bool, appearances: Int) {
         form += (50 - form) / 4
         morale = min(100, max(0, morale + (improved ? 2 : declined ? -2 : 0)))
