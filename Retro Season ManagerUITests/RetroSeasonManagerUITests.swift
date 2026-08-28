@@ -28,6 +28,42 @@ final class RetroSeasonManagerUITests: XCTestCase {
                                           pressedImageID: "RSMSettingsButtonPressed")
     }
 
+    /// Regression test for a launch-blocking bug: `ClubConfirmView`'s
+    /// "MANAGE [CLUB]" button — the only way to actually start a new
+    /// Career Mode game — was unreachable on a landscape iPhone (no
+    /// scroll container, content taller than the ~402pt of landscape
+    /// height). Real XCUITest hit-testing proves the button both exists
+    /// and is actually tappable, not just present somewhere off-screen.
+    func testNewGameClubConfirmationReachesManageButton() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        let careerButton = app.buttons["experience.career"]
+        XCTAssertTrue(careerButton.waitForExistence(timeout: 8),
+                      "Expected the Career Mode entry button on the experience selector")
+        careerButton.tap()
+
+        let newGameButton = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "New Game")).firstMatch
+        XCTAssertTrue(newGameButton.waitForExistence(timeout: 4),
+                      "Expected the New Game tile on the Career main menu")
+        newGameButton.tap()
+
+        let firstClub = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Old Trafford Reds")).firstMatch
+        XCTAssertTrue(firstClub.waitForExistence(timeout: 4),
+                      "Expected Old Trafford Reds in the club selection list")
+        firstClub.tap()
+
+        let manageButton = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "MANAGE OLD TRAFFORD REDS")).firstMatch
+        XCTAssertTrue(manageButton.waitForExistence(timeout: 4),
+                      "Expected the MANAGE button on the club confirmation screen")
+        manageButton.tap()
+
+        // Confirms the tap actually did something (started building the
+        // squad / left this screen), not just that the coordinate hit.
+        XCTAssertFalse(app.buttons["MANAGE OLD TRAFFORD REDS"].waitForExistence(timeout: 4),
+                       "Confirming should leave the club confirmation screen entirely")
+    }
+
     /// Drives the full RSM Legends manager-onboarding flow end-to-end on a
     /// fresh install (no `managerProfile` yet, so entering Legends lands
     /// straight on `LegendsManagerOnboardingView`): pick an archetype,
