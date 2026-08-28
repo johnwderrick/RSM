@@ -647,6 +647,16 @@ extension LegendsStore {
         identityProfile(for: card).attributes
     }
 
+    @discardableResult
+    func applyConditionMatchEvent(to cardID: String, outcome: LegendsMatchOutcome, goals: Int = 0, assists: Int = 0, cleanSheet: Bool = false) -> Bool {
+        guard var career = profile.playerCareers[cardID], profile.activatedCardIDs.contains(cardID) else { return false }
+        career.condition.applyMatch(outcome: outcome, goals: goals, assists: assists, cleanSheet: cleanSheet)
+        profile.playerCareers[cardID] = career
+        return true
+    }
+
+    func fame(for card: LegendsCard) -> Int { profile.playerCareers[card.id]?.condition.fame ?? 0 }
+
     func effectiveDetailedAttributes(for card: LegendsCard) -> LegendsDetailedAttributes {
         let base = detailedAttributes(for: card)
         let modifier = max(-3, min(3, formBoost(for: card)))

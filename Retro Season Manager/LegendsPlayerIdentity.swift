@@ -104,7 +104,10 @@ struct LegendsPlayerIdentityProfile: Codable, Hashable {
 
 enum LegendsIdentityEngine {
     static func profile(for card: LegendsCard) -> LegendsPlayerIdentityProfile {
-        let personID = card.id.replacingOccurrences(of: "-tots", with: "").replacingOccurrences(of: "-golden", with: "").replacingOccurrences(of: "-retro", with: "")
+        let personID: String = {
+            let suffixes = ["-tots", "-golden", "-retro", "-immortal", "-icon"]
+            return suffixes.reduce(card.id) { value, suffix in value.hasSuffix(suffix) ? String(value.dropLast(suffix.count)) : value }
+        }()
         let broad = card.position.broad
         let archetype: LegendsPlayingArchetype = {
             switch broad { case .forward: return .finisher; case .midfielder: return .creator; case .defender: return .defender; case .goalkeeper: return .goalkeeper }
