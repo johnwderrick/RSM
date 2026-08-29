@@ -84,6 +84,10 @@ struct LegendsPitchCanvas: View {
                 }
             }
             .aspectRatio(1.55, contentMode: .fit)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Legends match pitch")
+            .accessibilityValue(impactAccessibilitySummary)
+            .accessibilityIdentifier("legends.match.pitch")
             legend
         }
         .task {
@@ -204,6 +208,24 @@ struct LegendsPitchCanvas: View {
             context.fill(Path(ellipseIn: rect), with: .color(color.opacity(flash.opacity * 0.25)))
         }
         context.stroke(Path(ellipseIn: rect), with: .color(color.opacity(flash.opacity)), lineWidth: 3)
+
+        // Keep the action readable in the visual layer: the flash names
+        // the attribute-selected participants rather than showing an
+        // anonymous ring. The compact label remains legible in landscape
+        // and is also mirrored by the accessibility summary below.
+        let participants = [
+            impact.runnerName.map { "RUN \(surname($0))" },
+            impact.finisherName.map { "FINISH \(surname($0))" },
+            impact.markerName.map { "MARK \(surname($0))" }
+        ].compactMap { $0 }
+        guard !participants.isEmpty else { return }
+        let text = participants.joined(separator: "  ·  ")
+        let label = context.resolve(
+            Text(text)
+                .font(.system(size: 8, weight: .black, design: .monospaced))
+                .foregroundColor(color.opacity(flash.opacity))
+        )
+        context.draw(label, at: CGPoint(x: pos.x, y: max(10, pos.y - flash.radius - 10)))
     }
 
     private var legend: some View {
@@ -219,6 +241,19 @@ struct LegendsPitchCanvas: View {
         }
         .font(.system(.caption2, design: .monospaced))
         .foregroundStyle(Retro.text.opacity(0.75))
+    }
+
+    /// VoiceOver gets the same event context that the Canvas paints next
+    /// to the impact ring. This is derived read-only from the latest
+    /// immutable impact snapshot and never mutates simulation state.
+    private var impactAccessibilitySummary: String {
+        guard let impact = simulation.lastImpact else { return "No active match event" }
+        let names = [
+            impact.runnerName.map { "wide run by \($0)" },
+            impact.finisherName.map { "finish by \($0)" },
+            impact.markerName.map { "marked by \($0)" }
+        ].compactMap { $0 }.joined(separator: ", ")
+        return names.isEmpty ? "Latest match event" : names
     }
 }
 

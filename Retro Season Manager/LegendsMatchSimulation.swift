@@ -172,6 +172,23 @@ struct BallImpact: Equatable {
     let position: CGPoint
     let kind: Kind
     let time: Date
+    /// Names and action roles selected by the same detailed-attribute
+    /// selectors that cast the on-pitch runners. Kept on the impact
+    /// snapshot so the renderer can show a meaningful, stable event label
+    /// without rereading mutable simulation state after the sequence ends.
+    let runnerName: String?
+    let finisherName: String?
+    let markerName: String?
+
+    init(position: CGPoint, kind: Kind, time: Date,
+         runnerName: String? = nil, finisherName: String? = nil, markerName: String? = nil) {
+        self.position = position
+        self.kind = kind
+        self.time = time
+        self.runnerName = runnerName
+        self.finisherName = finisherName
+        self.markerName = markerName
+    }
 }
 
 /// One queued attack sequence waiting behind the currently-playing one —
@@ -209,7 +226,7 @@ final class LegendsMatchSimulation {
     /// reached.
     private var waypoints: [BallWaypoint] = LegendsMatchSimulation.idleWaypoints
     private var waypointIndex = 0
-    private var pendingImpact: (index: Int, kind: BallImpact.Kind)?
+    private var pendingImpact: (index: Int, kind: BallImpact.Kind, runnerName: String?, finisherName: String?, markerName: String?)?
 
     /// The attack sequence currently playing out, if any — set by
     /// `startAttack` and cleared the instant the sequence's last waypoint
@@ -487,7 +504,13 @@ final class LegendsMatchSimulation {
 
         waypoints = points
         waypointIndex = 0
-        pendingImpact = (impactIndex, scored ? .goal : .chance)
+        pendingImpact = (
+            impactIndex,
+            scored ? .goal : .chance,
+            wideRunner?.name,
+            finisher?.name,
+            markerID.flatMap { id in players.first(where: { $0.id == id })?.name }
+        )
 
         runTargetOverrides.removeAll()
         if let wideRunner {
@@ -677,7 +700,14 @@ final class LegendsMatchSimulation {
         if distance <= step {
             ball.position = target
             if let pending = pendingImpact, pending.index == waypointIndex {
-                lastImpact = BallImpact(position: target, kind: pending.kind, time: Date())
+                lastImpact = BallImpact(
+                    position: target,
+                    kind: pending.kind,
+                    time: Date(),
+                    runnerName: pending.runnerName,
+                    finisherName: pending.finisherName,
+                    markerName: pending.markerName
+                )
                 pendingImpact = nil
             }
             waypointIndex += 1
