@@ -27,6 +27,12 @@ struct SyntheticOpponentPlayer: Identifiable, Hashable {
     let dribbling: Int
     let defending: Int
     let physical: Int
+    /// Deterministic detailed attributes (Point 2) — synthesized from the
+    /// headline ratings + position profile so the 2D simulator's
+    /// attacker/defender positioning can select on real action-specific
+    /// quality rather than role order alone. Defaults to zero for callers
+    /// that construct the struct directly (tests) without a profile.
+    var detailed: LegendsDetailedAttributes = .zero
 }
 
 enum LegendsOpponentRoster {
@@ -118,7 +124,18 @@ enum LegendsOpponentRoster {
                 passing: clampedAttribute(overall + offsets.passing),
                 dribbling: clampedAttribute(overall + offsets.dribbling),
                 defending: clampedAttribute(overall + offsets.defending),
-                physical: clampedAttribute(overall + offsets.physical)
+                physical: clampedAttribute(overall + offsets.physical),
+                detailed: LegendsDetailedAttributes.synthesized(
+                    overall: overall,
+                    pace: clampedAttribute(overall + offsets.pace),
+                    shooting: clampedAttribute(overall + offsets.shooting),
+                    passing: clampedAttribute(overall + offsets.passing),
+                    dribbling: clampedAttribute(overall + offsets.dribbling),
+                    defending: clampedAttribute(overall + offsets.defending),
+                    physical: clampedAttribute(overall + offsets.physical),
+                    broad: broad,
+                    seed: "\(opponent.name)-\(index)"
+                )
             )
         }
 

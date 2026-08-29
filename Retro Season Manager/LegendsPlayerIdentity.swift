@@ -136,3 +136,62 @@ enum LegendsIdentityEngine {
 
     static func stableNumber(_ string: String) -> Int { string.unicodeScalars.reduce(17) { ($0 * 31 + Int($1.value)) & 0x7fffffff } }
 }
+
+extension LegendsDetailedAttributes {
+    /// Deterministic detailed-attribute synthesis for players that have no
+    /// `LegendsCard` (the 2D simulator's synthetic opponent XI): a
+    /// position-profiled blend of the six headline ratings plus a stable
+    /// per-attribute jitter keyed on `seed`. Same inputs always produce the
+    /// same values (no `hashValue`, no randomness) so a regenerated roster
+    /// never reshuffles mid-match. Outfielders get zero goalkeeping
+    /// attributes; the keeper gets meaningful ones from defending/physical.
+    static func synthesized(
+        overall: Int,
+        pace: Int,
+        shooting: Int,
+        passing: Int,
+        dribbling: Int,
+        defending: Int,
+        physical: Int,
+        broad: Position,
+        seed: String
+    ) -> LegendsDetailedAttributes {
+        func v(_ base: Int, _ key: String) -> Int {
+            min(99, max(0, base + LegendsIdentityEngine.stableNumber(seed + "-" + key) % 5 - 2))
+        }
+        let keeper = broad == .goalkeeper
+        let creator = broad == .midfielder
+        let attacker = broad == .forward
+        return LegendsDetailedAttributes(
+            finishing: v(shooting + (attacker ? 4 : -6), "finishing"),
+            longShots: v(shooting - 2, "longShots"),
+            passing: v(passing + (creator ? 3 : 0), "passing"),
+            crossing: v(passing - 1 + (attacker ? 2 : 0), "crossing"),
+            dribbling: v(dribbling, "dribbling"),
+            firstTouch: v(dribbling + 1, "firstTouch"),
+            tackling: v(defending, "tackling"),
+            heading: v(physical + (attacker ? 2 : 0), "heading"),
+            setPieces: v(passing + 1, "setPieces"),
+            vision: v(passing + 1 + (creator ? 2 : 0), "vision"),
+            decisions: v(overall, "decisions"),
+            positioning: v(defending + (attacker ? -4 : 0), "positioning"),
+            anticipation: v(defending + 2, "anticipation"),
+            composure: v(shooting + 1, "composure"),
+            workRate: v(physical + 2, "workRate"),
+            leadership: v(overall - 4, "leadership"),
+            teamwork: v(overall - 2, "teamwork"),
+            acceleration: v(pace, "acceleration"),
+            sprintSpeed: v(pace, "sprintSpeed"),
+            agility: v(dribbling, "agility"),
+            balance: v(dribbling + 1, "balance"),
+            stamina: v(physical, "stamina"),
+            strength: v(physical, "strength"),
+            handling: keeper ? v(defending, "handling") : 0,
+            reflexes: keeper ? v(defending + 2, "reflexes") : 0,
+            oneOnOnes: keeper ? v(defending - 2, "oneOnOnes") : 0,
+            aerialReach: keeper ? v(physical + 1, "aerialReach") : 0,
+            distribution: keeper ? v(passing, "distribution") : 0,
+            goalkeeperPositioning: keeper ? v(defending + 1, "goalkeeperPositioning") : 0
+        )
+    }
+}

@@ -56,6 +56,7 @@
 		2A0E7115C0DE00B1B2C3D4E3 /* LegendsPoint2ConditionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0E7115C0DE00A1B2C3D4E3 /* LegendsPoint2ConditionTests.swift */; };
 		2A0E7115C0DE00B1B2C3D4E4 /* LegendsPoint2HonoursTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0E7115C0DE00A1B2C3D4E4 /* LegendsPoint2HonoursTests.swift */; };
 		2A0E7115C0DE00B1B2C3D4E5 /* LegendsPoint2MigrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0E7115C0DE00A1B2C3D4E5 /* LegendsPoint2MigrationTests.swift */; };
+		2A0E7116C0DE00B1B2C3D4E5 /* LegendsMatchSelectors2DTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0E7116C0DE00A1B2C3D4E5 /* LegendsMatchSelectors2DTests.swift */; };
 		2A0E7115C0DE00B1B2C3D4E6 /* LegendsPoint2SeasonAwardsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0E7115C0DE00A1B2C3D4E6 /* LegendsPoint2SeasonAwardsTests.swift */; };
 /* End PBXBuildFile section */
 
@@ -129,6 +130,7 @@
 		2A0E7115C0DE00A1B2C3D4E3 /* LegendsPoint2ConditionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendsPoint2ConditionTests.swift; sourceTree = "<group>"; };
 		2A0E7115C0DE00A1B2C3D4E4 /* LegendsPoint2HonoursTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendsPoint2HonoursTests.swift; sourceTree = "<group>"; };
 		2A0E7115C0DE00A1B2C3D4E5 /* LegendsPoint2MigrationTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendsPoint2MigrationTests.swift; sourceTree = "<group>"; };
+		2A0E7116C0DE00A1B2C3D4E5 /* LegendsMatchSelectors2DTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendsMatchSelectors2DTests.swift; sourceTree = "<group>"; };
 		2A0E7115C0DE00A1B2C3D4E6 /* LegendsPoint2SeasonAwardsTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendsPoint2SeasonAwardsTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -216,6 +218,7 @@
 				2A0E7115C0DE00A1B2C3D4E3 /* LegendsPoint2ConditionTests.swift */,
 				2A0E7115C0DE00A1B2C3D4E4 /* LegendsPoint2HonoursTests.swift */,
 				2A0E7115C0DE00A1B2C3D4E5 /* LegendsPoint2MigrationTests.swift */,
+				2A0E7116C0DE00A1B2C3D4E5 /* LegendsMatchSelectors2DTests.swift */,
 				2A0E7115C0DE00A1B2C3D4E6 /* LegendsPoint2SeasonAwardsTests.swift */,
 			);
 			path = "Retro Season ManagerTests";
@@ -441,6 +444,7 @@
 				2A0E7115C0DE00B1B2C3D4E3 /* LegendsPoint2ConditionTests.swift in Sources */,
 				2A0E7115C0DE00B1B2C3D4E4 /* LegendsPoint2HonoursTests.swift in Sources */,
 				2A0E7115C0DE00B1B2C3D4E5 /* LegendsPoint2MigrationTests.swift in Sources */,
+				2A0E7116C0DE00B1B2C3D4E5 /* LegendsMatchSelectors2DTests.swift in Sources */,
 				2A0E7115C0DE00B1B2C3D4E6 /* LegendsPoint2SeasonAwardsTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
