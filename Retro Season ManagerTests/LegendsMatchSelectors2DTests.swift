@@ -47,7 +47,7 @@ final class LegendsMatchSelectors2DTests: XCTestCase {
             switch role {
             case .rightWing: userDetailed[id] = wingerDetailed
             case .striker: userDetailed[id] = strikerDetailed
-            case .leftBack: userDetailed[id] = defenderDetailed
+            case .leftBack, .rightBack: userDetailed[id] = defenderDetailed
             default: break
             }
             return (role, id, "Player \(index)")
@@ -186,9 +186,9 @@ final class LegendsMatchSelectors2DTests: XCTestCase {
     // MARK: - Marker casting
 
     func testMarkerIsBestDefenderAmongNearest() async {
-        // leftBack has strong defending attributes; the other defenders
-        // are weak. The marker must be the leftBack even though all four
-        // defenders start at similar distance from the wide run.
+        // Both full-backs have strong defending attributes; the centre-backs
+        // are weak. The randomly selected attack flank therefore cannot
+        // change the outcome: the nearest full-back must be the marker.
         let sim = await makeSimulation(
             wingerDetailed: makeStrongFinishing(),
             strikerDetailed: makeStrongFinishing(),
@@ -198,8 +198,11 @@ final class LegendsMatchSelectors2DTests: XCTestCase {
         let markerID = sim.testMarkerID()
         XCTAssertNotNil(markerID, "An attack sequence must assign a marking defender")
         let marker = sim.players.first { $0.id == markerID }
-        XCTAssertEqual(marker?.role, .leftBack,
-                       "The defender with the best defending-selector score among the nearest three should mark")
+        XCTAssertTrue(marker?.role == .leftBack || marker?.role == .rightBack,
+                      "The strong full-back among the nearest three should mark on either attack flank")
+        XCTAssertEqual(marker.map { LegendsMatchSelectors.defending($0.detailed) },
+                       LegendsMatchSelectors.defending(makeStrongDefending()),
+                       "Marker casting must select the strongest defending-selector score")
     }
 
     // MARK: - Deterministic synthesis for the synthetic roster
