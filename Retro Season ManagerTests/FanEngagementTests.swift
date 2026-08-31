@@ -73,9 +73,19 @@ final class FanEngagementTests: XCTestCase {
         }
         store.clubs[store.userClubIndex].players[index].isAcademyProduct = true
         store.clubs[store.userClubIndex].players[index].age = 18
-        store.clubs[store.userClubIndex].players[index].rating = 95 // dominates the bestXI fallback selection
         let playerID = store.clubs[store.userClubIndex].players[index].id
-        store.clearLineup() // force the bestXI fallback rather than a stale userStarterIDs set
+        store.autoPickLineup()
+        if !store.userStarterIDs.contains(playerID) {
+            guard let selectedMidfielderID = store.userClub.players.first(where: {
+                $0.position == .midfielder && store.userStarterIDs.contains($0.id)
+            })?.id else {
+                return XCTFail("Expected an auto-picked midfielder to replace")
+            }
+            store.userStarterIDs.remove(selectedMidfielderID)
+            store.userStarterIDs.insert(playerID)
+        }
+        XCTAssertTrue(store.userStartingXI().contains { $0.id == playerID },
+                      "The fixture must put the academy player in a valid starting XI")
 
         store.checkYouthBlooding()
 
