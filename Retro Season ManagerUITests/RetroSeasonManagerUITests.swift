@@ -15,16 +15,19 @@ final class RetroSeasonManagerUITests: XCTestCase {
 
     func testCareerEntryShowsPressedArtworkWhileHeld() throws {
         try assertPressedArtworkWhileHeld(buttonID: "experience.career",
+                                          normalImageID: "RSMCareerEntryButton",
                                           pressedImageID: "RSMCareerEntryButtonPressed")
     }
 
     func testLegendsEntryShowsPressedArtworkWhileHeld() throws {
         try assertPressedArtworkWhileHeld(buttonID: "experience.legends",
+                                          normalImageID: "RSMLegendsEntryButton",
                                           pressedImageID: "RSMLegendsEntryButtonPressed")
     }
 
     func testSettingsShowsPressedArtworkWhileHeld() throws {
         try assertPressedArtworkWhileHeld(buttonID: "experience.settings",
+                                          normalImageID: "RSMSettingsButton",
                                           pressedImageID: "RSMSettingsButtonPressed")
     }
 
@@ -182,6 +185,7 @@ final class RetroSeasonManagerUITests: XCTestCase {
     /// NOT present initially, then holds the button and asserts the pressed
     /// image IS exposed mid-hold.
     private func assertPressedArtworkWhileHeld(buttonID: String,
+                                               normalImageID: String,
                                                pressedImageID: String) throws {
         let app = XCUIApplication()
         app.launch()
@@ -189,6 +193,10 @@ final class RetroSeasonManagerUITests: XCTestCase {
         let button = app.buttons[buttonID]
         XCTAssertTrue(button.waitForExistence(timeout: 8),
                       "Expected button '\(buttonID)' to appear on the experience selector")
+        XCTAssertTrue(app.images[normalImageID].waitForExistence(timeout: 5),
+                      "Expected normal art '\(normalImageID)' before testing its pressed state")
+        XCTAssertTrue(button.isHittable,
+                      "Button '\(buttonID)' must be hittable before starting the hold")
         XCTAssertFalse(app.images[pressedImageID].exists,
                        "Pressed art '\(pressedImageID)' should not be present before pressing")
 
@@ -217,7 +225,11 @@ final class RetroSeasonManagerUITests: XCTestCase {
         // running). A plain background thread doesn't depend on the main
         // run loop processing anything at all, so it isn't affected by
         // whatever `press(forDuration:)` does to it.
-        let holdDuration: TimeInterval = 1.2
+        // The first UI test starts from a cold accessibility tree on CI. Waiting
+        // for the normal artwork above and holding for three seconds gives
+        // XCTest enough time to publish the transient pressed child without
+        // weakening the assertion or accepting the post-release state.
+        let holdDuration: TimeInterval = 3.0
         let pollInterval: TimeInterval = 0.1
         let visibleWhileHeld = expectation(description: "pressed art visible while held: \(buttonID)")
         DispatchQueue.global(qos: .userInitiated).async {
