@@ -1135,7 +1135,7 @@ struct LegendsNavIcon: View {
                         .foregroundStyle(LegendsPalette.navy)
                 }
             case .packs:
-                LegendsPackArtwork(tint: .white, compact: true)
+                LegendsPackArtwork(compact: true)
             case .challenges:
                 ZStack {
                     RoundedRectangle(cornerRadius: 4).fill(.white.opacity(0.95)).frame(width: size * 0.82, height: size)
@@ -1176,28 +1176,40 @@ struct LegendsNavIcon: View {
 }
 
 struct LegendsPackArtwork: View {
-    let tint: Color
+    var pack: LegendsPack? = nil
     var compact: Bool = false
+    var isEnabled: Bool = true
 
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: compact ? 4 : 9)
-                .fill(LinearGradient(colors: [LegendsPalette.navy, LegendsPalette.blue], startPoint: .topLeading, endPoint: .bottomTrailing))
-                .frame(width: compact ? 18 : 68, height: compact ? 22 : 86)
-                .overlay(RoundedRectangle(cornerRadius: compact ? 4 : 9).stroke(tint.opacity(0.9), lineWidth: compact ? 1 : 2))
-                .rotationEffect(.degrees(-7))
-            VStack(spacing: compact ? 1 : 4) {
-                Text("RSM")
-                    .font(.system(size: compact ? 5 : 17, weight: .black, design: .rounded))
-                    .foregroundStyle(tint)
-                Rectangle().fill(LegendsPalette.green).frame(width: compact ? 11 : 38, height: compact ? 1 : 3)
-                Image(systemName: "sparkles")
-                    .font(.system(size: compact ? 6 : 18, weight: .bold))
-                    .foregroundStyle(tint)
+        Group {
+            if let pack {
+                Image(pack.artworkAssetName)
+                    .resizable()
+                    .scaledToFit()
+                    .saturation(isEnabled ? 1 : 0.15)
+                    .opacity(isEnabled ? 1 : 0.42)
+                    .shadow(color: LegendsPalette.navy.opacity(isEnabled ? 0.24 : 0.08), radius: compact ? 2 : 8, y: compact ? 1 : 5)
+            } else {
+                ZStack {
+                    RoundedRectangle(cornerRadius: compact ? 4 : 9)
+                        .fill(LinearGradient(colors: [LegendsPalette.navy, LegendsPalette.blue], startPoint: .topLeading, endPoint: .bottomTrailing))
+                        .frame(width: compact ? 18 : 68, height: compact ? 22 : 86)
+                        .overlay(RoundedRectangle(cornerRadius: compact ? 4 : 9).stroke(.white.opacity(0.9), lineWidth: compact ? 1 : 2))
+                        .rotationEffect(.degrees(-7))
+                    VStack(spacing: compact ? 1 : 4) {
+                        Text("RSM")
+                            .font(.system(size: compact ? 5 : 17, weight: .black, design: .rounded))
+                            .foregroundStyle(.white)
+                        Rectangle().fill(LegendsPalette.green).frame(width: compact ? 11 : 38, height: compact ? 1 : 3)
+                        Image(systemName: "sparkles")
+                            .font(.system(size: compact ? 6 : 18, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+                    .rotationEffect(.degrees(-7))
+                }
             }
-            .rotationEffect(.degrees(-7))
         }
-        .frame(width: compact ? 22 : 76, height: compact ? 26 : 94)
+        .frame(width: compact ? 26 : 88, height: compact ? 32 : 112)
         .accessibilityHidden(true)
     }
 }
