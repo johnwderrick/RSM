@@ -80,12 +80,17 @@ struct LegendsLiveMatchView: View {
         // attributes (base + condition modifier, the same values the live
         // engine selects with) keyed by slot id, so the 2D runner/marker
         // casting selects on real player quality.
-        let userDetailedAttributes: [String: LegendsDetailedAttributes] = Dictionary(
-            uniqueKeysWithValues: userSlots.compactMap { slot in
-                LegendsCardDatabase.all.first { $0.id == slot.id }
-                    .map { card in (slot.id, store.effectiveDetailedAttributes(for: card)) }
+        let userDetailedAttributes: [String: LegendsDetailedAttributes] = userSlots.reduce(into: [:]) { result, slot in
+            // A malformed legacy XI must never trap the view transition.
+            // LegendsLiveMatch already normalizes duplicates, but keeping
+            // dictionary construction defensive makes this initializer safe
+            // even when it is exercised independently in previews/tests.
+            guard result[slot.id] == nil,
+                  let card = LegendsCardDatabase.all.first(where: { $0.id == slot.id }) else {
+                return
             }
-        )
+            result[slot.id] = store.effectiveDetailedAttributes(for: card)
+        }
         let opponentRoster = LegendsOpponentRoster.generateRoster(for: live.opponent)
         _simulation = State(initialValue: LegendsMatchSimulation(
             userSlots: userSlots,
