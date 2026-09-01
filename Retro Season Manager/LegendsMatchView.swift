@@ -16,6 +16,40 @@
 
 import SwiftUI
 
+/// Validates the persisted squad before the live-match engine is created.
+/// Older saves can contain short arrays, stale card IDs or duplicate slot
+/// assignments; rejecting those states here avoids an apparent no-op/crash
+/// when KICK OFF tries to build the pitch simulation.
+@MainActor
+enum LegendsMatchLaunchValidator {
+    static func issue(in store: LegendsStore) -> String? {
+        let slots = store.startingXISlots
+        let savedXI = store.profile.startingXICardIDs
+
+        guard savedXI.count == slots.count else {
+            return "Your saved Starting XI is incomplete. Open Squad and fill all eleven positions."
+        }
+
+        let cardIDs = savedXI.compactMap { $0 }
+        guard cardIDs.count == slots.count else {
+            return "Fill every Starting XI slot in the Squad screen before starting a match."
+        }
+        guard Set(cardIDs).count == cardIDs.count else {
+            return "A player is assigned to more than one Starting XI slot. Re-select the duplicated player in Squad."
+        }
+
+        for cardID in cardIDs {
+            guard let card = LegendsCardDatabase.all.first(where: { $0.id == cardID }) else {
+                return "Your Starting XI contains an unavailable player. Replace them in Squad."
+            }
+            guard store.isSigned(card) else {
+                return "Every Starting XI player must be signed before starting a match."
+            }
+        }
+        return nil
+    }
+}
+
 struct LegendsMatchView: View {
     let store: LegendsStore
     var onNavigate: ((LegendsNavItem) -> Void)? = nil
@@ -23,6 +57,7 @@ struct LegendsMatchView: View {
 
     @State private var liveMatch: LegendsLiveMatch? = nil
     @State private var summary: LegendsMatchOutcomeSummary? = nil
+    @State private var launchError: String? = nil
 
     var body: some View {
         ZStack {
@@ -55,7 +90,7 @@ struct LegendsMatchView: View {
                     if let summary {
                         resultPanel(summary)
                             .transition(.scale(scale: 0.9).combined(with: .opacity))
-                    } else if store.currentTeamRating > 0 {
+                    } else if LegendsMatchLaunchValidator.issue(in: store) == nil {
                         readyPanel
                     } else {
                         notReadyPanel
@@ -63,12 +98,21 @@ struct LegendsMatchView: View {
                 }
             }
         }
+        .alert("Unable to start match", isPresented: Binding(
+            get: { launchError != nil },
+            set: { if !$0 { launchError = nil } }
+        )) {
+            Button("OK", role: .cancel) { launchError = nil }
+        } message: {
+            Text(launchError ?? "Check your Starting XI and try again.")
+        }
     }
 
 
     private var notReadyPanel: some View {
         Panel(title: "SQUAD NOT READY") {
-            Text("Fill every Starting XI slot in the Squad screen before you can play a match.")
+            Text(LegendsMatchLaunchValidator.issue(in: store)
+                 ?? "Fill every Starting XI slot in the Squad screen before you can play a match.")
                 .font(.system(.footnote, design: .monospaced))
                 .foregroundStyle(Retro.text.opacity(0.85))
                 .multilineTextAlignment(.center)
@@ -103,9 +147,7 @@ struct LegendsMatchView: View {
             .frame(maxWidth: 380)
 
             Button {
-                Haptics.tap()
-                store.prepareIdentityProfilesForMatch()
-                liveMatch = LegendsLiveMatch(store: store, opponent: store.scheduledOpponent())
+                launchMatch()
             } label: {
                 Text("KICK OFF")
                     .font(.system(.headline, design: .monospaced).bold())
@@ -116,7 +158,19 @@ struct LegendsMatchView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 10))
             }
             .buttonStyle(PressableButtonStyle())
+            .accessibilityIdentifier("legends.match.kickoff")
         }
+    }
+
+    private func launchMatch() {
+        if let issue = LegendsMatchLaunchValidator.issue(in: store) {
+            launchError = issue
+            return
+        }
+        Haptics.tap()
+        store.prepareIdentityProfilesForMatch()
+        let opponent = store.scheduledOpponent()
+        liveMatch = LegendsLiveMatch(store: store, opponent: opponent)
     }
 
     /// Sound + haptic cues for a just-finished match, played once right
