@@ -5,8 +5,8 @@ import XCTest
 final class LegendsPoint2SeasonAwardsTests: XCTestCase {
     /// Fresh store with the starter profile stripped down to an empty club,
     /// mirroring the established retirement-timing fixture.
-    private func store() -> LegendsStore {
-        let store = LegendsStore()
+    private func store() async -> LegendsStore {
+        let store = await Task { @MainActor in LegendsStore() }.value
         store.profile = .starter()
         store.profile.ownedCardIDs = []
         store.profile.activatedCardIDs = []
@@ -42,8 +42,8 @@ final class LegendsPoint2SeasonAwardsTests: XCTestCase {
 
     // MARK: - Team honours
 
-    func testChampionSeasonGeneratesHonourOncePerSignedCareer() {
-        let store = store()
+    func testChampionSeasonGeneratesHonourOncePerSignedCareer() async {
+        let store = await store()
         let card = LegendsCardDatabase.all.first { $0.position.broad != .goalkeeper }!
         store.profile.ownedCardIDs = [card.id]
         store.profile.activatedCardIDs = [card.id]
@@ -76,8 +76,8 @@ final class LegendsPoint2SeasonAwardsTests: XCTestCase {
                        LegendsPlayerCondition().fame + LegendsStore.fameForLeagueChampion)
     }
 
-    func testNonChampionSeasonGeneratesNoTeamHonour() {
-        let store = store()
+    func testNonChampionSeasonGeneratesNoTeamHonour() async {
+        let store = await store()
         let card = LegendsCardDatabase.all.first { $0.position.broad != .goalkeeper }!
         store.profile.ownedCardIDs = [card.id]
         store.profile.activatedCardIDs = [card.id]
@@ -101,8 +101,8 @@ final class LegendsPoint2SeasonAwardsTests: XCTestCase {
 
     // MARK: - Individual awards
 
-    func testTopScorerAndPlayerOfSeasonComeFromRealSeasonAccumulators() {
-        let store = store()
+    func testTopScorerAndPlayerOfSeasonComeFromRealSeasonAccumulators() async {
+        let store = await store()
         guard let striker = LegendsCardDatabase.all.first(where: { $0.position.broad == .forward }),
               let defender = LegendsCardDatabase.all.first(where: { $0.position.broad == .defender }) else {
             return XCTFail("Database must contain forward and defender cards")
@@ -150,8 +150,8 @@ final class LegendsPoint2SeasonAwardsTests: XCTestCase {
         XCTAssertEqual(defenderState?.condition.fame, LegendsStore.fameForPlayerOfSeasonAward + 2)
     }
 
-    func testFullyTiedSeasonBreaksWithStableCareerID() {
-        let store = store()
+    func testFullyTiedSeasonBreaksWithStableCareerID() async {
+        let store = await store()
         guard let striker = LegendsCardDatabase.all.first(where: { $0.position.broad == .forward }),
               let defender = LegendsCardDatabase.all.first(where: { $0.position.broad == .defender }) else {
             return XCTFail("Database must contain forward and defender cards")
@@ -191,8 +191,8 @@ final class LegendsPoint2SeasonAwardsTests: XCTestCase {
 
     // MARK: - Insertion protections
 
-    func testInsertionProtectsUnsignedCardsAndClampsFame() {
-        let store = store()
+    func testInsertionProtectsUnsignedCardsAndClampsFame() async {
+        let store = await store()
         let card = LegendsCardDatabase.all.first { $0.position.broad != .goalkeeper }!
         let honour = LegendsHonour(id: "H-test-1", season: 1, competitionID: "legends.division.5",
                                    competitionName: "DIVISION 5 TITLE", type: "LEAGUE CHAMPION",
@@ -227,8 +227,8 @@ final class LegendsPoint2SeasonAwardsTests: XCTestCase {
 
     // MARK: - Award-then-retire ordering
 
-    func testFinalSeasonRetireeBanksAwardsBeforeArchival() {
-        let store = store()
+    func testFinalSeasonRetireeBanksAwardsBeforeArchival() async {
+        let store = await store()
         let card = LegendsCardDatabase.all.first { $0.id == "miessi-0506" }!
         store.profile.ownedCardIDs = [card.id]
         store.profile.activatedCardIDs = [card.id]
@@ -268,8 +268,8 @@ final class LegendsPoint2SeasonAwardsTests: XCTestCase {
 
     // MARK: - Condition integration through recordCareerMatch
 
-    func testRecordedGoalsAndAssistsFeedConditionExactlyOncePerContribution() {
-        let store = store()
+    func testRecordedGoalsAndAssistsFeedConditionExactlyOncePerContribution() async {
+        let store = await store()
         guard let striker = LegendsCardDatabase.all.first(where: { $0.position.broad == .forward }),
               let creator = LegendsCardDatabase.all.first(where: { $0.position.broad == .midfielder }),
               let keeper = LegendsCardDatabase.all.first(where: { $0.position.broad == .goalkeeper }) else {

@@ -657,13 +657,33 @@ extension LegendsStore {
 
     func identityProfile(for card: LegendsCard) -> LegendsPlayerIdentityProfile {
         if let stored = profile.playerIdentityProfiles[card.id] { return stored }
-        let generated = profile.playerCareers[card.id]?.identitySnapshot ?? LegendsIdentityEngine.profile(for: card)
+        return profile.playerCareers[card.id]?.identitySnapshot ?? LegendsIdentityEngine.profile(for: card)
+    }
+
+    /// Persists a resolved identity from an explicit state-changing path.
+    /// Read-only SwiftUI rendering uses `identityProfile(for:)`, which must
+    /// not mutate the observable profile while a view body is being built.
+    @discardableResult
+    func ensureIdentityProfile(for card: LegendsCard) -> LegendsPlayerIdentityProfile {
+        let generated = identityProfile(for: card)
         profile.playerIdentityProfiles[card.id] = generated
         if var career = profile.playerCareers[card.id], career.identitySnapshot == nil {
             career.identitySnapshot = generated
             profile.playerCareers[card.id] = career
         }
         return generated
+    }
+
+    /// Prepares every possible participant before `LegendsLiveMatchView`
+    /// renders. This prevents its detailed-attribute reads from publishing
+    /// profile changes during the SwiftUI update that follows KICK OFF.
+    func prepareIdentityProfilesForMatch() {
+        let matchdayIDs = Set(profile.startingXICardIDs.compactMap { $0 } + profile.benchCardIDs.compactMap { $0 })
+        for id in matchdayIDs {
+            guard let card = LegendsCardDatabase.all.first(where: { $0.id == id }) else { continue }
+            ensureIdentityProfile(for: card)
+        }
+        persist()
     }
 
     func detailedAttributes(for card: LegendsCard) -> LegendsDetailedAttributes {
@@ -700,6 +720,7 @@ extension LegendsStore {
         // at signing (upgrades included), not the raw card rating.
         state.seasonStartOverall = effectiveOverall(for: card)
         profile.playerCareers[card.id] = state
+        profile.playerIdentityProfiles[card.id] = state.identitySnapshot ?? LegendsIdentityEngine.profile(for: card)
     }
 
     /// A hidden-potential scouting label: the exact number stays internal.

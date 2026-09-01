@@ -32,12 +32,34 @@ final class LegendsPoint2IdentityTests: XCTestCase {
         XCTAssertTrue((0...100).contains(condition.teamwork))
     }
 
-    func testDetailedEffectiveValuesRemainBounded() {
-        let store = LegendsStore()
+    func testDetailedEffectiveValuesRemainBounded() async {
+        let store = await Task { @MainActor in LegendsStore() }.value
         let card = LegendsCardDatabase.all.first!
         let values = store.effectiveDetailedAttributes(for: card)
         for group in LegendsAttributeGroup.allCases {
             for (_, value) in values.values(in: group) { XCTAssertTrue((0...99).contains(value)) }
         }
+    }
+
+    func testMatchPreparationPersistsIdentityWithoutRenderTimeMutation() async {
+        let store = await Task { @MainActor in LegendsStore() }.value
+        store.profile = .starter()
+        let matchdayIDs = Set(store.profile.startingXICardIDs.compactMap { $0 }
+            + store.profile.benchCardIDs.compactMap { $0 })
+        store.profile.playerIdentityProfiles = [:]
+        guard let firstID = matchdayIDs.first,
+              let firstCard = LegendsCardDatabase.all.first(where: { $0.id == firstID }) else {
+            return XCTFail("Starter profile must provide a valid matchday player")
+        }
+
+        _ = store.identityProfile(for: firstCard)
+        XCTAssertNil(store.profile.playerIdentityProfiles[firstID],
+                     "A render-time identity read must not publish observable profile changes")
+
+        store.prepareIdentityProfilesForMatch()
+
+        XCTAssertFalse(matchdayIDs.isEmpty, "Starter profile must provide matchday players")
+        XCTAssertTrue(matchdayIDs.allSatisfy { store.profile.playerIdentityProfiles[$0] != nil },
+                      "KICK OFF must prepare every XI and bench identity before rendering the live match")
     }
 }

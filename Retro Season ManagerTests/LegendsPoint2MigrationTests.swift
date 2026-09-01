@@ -80,15 +80,15 @@ final class LegendsPoint2MigrationTests: XCTestCase {
         XCTAssertEqual(first.playerCareers[card.id]?.condition, second.playerCareers[card.id]?.condition)
     }
 
-    func testMissingIdentityProfilesGenerateDeterministicallyThenPersist() throws {
-        let store = LegendsStore()
+    func testMissingIdentityProfilesGenerateDeterministicallyThenPersist() async throws {
+        let store = await Task { @MainActor in LegendsStore() }.value
         store.profile = .starter()
         store.profile.ownedCardIDs = [card.id]
         store.profile.activatedCardIDs = [card.id]
         store.profile.playerIdentityProfiles = [:]
 
-        let first = store.identityProfile(for: card)
-        let second = store.identityProfile(for: card)
+        let first = store.ensureIdentityProfile(for: card)
+        let second = store.ensureIdentityProfile(for: card)
         XCTAssertEqual(first, second, "Identity resolution must be deterministic")
         XCTAssertNotNil(store.profile.playerIdentityProfiles[card.id], "Generated identity must persist")
 
@@ -186,8 +186,8 @@ final class LegendsPoint2MigrationTests: XCTestCase {
 
     // MARK: - Award-then-retire ordering with an overdue save
 
-    func testOverdueSignedPlayerReceivesGraceTargetNotDecodeTimeRetirement() {
-        let store = LegendsStore()
+    func testOverdueSignedPlayerReceivesGraceTargetNotDecodeTimeRetirement() async {
+        let store = await Task { @MainActor in LegendsStore() }.value
         store.profile = .starter()
         store.profile.ownedCardIDs = [card.id]
         store.profile.activatedCardIDs = [card.id]

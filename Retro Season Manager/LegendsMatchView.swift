@@ -104,6 +104,7 @@ struct LegendsMatchView: View {
 
             Button {
                 Haptics.tap()
+                store.prepareIdentityProfilesForMatch()
                 liveMatch = LegendsLiveMatch(store: store, opponent: store.scheduledOpponent())
             } label: {
                 Text("KICK OFF")
