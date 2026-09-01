@@ -71,13 +71,23 @@ struct LegendsPlayerComparisonView: View {
             metric("AGE", "\(store.effectiveAge(for: card))")
             metric("OVR", "\(store.effectiveOverall(for: card))")
             metric("POSITION", card.position.rawValue)
+            metric("ARCHETYPE", store.identityProfile(for: card).identity.archetype.rawValue)
             metric("PROFILE", store.careerState(for: card)?.lifecycleProfile.rawValue ?? "NOT ACTIVE")
             metric("STAGE", signed ? (store.isFinalSeason(card) ? "FINAL SEASON" : "ACTIVE") : "UNSIGNED")
+            let detailed = store.effectiveDetailedAttributes(for: card)
+            metric("FINISHING", "\(detailed.finishing)")
+            metric("PASSING", "\(detailed.passing)")
+            metric("VISION", "\(detailed.vision)")
+            metric("TEAMWORK", "\(detailed.teamwork)")
             if let career = store.careerState(for: card) {
                 metric("PRIME", "\(career.peakStartAge)–\(career.peakEndAge)")
                 metric("RETIREMENT", "AGE \(career.intendedRetirementAge)")
                 metric("SEASONS", "\(max(0, store.profile.currentSeason - career.signedSeason))")
                 metric("APPEARANCES", "\(career.appearances)")
+                let condition = store.condition(for: card)
+                metric("FORM / MORALE", "\(condition.form) / \(condition.morale)")
+                metric("TEAMWORK", "\(condition.teamwork)")
+                metric("FAME", "\(condition.fame)")
             }
             metric("FAVOURITE", store.isFavourite(card.id) ? "YES" : "NO")
         }

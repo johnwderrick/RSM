@@ -241,6 +241,10 @@ struct LegendsProfile: Codable {
     var libraryCapacityBonus: Int = 0
     var favouriteCardIDs: Set<String> = []
     var seasonReports: [Int: LegendsSeasonDevelopmentReport] = [:]
+    /// Stable Point 2 identity/detail snapshots. Generated once for each card definition and persisted.
+    var playerIdentityProfiles: [String: LegendsPlayerIdentityProfile] = [:]
+    /// Presentation state is independent from season processing.
+    var presentedSeasonReportSeasons: Set<Int> = []
 
     static func starter() -> LegendsProfile {
         let squad = starterSquad()
@@ -326,7 +330,7 @@ struct LegendsProfile: Codable {
         case currentSeason, matchesPlayedThisSeason, cardAgeOffsets
         case preferredMentality
         case pendingPackID, pendingPackCardIDs, hasClaimedStarterPack, managerProfile, ownedPlayerRecords
-        case libraryCapacityBonus, favouriteCardIDs, seasonReports
+        case libraryCapacityBonus, favouriteCardIDs, seasonReports, playerIdentityProfiles, presentedSeasonReportSeasons
     }
 
     init(clubName: String, crestShort: String, crestColorRGB: [Double],
@@ -353,7 +357,7 @@ struct LegendsProfile: Codable {
          pendingPackCardIDs: [String] = [], hasClaimedStarterPack: Bool = false,
          managerProfile: LegendsManagerProfile? = nil,
          ownedPlayerRecords: [String: LegendsOwnedPlayerRecord] = [:], libraryCapacityBonus: Int = 0,
-         favouriteCardIDs: Set<String> = [], seasonReports: [Int: LegendsSeasonDevelopmentReport] = [:]) {
+         favouriteCardIDs: Set<String> = [], seasonReports: [Int: LegendsSeasonDevelopmentReport] = [:], playerIdentityProfiles: [String: LegendsPlayerIdentityProfile] = [:], presentedSeasonReportSeasons: Set<Int> = []) {
         self.clubName = clubName
         self.crestShort = crestShort
         self.crestColorRGB = crestColorRGB
@@ -407,6 +411,8 @@ struct LegendsProfile: Codable {
         self.libraryCapacityBonus = libraryCapacityBonus
         self.favouriteCardIDs = favouriteCardIDs
         self.seasonReports = seasonReports
+        self.playerIdentityProfiles = playerIdentityProfiles
+        self.presentedSeasonReportSeasons = presentedSeasonReportSeasons
     }
 
     init(from decoder: Decoder) throws {
@@ -465,6 +471,8 @@ struct LegendsProfile: Codable {
         libraryCapacityBonus = max(0, try c.decodeIfPresent(Int.self, forKey: .libraryCapacityBonus) ?? 0)
         favouriteCardIDs = try c.decodeIfPresent(Set<String>.self, forKey: .favouriteCardIDs) ?? []
         seasonReports = try c.decodeIfPresent([Int: LegendsSeasonDevelopmentReport].self, forKey: .seasonReports) ?? [:]
+        playerIdentityProfiles = try c.decodeIfPresent([String: LegendsPlayerIdentityProfile].self, forKey: .playerIdentityProfiles) ?? [:]
+        presentedSeasonReportSeasons = try c.decodeIfPresent(Set<Int>.self, forKey: .presentedSeasonReportSeasons) ?? []
     }
 }
 

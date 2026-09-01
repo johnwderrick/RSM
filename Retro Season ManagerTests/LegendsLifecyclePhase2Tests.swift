@@ -267,7 +267,8 @@ final class LegendsLifecyclePhase2Tests: XCTestCase {
         let latePeak = LegendsPlayerCareer(careerID: "late-peak", cardID: young.id, startingAge: young.age,
                                            startingOverall: young.overall, potential: 90, peakStartAge: 30,
                                            peakEndAge: 34, developmentRate: 5, declineRate: 2,
-                                           signedSeason: 1)
+                                           signedSeason: 1,
+                                           condition: LegendsPlayerCondition(form: 50, morale: 50, teamwork: 50, fame: 0))
         store.profile.playerCareers[young.id] = latePeak
         store.profile.activatedCardIDs.insert(young.id)
 

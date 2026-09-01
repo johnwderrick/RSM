@@ -55,6 +55,9 @@ struct LegendsPlayerDetailView: View {
                         overview
                         developmentPanel
                         careerPanel
+                        identityPanel
+                        detailedAttributesPanel
+                        conditionPanel
                         achievementsPanel
                     } else if owned {
                         collectionPanel
@@ -262,6 +265,45 @@ struct LegendsPlayerDetailView: View {
     private var formText: String {
         let boost = store.formBoost(for: card)
         return boost > 0 ? " + \(boost) form" : ""
+    }
+
+    private var identityPanel: some View {
+        let identity = store.identityProfile(for: card).identity
+        return Panel(title: "PLAYER IDENTITY") {
+            VStack(alignment: .leading, spacing: 6) {
+                statRow("PERSON IDENTITY", identity.personID)
+                statRow("PREFERRED FOOT", identity.preferredFoot.rawValue)
+                statRow("ARCHETYPE", identity.archetype.rawValue)
+                statRow("POSITIONS", card.position.rawValue)
+                Text(identity.biography).font(.system(.caption, design: .monospaced)).foregroundStyle(Retro.text.opacity(0.7))
+            }
+        }
+    }
+
+    private var detailedAttributesPanel: some View {
+        Panel(title: "DETAILED ATTRIBUTES") {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(LegendsAttributeGroup.allCases, id: \.self) { group in
+                    Text(group.rawValue).font(.system(size: 9, weight: .black, design: .monospaced)).foregroundStyle(card.rarity.tint)
+                    ForEach(store.effectiveDetailedAttributes(for: card).values(in: group), id: \.0) { item in
+                        HStack { Text(item.0).font(.system(.caption2, design: .monospaced)); Spacer(); Text("\(item.1)").font(.system(.caption2, design: .monospaced).bold()) }
+                    }
+                }
+            }
+        }
+    }
+
+    private var conditionPanel: some View {
+        let state = store.condition(for: card)
+        return Panel(title: "CURRENT CONDITION") {
+            VStack(alignment: .leading, spacing: 6) {
+                statRow("FORM", "\(state.form)/100")
+                statRow("MORALE", "\(state.morale)/100")
+                statRow("TEAMWORK", "\(state.teamwork)/100")
+                statRow("FAME", "\(state.fame)/100")
+                Text("Condition provides only a modest effective-attribute adjustment; base card ratings never change.").font(.system(.caption2, design: .monospaced)).foregroundStyle(Retro.text.opacity(0.6))
+            }
+        }
     }
 
     private var developmentPanel: some View {

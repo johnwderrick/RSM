@@ -120,6 +120,13 @@ struct PlayerSimState: Identifiable {
     /// attack sequence's two runners — what `position` is currently
     /// steering toward.
     var homeAnchor: CGPoint
+    /// Point 2: detailed effective attributes for this player — the 2D
+    /// layer selects its runners/marker with the same action-specific
+    /// selectors the live match engine uses, so the visual chase/run
+    /// casting reflects real player quality (a fast winger makes the wide
+    /// run, an anticipatory defender does the marking) instead of role
+    /// order + a uniform random pick. Zero for tests that don't care.
+    var detailed: LegendsDetailedAttributes
 }
 
 struct BallState {
@@ -165,6 +172,23 @@ struct BallImpact: Equatable {
     let position: CGPoint
     let kind: Kind
     let time: Date
+    /// Names and action roles selected by the same detailed-attribute
+    /// selectors that cast the on-pitch runners. Kept on the impact
+    /// snapshot so the renderer can show a meaningful, stable event label
+    /// without rereading mutable simulation state after the sequence ends.
+    let runnerName: String?
+    let finisherName: String?
+    let markerName: String?
+
+    init(position: CGPoint, kind: Kind, time: Date,
+         runnerName: String? = nil, finisherName: String? = nil, markerName: String? = nil) {
+        self.position = position
+        self.kind = kind
+        self.time = time
+        self.runnerName = runnerName
+        self.finisherName = finisherName
+        self.markerName = markerName
+    }
 }
 
 /// One queued attack sequence waiting behind the currently-playing one —
@@ -202,7 +226,7 @@ final class LegendsMatchSimulation {
     /// reached.
     private var waypoints: [BallWaypoint] = LegendsMatchSimulation.idleWaypoints
     private var waypointIndex = 0
-    private var pendingImpact: (index: Int, kind: BallImpact.Kind)?
+    private var pendingImpact: (index: Int, kind: BallImpact.Kind, runnerName: String?, finisherName: String?, markerName: String?)?
 
     /// The attack sequence currently playing out, if any — set by
     /// `startAttack` and cleared the instant the sequence's last waypoint
@@ -321,18 +345,21 @@ final class LegendsMatchSimulation {
     init(userSlots: [(role: DetailedPosition, id: String, name: String)],
          userFormation: Formation,
          opponentFormation: Formation,
-         opponentPlayers: [SyntheticOpponentPlayer]) {
+         opponentPlayers: [SyntheticOpponentPlayer],
+         userDetailedAttributes: [String: LegendsDetailedAttributes] = [:]) {
         let userAnchors = PitchCoordinateSystem.anchors(for: userFormation, team: .home)
         let opponentAnchors = PitchCoordinateSystem.anchors(for: opponentFormation, team: .away)
 
         var built: [PlayerSimState] = []
         for (slot, anchor) in zip(userSlots, userAnchors) {
             built.append(PlayerSimState(id: slot.id, team: .home, role: slot.role, name: slot.name,
-                                         baseAnchor: anchor, position: anchor, velocity: .zero, homeAnchor: anchor))
+                                         baseAnchor: anchor, position: anchor, velocity: .zero, homeAnchor: anchor,
+                                         detailed: userDetailedAttributes[slot.id] ?? .zero))
         }
         for (player, anchor) in zip(opponentPlayers, opponentAnchors) {
             built.append(PlayerSimState(id: player.id, team: .away, role: player.position, name: player.name,
-                                         baseAnchor: anchor, position: anchor, velocity: .zero, homeAnchor: anchor))
+                                         baseAnchor: anchor, position: anchor, velocity: .zero, homeAnchor: anchor,
+                                         detailed: player.detailed))
         }
         players = built
     }
@@ -367,7 +394,7 @@ final class LegendsMatchSimulation {
     /// player's depth) and walks across to their spot before taking up
     /// the normal formation shape — a sub runs on from the bench instead
     /// of materializing in place.
-    func applySubstitution(slotIndex: Int, cardID: String, name: String) {
+    func applySubstitution(slotIndex: Int, cardID: String, name: String, replacementDetailed: LegendsDetailedAttributes? = nil) {
         guard players.indices.contains(slotIndex) else { return }
         let departing = players[slotIndex]
         guard departing.id != cardID else { return }
@@ -377,7 +404,8 @@ final class LegendsMatchSimulation {
         players[slotIndex] = PlayerSimState(id: cardID, team: departing.team, role: departing.role,
                                             name: name, baseAnchor: departing.baseAnchor,
                                             position: CGPoint(x: spawnX, y: departing.position.y),
-                                            velocity: .zero, homeAnchor: departing.position)
+                                            velocity: .zero, homeAnchor: departing.position,
+                                            detailed: replacementDetailed ?? departing.detailed)
         subWalkIns[cardID] = departing.position
         runTargetOverrides.removeValue(forKey: departing.id)
         if markerID == departing.id { markerID = nil }
@@ -427,8 +455,20 @@ final class LegendsMatchSimulation {
         let attackers = players.filter { $0.team == attackingTeam }
         let defenders = players.filter { $0.team == defendingTeam }
 
-        let wideRunner = Self.pick(from: attackers, preferring: Self.wideRunnerPreference)
-        let finisher = Self.pick(from: attackers, preferring: Self.finisherPreference)
+        // Point 2: attribute-driven run casting. The wide outlet is the
+        // best crossing/speed candidate among the preferred wide roles
+        // (falling back through the preference list, then any teammate);
+        // the finisher is the best shooting/positioning candidate among
+        // the finishing roles. Deterministic on the roster — no extra
+        // randomness beyond the flank coin below.
+        let wideRunner = Self.pickRunner(
+            from: attackers, preferring: Self.wideRunnerPreference,
+            score: { LegendsMatchSelectors.passing($0.detailed) + $0.detailed.sprintSpeed }
+        )
+        let finisher = Self.pickRunner(
+            from: attackers.filter { $0.id != wideRunner?.id }, preferring: Self.finisherPreference,
+            score: { LegendsMatchSelectors.shooting($0.detailed) + $0.detailed.positioning }
+        )
 
         let wideLeft = Bool.random()
         let wideX = wideLeft ? 0.14 : 0.86
@@ -464,7 +504,13 @@ final class LegendsMatchSimulation {
 
         waypoints = points
         waypointIndex = 0
-        pendingImpact = (impactIndex, scored ? .goal : .chance)
+        pendingImpact = (
+            impactIndex,
+            scored ? .goal : .chance,
+            wideRunner?.name,
+            finisher?.name,
+            markerID.flatMap { id in players.first(where: { $0.id == id })?.name }
+        )
 
         runTargetOverrides.removeAll()
         if let wideRunner {
@@ -479,19 +525,47 @@ final class LegendsMatchSimulation {
 
         defendingGoalY = forUser ? 0 : 1
         let outfieldDefenders = defenders.filter { $0.role != .goalkeeper }
-        if let closest = outfieldDefenders.min(by: { distance($0.position, widePoint) < distance($1.position, widePoint) }) {
-            markerID = closest.id
-            runTargetOverrides[closest.id] = closest.position
+        // The marker is the defending outfielder with the best defending
+        // selector score (positioning/anticipation/tackling) among the
+        // three closest to the wide run — closing-down duty goes to the
+        // defender best equipped for it, not merely the nearest body.
+        if outfieldDefenders.count > 3 {
+            let nearestThree = Array(
+                outfieldDefenders
+                    .sorted { distance($0.position, widePoint) < distance($1.position, widePoint) }
+                    .prefix(3)
+            )
+            let closest = nearestThree.max { lhs, rhs in
+                LegendsMatchSelectors.defending(lhs.detailed) < LegendsMatchSelectors.defending(rhs.detailed)
+            }
+            markerID = closest?.id
         } else {
-            markerID = nil
+            markerID = outfieldDefenders.min(by: { distance($0.position, widePoint) < distance($1.position, widePoint) })?.id
+        }
+        if let markerID {
+            runTargetOverrides[markerID] = players.first(where: { $0.id == markerID })?.position
         }
     }
 
-    private static func pick(from team: [PlayerSimState], preferring roles: [DetailedPosition]) -> PlayerSimState? {
+    /// Attribute-aware role-preference pick: candidates are ordered by the
+    /// caller's role preference list, and within the best available role
+    /// tier the highest-scoring candidate wins (deterministic tie-break on
+    /// id so equal-quality players resolve stably). Falls back to any
+    /// teammate when no preferred role exists (e.g. an unusual formation
+    /// with no out-and-out winger).
+    private static func pickRunner(
+        from team: [PlayerSimState],
+        preferring roles: [DetailedPosition],
+        score: (PlayerSimState) -> Int
+    ) -> PlayerSimState? {
+        guard !team.isEmpty else { return nil }
         for role in roles {
-            if let match = team.first(where: { $0.role == role }) { return match }
+            let tier = team.filter { $0.role == role }
+            if let best = tier.max(by: { score($0) < score($1) }) {
+                return best
+            }
         }
-        return team.randomElement()
+        return team.max(by: { score($0) < score($1) })
     }
 
     private func distance(_ a: CGPoint, _ b: CGPoint) -> Double {
@@ -626,7 +700,14 @@ final class LegendsMatchSimulation {
         if distance <= step {
             ball.position = target
             if let pending = pendingImpact, pending.index == waypointIndex {
-                lastImpact = BallImpact(position: target, kind: pending.kind, time: Date())
+                lastImpact = BallImpact(
+                    position: target,
+                    kind: pending.kind,
+                    time: Date(),
+                    runnerName: pending.runnerName,
+                    finisherName: pending.finisherName,
+                    markerName: pending.markerName
+                )
                 pendingImpact = nil
             }
             waypointIndex += 1

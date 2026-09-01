@@ -391,8 +391,9 @@ final class LegendsLiveMatch {
             picked = candidates[Int.random(in: 0..<candidates.count, using: &rng)]
         }
         let energyFactor = 0.72 + 0.28 * energyBySlot[picked.index] / 100
-        let contestant = ShotContestant(id: picked.card.id, name: picked.card.name, shooting: picked.card.shooting,
-                                         dribbling: picked.card.dribbling, pace: picked.card.pace,
+        let detailed = store.effectiveDetailedAttributes(for: picked.card)
+        let contestant = ShotContestant(id: picked.card.id, name: picked.card.name, shooting: LegendsMatchSelectors.shooting(detailed),
+                                         dribbling: LegendsMatchSelectors.dribbling(detailed), pace: detailed.sprintSpeed,
                                          overall: store.effectiveOverall(for: picked.card))
         return (contestant, energyFactor)
     }
@@ -427,7 +428,10 @@ final class LegendsLiveMatch {
         }.first
         let defending = defenders.isEmpty ? Double(opponent.rating) : defenders.map { Double($0.defending) }.reduce(0, +) / Double(defenders.count)
         let physical = defenders.isEmpty ? Double(opponent.rating) : defenders.map { Double($0.physical) }.reduce(0, +) / Double(defenders.count)
-        let keeperOverall = keeperCard.map { store.effectiveOverall(for: $0) } ?? opponent.rating
+        let keeperOverall = keeperCard.map { card in
+            let keeper = LegendsMatchSelectors.goalkeeper(store.effectiveDetailedAttributes(for: card))
+            return Int((Double(store.effectiveOverall(for: card)) * 0.7 + Double(keeper) * 0.3).rounded())
+        } ?? opponent.rating
         return DefenseContestant(defending: Int(defending), physical: Int(physical), keeperOverall: keeperOverall)
     }
 

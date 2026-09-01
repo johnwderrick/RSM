@@ -76,12 +76,23 @@ struct LegendsLiveMatchView: View {
             let card = cardID.flatMap { id in LegendsCardDatabase.all.first { $0.id == id } }
             return (role, cardID ?? "user-slot-\(index)", card?.name ?? "—")
         }
+        // Point 2: hand the sim each on-pitch card's *effective* detailed
+        // attributes (base + condition modifier, the same values the live
+        // engine selects with) keyed by slot id, so the 2D runner/marker
+        // casting selects on real player quality.
+        let userDetailedAttributes: [String: LegendsDetailedAttributes] = Dictionary(
+            uniqueKeysWithValues: userSlots.compactMap { slot in
+                LegendsCardDatabase.all.first { $0.id == slot.id }
+                    .map { card in (slot.id, store.effectiveDetailedAttributes(for: card)) }
+            }
+        )
         let opponentRoster = LegendsOpponentRoster.generateRoster(for: live.opponent)
         _simulation = State(initialValue: LegendsMatchSimulation(
             userSlots: userSlots,
             userFormation: store.formation,
             opponentFormation: opponentRoster.formation,
-            opponentPlayers: opponentRoster.players
+            opponentPlayers: opponentRoster.players,
+            userDetailedAttributes: userDetailedAttributes
         ))
     }
 
@@ -220,7 +231,8 @@ struct LegendsLiveMatchView: View {
             let card = cardID.flatMap { id in LegendsCardDatabase.all.first { $0.id == id } }
             simulation.applySubstitution(slotIndex: index,
                                          cardID: cardID ?? "user-slot-\(index)",
-                                         name: card?.name ?? "—")
+                                         name: card?.name ?? "—",
+                                         replacementDetailed: card.map { store.effectiveDetailedAttributes(for: $0) })
         }
     }
 
