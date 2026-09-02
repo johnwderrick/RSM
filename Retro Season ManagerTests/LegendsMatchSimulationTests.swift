@@ -430,6 +430,26 @@ final class LegendsMatchSimulationTests: XCTestCase {
                        "The queued opponent chance should resolve at the user's own goal line")
     }
 
+    func testAttackFlanksAlternateFromADeterministicStartingSide() async {
+        let firstSimulation = await freshSimulation()
+        let identicalSimulation = await freshSimulation()
+
+        firstSimulation.triggerAttack(forUser: true, scored: true)
+        identicalSimulation.triggerAttack(forUser: true, scored: true)
+        XCTAssertEqual(firstSimulation.testLastAttackUsedLeftFlank, true)
+        XCTAssertEqual(identicalSimulation.testLastAttackUsedLeftFlank,
+                       firstSimulation.testLastAttackUsedLeftFlank,
+                       "Identical simulations should choose the same starting flank")
+
+        firstSimulation.triggerAttack(forUser: false, scored: false)
+        for _ in 0..<ticksToCompleteAnAttack {
+            firstSimulation.testAdvance(dt: 0.1)
+        }
+        XCTAssertEqual(firstSimulation.testAttackStartCount, 2)
+        XCTAssertEqual(firstSimulation.testLastAttackUsedLeftFlank, false,
+                       "The next scripted chance should rotate to the opposite flank")
+    }
+
     // MARK: - Substitutions (live pitch sync)
 
     func testSubstitutionSwapsTheSlotDotAndReleasesTheDepartingPlayersRunOverride() async {
@@ -1523,17 +1543,17 @@ final class LegendsMatchSimulationTests: XCTestCase {
     }
 
     /// Renders the pitch mid-attack, substitutes the departing runner off,
-    /// and asserts the incoming card's dot *steers back toward its
-    /// formation slot* over the following ticks — but only after the
+    /// and asserts the incoming card's dot *rejoins the current team
+    /// shape* over the following ticks — but only after the
     /// walk-in completes: the incoming card first runs on from the
     /// touchline to the departed spot, and only once `applySubstitution`'s
     /// walk-in clears does it start steering back to the normal
     /// ball-relative formation anchor. Mirrored on the pixels: the red
-    /// dot's centroid moves toward the landscape position of the player's
-    /// `baseAnchor`. The same-spot snapshot test proves the handover lands
+    /// dot's centroid moves by the displacement predicted by the pitch-to-
+    /// canvas mapping. The same-spot snapshot test proves the handover lands
     /// at the departed spot; this one proves the dot then *leaves* it,
     /// heading home.
-    func testImageRendererShowsTheSubstitutedCardSteeringBackToItsFormationSlot() async {
+    func testImageRendererShowsTheSubstitutedCardRejoiningTheCurrentTeamShape() async {
         let simulation = await freshSimulation()
         let view = LegendsPitchCanvas(simulation: simulation, userColor: .red, opponentColor: .blue,
                                       userName: "HOME", opponentName: "AWAY")
@@ -1555,8 +1575,6 @@ final class LegendsMatchSimulationTests: XCTestCase {
         let subbed = simulation.players[slotIndex]
         XCTAssertFalse(simulation.testHasRunOverride(for: subbed.id),
                        "The substitution should release the departed runner's override")
-        let formation = subbed.baseAnchor
-
         // Let the walk-in complete first: the incoming card runs on from
         // the touchline to the departed spot (~16-17 ticks), then — with
         // the walk-in cleared — starts steering back to its formation
@@ -1565,7 +1583,13 @@ final class LegendsMatchSimulationTests: XCTestCase {
             simulation.testAdvance(dt: 0.1)
         }
         XCTAssertNil(simulation.testSubWalkInTarget(for: "sub-rooney"), "The walk-in should have completed")
+
+        // The walk-in is removed at the end of its arrival tick. Advance
+        // once more so `homeAnchor` is the real possession-aware team-shape
+        // target rather than the just-cleared walk-in target.
+        simulation.testAdvance(dt: 0.01)
         let start = simulation.players[slotIndex].position
+        let rejoinTarget = simulation.players[slotIndex].homeAnchor
 
         let beforeRenderer = ImageRenderer(content: view)
         beforeRenderer.scale = 1
@@ -1577,14 +1601,14 @@ final class LegendsMatchSimulationTests: XCTestCase {
         }
         let end = simulation.players[slotIndex].position
 
-        // Sim-level: it left the departed spot and got closer to its
-        // formation anchor.
+        // Sim-level: it left the departed spot and got closer to the
+        // possession-aware target assigned when normal steering resumed.
         let moved = hypot(end.x - start.x, end.y - start.y)
-        XCTAssertGreaterThan(moved, 0.1, "The incoming card should physically leave the departed spot")
-        let startGap = hypot(start.x - formation.x, start.y - formation.y)
-        let endGap = hypot(end.x - formation.x, end.y - formation.y)
+        XCTAssertGreaterThan(moved, 0.02, "The incoming card should physically leave the departed spot")
+        let startGap = hypot(start.x - rejoinTarget.x, start.y - rejoinTarget.y)
+        let endGap = hypot(end.x - rejoinTarget.x, end.y - rejoinTarget.y)
         XCTAssertLessThan(endGap, startGap,
-                          "The incoming card should steer back toward its formation anchor")
+                          "The incoming card should steer toward the current team-shape target")
 
         let afterRenderer = ImageRenderer(content: view)
         afterRenderer.scale = 1
@@ -1637,18 +1661,20 @@ final class LegendsMatchSimulationTests: XCTestCase {
         XCTAssertGreaterThan(redPixelCount(in: afterPixels, near: endPos.x, endPos.y, radius: 12), 30,
                              "The incoming card's dot should be rendered at its re-steered position")
 
-        // And on the pixels the dot moved *toward the formation slot*: its
-        // red centroid is closer to the landscape position of the player's
-        // baseAnchor after the re-steer than it was at the departed spot.
-        let formationPos = landscape(formation)
+        // The pixel displacement should agree with the same coordinate
+        // transform used by the renderer. This proves visible motion without
+        // imposing a legacy 40px minimum that contradicts eased steering.
         let startCentroid = redCentroid(in: beforePixels, near: startPos.x, startPos.y, radius: 12)
         let endCentroid = redCentroid(in: afterPixels, near: endPos.x, endPos.y, radius: 12)
-        let startGapPx = hypot(startCentroid.x - Double(formationPos.x), startCentroid.y - Double(formationPos.y))
-        let endGapPx = hypot(endCentroid.x - Double(formationPos.x), endCentroid.y - Double(formationPos.y))
-        XCTAssertLessThan(endGapPx, startGapPx,
-                          "The dot should move toward the formation slot on the pixels, not just in the sim")
-        XCTAssertGreaterThan(hypot(endCentroid.x - startCentroid.x, endCentroid.y - startCentroid.y), 40,
-                             "The re-steer should visibly move the dot across the pitch")
+        let renderedMovement = hypot(endCentroid.x - startCentroid.x, endCentroid.y - startCentroid.y)
+        let expectedMovement = hypot(
+            Double(width) * (end.y - start.y),
+            400.0 * (end.x - start.x)
+        )
+        XCTAssertGreaterThan(renderedMovement, 10,
+                             "The rejoin should visibly move the dot across the pitch")
+        XCTAssertEqual(renderedMovement, expectedMovement, accuracy: 10,
+                       "Rendered displacement should match the simulation-to-canvas mapping")
     }
 
     /// Renders the substitution from the bench: the incoming card's dot
@@ -1817,8 +1843,8 @@ final class LegendsMatchSimulationTests: XCTestCase {
     /// time, on opposite sides of the pitch, each between its touchline
     /// and its target. The two players are chosen dynamically from the
     /// home XI's current positions so the test works regardless of which
-    /// flank the attack's wide runner was assigned (the `Bool.random()`
-    /// inside `startAttack`).
+    /// flank the attack's wide runner was assigned by the deterministic
+    /// alternating sequence inside `startAttack`.
     func testImageRendererShowsTwoDotsWalkingOnFromOppositeTouchlines() async {
         let simulation = await freshSimulation()
         let view = LegendsPitchCanvas(simulation: simulation, userColor: .red, opponentColor: .blue,

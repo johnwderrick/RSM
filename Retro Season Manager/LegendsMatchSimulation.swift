@@ -241,6 +241,13 @@ final class LegendsMatchSimulation {
     /// rather than being dropped.
     private(set) var testAttackStartCount = 0
 
+    /// Scripted chances alternate flanks from a stable starting side. The
+    /// 2D layer is explanatory rather than authoritative, so an unseeded
+    /// coin toss here only made identical match inputs render differently
+    /// and made snapshot tests order-dependent.
+    private var nextAttackUsesLeftFlank = true
+    private(set) var testLastAttackUsedLeftFlank: Bool?
+
     // MARK: - Possession
 
     /// Which team currently has the ball — set by open play and by real
@@ -454,7 +461,7 @@ final class LegendsMatchSimulation {
         // (falling back through the preference list, then any teammate);
         // the finisher is the best shooting/positioning candidate among
         // the finishing roles. Deterministic on the roster — no extra
-        // randomness beyond the flank coin below.
+        // randomness beyond the deterministic flank rotation below.
         let wideRunner = Self.pickRunner(
             from: attackers, preferring: Self.wideRunnerPreference,
             score: { LegendsMatchSelectors.passing($0.detailed) + $0.detailed.sprintSpeed }
@@ -464,7 +471,9 @@ final class LegendsMatchSimulation {
             score: { LegendsMatchSelectors.shooting($0.detailed) + $0.detailed.positioning }
         )
 
-        let wideLeft = Bool.random()
+        let wideLeft = nextAttackUsesLeftFlank
+        nextAttackUsesLeftFlank.toggle()
+        testLastAttackUsedLeftFlank = wideLeft
         let wideX = wideLeft ? 0.14 : 0.86
         let farPostX = wideLeft ? 0.62 : 0.38
         let nearPostX = wideLeft ? 0.38 : 0.62
