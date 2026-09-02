@@ -75,7 +75,7 @@ struct LegendsPacksView: View {
             openingPack = pack
         } label: {
             VStack(spacing: 8) {
-                LegendsPackArtwork(tint: affordable ? LegendsPalette.purple : LegendsPalette.navy.opacity(0.35))
+                LegendsPackArtwork(pack: pack, isEnabled: affordable)
                 Text(pack.name)
                     .font(.system(.footnote, design: .rounded).weight(.black))
                     .foregroundStyle(affordable ? LegendsPalette.navy : LegendsPalette.navy.opacity(0.4))
@@ -99,7 +99,7 @@ struct LegendsPacksView: View {
                 }
                 .foregroundStyle(claimed ? LegendsPalette.navy.opacity(0.4) : (affordable ? LegendsPalette.goldDeep : Retro.warning))
             }
-            .frame(maxWidth: .infinity, minHeight: 166)
+            .frame(maxWidth: .infinity, minHeight: 206)
             .padding(14)
             .background(affordable ? LegendsPalette.purpleWash : LegendsPalette.navy.opacity(0.05))
             .clipShape(RoundedRectangle(cornerRadius: 16))
@@ -152,7 +152,7 @@ private struct LegendsPackOpeningView: View {
                         .font(.system(size: 16, weight: .black, design: .rounded))
                         .foregroundStyle(.white)
                     Spacer()
-                    LegendsPackArtwork(tint: LegendsPalette.gold, compact: true)
+                    LegendsPackArtwork(pack: pack, compact: true)
                 }
                 .padding(.horizontal, 18)
                 .padding(.top, 12)

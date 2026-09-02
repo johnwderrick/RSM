@@ -32,6 +32,12 @@ final class LegendsPackTests: XCTestCase {
             XCTAssertGreaterThanOrEqual(pack.cost, 0, "\(pack.id) has a negative cost")
         }
     }
+
+    func testEveryPackHasDistinctArtwork() {
+        let artworkNames = LegendsPackDatabase.all.map(\.artworkAssetName)
+        XCTAssertEqual(artworkNames.count, Set(artworkNames).count)
+        XCTAssertFalse(artworkNames.contains(where: \.isEmpty))
+    }
 }
 
 @MainActor
