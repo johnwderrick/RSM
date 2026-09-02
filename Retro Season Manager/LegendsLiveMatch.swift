@@ -115,10 +115,40 @@ final class LegendsLiveMatch {
     init(store: LegendsStore, opponent: LegendsOpponent, rng: any RandomNumberGenerator = SystemRandomNumberGenerator()) {
         self.store = store
         self.opponent = opponent
-        self.slots = store.startingXISlots
-        self.onPitchCardIDs = store.profile.startingXICardIDs
-        self.energyBySlot = Array(repeating: 100.0, count: slots.count)
-        self.benchCardIDs = store.profile.benchCardIDs.compactMap { $0 }
+
+        // Treat persisted squad arrays as untrusted legacy input. Older or
+        // interrupted saves can contain the wrong number of slots, stale IDs
+        // or the same card more than once. Normalize to the current formation
+        // so every parallel live-match array has exactly the same safe length.
+        let slotSnapshot = store.startingXISlots
+        self.slots = slotSnapshot
+        let savedXI = store.profile.startingXICardIDs
+        var usedCardIDs = Set<String>()
+        self.onPitchCardIDs = (0..<slotSnapshot.count).map { index in
+            guard savedXI.indices.contains(index),
+                  let cardID = savedXI[index],
+                  !usedCardIDs.contains(cardID),
+                  let card = LegendsCardDatabase.all.first(where: { $0.id == cardID }),
+                  store.isSigned(card) else {
+                return nil
+            }
+            usedCardIDs.insert(cardID)
+            return cardID
+        }
+        self.energyBySlot = Array(repeating: 100.0, count: slotSnapshot.count)
+
+        var usedBenchIDs = Set<String>()
+        self.benchCardIDs = store.profile.benchCardIDs.compactMap { cardID in
+            guard let cardID,
+                  !usedCardIDs.contains(cardID),
+                  usedBenchIDs.insert(cardID).inserted,
+                  let card = LegendsCardDatabase.all.first(where: { $0.id == cardID }),
+                  store.isSigned(card) else {
+                return nil
+            }
+            return cardID
+        }
+
         self.userMentality = store.profile.preferredMentality
         self.strengthBonus = store.matchStrengthBonus + Double(store.totalChemistry) * 0.3
         self.opponentRoster = LegendsOpponentRoster.generateRoster(for: opponent)
