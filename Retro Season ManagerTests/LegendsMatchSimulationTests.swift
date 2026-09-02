@@ -238,8 +238,79 @@ final class LegendsMatchSimulationTests: XCTestCase {
             simulation.testAdvance(dt: 0.1)
         }
         let moved = hypot(simulation.ball.position.x - start.x, simulation.ball.position.y - start.y)
-        XCTAssertGreaterThan(moved, 0, "The ambient idle loop should move the ball with nothing triggered.")
+        XCTAssertGreaterThan(moved, 0, "Continuous open play should move the ball with nothing triggered.")
         XCTAssertNil(simulation.lastImpact, "No attack was triggered, so no impact should fire.")
+    }
+
+    // MARK: - Continuous open play
+
+    func testOpenPlayStartsWithARealHomeOutfieldPossessor() async {
+        let simulation = await freshSimulation()
+        guard let possessorID = simulation.testAmbientPossessorID(),
+              let possessor = simulation.players.first(where: { $0.id == possessorID }) else {
+            return XCTFail("Open play should begin with a real player in possession.")
+        }
+        XCTAssertEqual(possessor.team, .home)
+        XCTAssertNotEqual(possessor.role, .goalkeeper)
+        XCTAssertEqual(simulation.possessionTeam, .home)
+    }
+
+    func testOpenPlayPassTargetsARealTeammate() async {
+        let simulation = await freshSimulation()
+        let startingPossessorID = simulation.testAmbientPossessorID()
+
+        for _ in 0..<30 where simulation.testAmbientPassTargetID() == nil {
+            simulation.testAdvance(dt: 0.1)
+        }
+
+        guard let targetID = simulation.testAmbientPassTargetID(),
+              let target = simulation.players.first(where: { $0.id == targetID }) else {
+            return XCTFail("The possessor should select a live teammate as a passing option.")
+        }
+        XCTAssertNotEqual(targetID, startingPossessorID)
+        XCTAssertEqual(target.team, .home)
+        XCTAssertNotEqual(target.role, .goalkeeper)
+        XCTAssertNil(simulation.possessionPlayerID,
+                     "A pass in flight should not display a possession ring on the nearest player.")
+    }
+
+    func testNearestCapableDefenderPressesGoalSideOfTheBall() async {
+        let simulation = await freshSimulation()
+        simulation.testAdvance(dt: 0.1)
+
+        guard let presserID = simulation.testAmbientPresserID(),
+              let presser = simulation.players.first(where: { $0.id == presserID }) else {
+            return XCTFail("The out-of-possession team should assign one real presser.")
+        }
+        XCTAssertEqual(presser.team, .away)
+        XCTAssertNotEqual(presser.role, .goalkeeper)
+        XCTAssertEqual(presser.homeAnchor.x, simulation.ball.position.x, accuracy: 0.0001)
+        let expectedGoalSideY = simulation.ball.position.y + (0 - simulation.ball.position.y) * 0.10
+        XCTAssertEqual(presser.homeAnchor.y, expectedGoalSideY, accuracy: 0.0001)
+    }
+
+    func testOpenPlayIncludesVisibleDeterministicTurnovers() async {
+        let first = await freshSimulation()
+        let second = await freshSimulation()
+        var sawAwayPossession = false
+
+        for _ in 0..<350 {
+            first.testAdvance(dt: 0.1)
+            second.testAdvance(dt: 0.1)
+            sawAwayPossession = sawAwayPossession || first.possessionTeam == .away
+
+            XCTAssertEqual(first.possessionTeam, second.possessionTeam)
+            XCTAssertEqual(first.testAmbientPossessorID(), second.testAmbientPossessorID())
+            XCTAssertEqual(first.testAmbientPassTargetID(), second.testAmbientPassTargetID())
+            XCTAssertEqual(first.ball.position.x, second.ball.position.x, accuracy: 0.0001)
+            XCTAssertEqual(first.ball.position.y, second.ball.position.y, accuracy: 0.0001)
+        }
+
+        XCTAssertGreaterThan(first.testAmbientCompletedPasses(), 0)
+        XCTAssertTrue(sawAwayPossession,
+                      "Open play should change hands through a visible interception instead of resetting to home possession.")
+        XCTAssertTrue(first.ball.position.x >= 0 && first.ball.position.x <= 1)
+        XCTAssertTrue(first.ball.position.y >= 0 && first.ball.position.y <= 1)
     }
 
     // MARK: - Triggered attacks
@@ -392,7 +463,7 @@ final class LegendsMatchSimulationTests: XCTestCase {
                        "The incoming card shouldn't inherit the departed player's run target")
     }
 
-    func testPossessionTeamFollowsTheAttackingSideAndResetsDuringIdle() async {
+    func testPossessionTeamFollowsAttacksAndRestartsWithTheDefendingSide() async {
         let simulation = await freshSimulation()
         XCTAssertEqual(simulation.possessionTeam, .home, "Possession should start with the home team")
 
@@ -400,22 +471,25 @@ final class LegendsMatchSimulationTests: XCTestCase {
         simulation.triggerAttack(forUser: true, scored: true)
         XCTAssertEqual(simulation.possessionTeam, .home)
 
-        // Run the attack to completion and into idle recovery.
-        for _ in 0..<ticksToCompleteAnAttack + LegendsMatchSimulation.idleTicksToRecover + 10 {
+        // A goal hands the restart to the side that conceded; possession
+        // must not automatically snap back to the user team.
+        for _ in 0..<ticksToCompleteAnAttack where simulation.testHasActiveAttack() {
             simulation.testAdvance(dt: 0.1)
         }
-        XCTAssertEqual(simulation.possessionTeam, .home,
-                       "After a home attack and idle recovery, possession should be home")
+        XCTAssertFalse(simulation.testHasActiveAttack())
+        XCTAssertEqual(simulation.possessionTeam, .away,
+                       "After a home goal, the away side should take the restart")
 
         // Away attack — possession flips to the away team.
         simulation.triggerAttack(forUser: false, scored: true)
         XCTAssertEqual(simulation.possessionTeam, .away)
 
-        for _ in 0..<ticksToCompleteAnAttack + LegendsMatchSimulation.idleTicksToRecover + 10 {
+        for _ in 0..<ticksToCompleteAnAttack where simulation.testHasActiveAttack() {
             simulation.testAdvance(dt: 0.1)
         }
+        XCTAssertFalse(simulation.testHasActiveAttack())
         XCTAssertEqual(simulation.possessionTeam, .home,
-                       "After an away attack and idle recovery, possession should return to home")
+                       "After an away goal, the home side should take the restart")
     }
 
     func testSubstitutingTheActiveMarkerReleasesTheChase() async {
@@ -544,20 +618,20 @@ final class LegendsMatchSimulationTests: XCTestCase {
         XCTAssertNil(simulation.lastImpact, "Both walk-ins should complete mid-attack, before the shot resolves")
     }
 
-    func testAttackSequenceHandsBackToTheIdleLoopAfterResolving() async {
+    func testAttackSequenceHandsBackToContinuousOpenPlayAfterResolving() async {
         let simulation = await freshSimulation()
         simulation.triggerAttack(forUser: true, scored: true)
         for _ in 0..<ticksToCompleteAnAttack {
             simulation.testAdvance(dt: 0.1)
         }
         let atSequenceEnd = simulation.ball.position
-        // Idle waypoints cycle back through the pitch — after the sequence
-        // resolves the ball shouldn't stay frozen at the goal mouth.
+        // A real possessor and passing phase take over after the event — the
+        // ball should not stay frozen at the goal mouth.
         for _ in 0..<50 {
             simulation.testAdvance(dt: 0.1)
         }
         let moved = hypot(simulation.ball.position.x - atSequenceEnd.x, simulation.ball.position.y - atSequenceEnd.y)
-        XCTAssertGreaterThan(moved, 0.05, "The ball should have moved on well into the idle loop after the attack resolved.")
+        XCTAssertGreaterThan(moved, 0.05, "The ball should have moved into continuous open play after the attack resolved.")
     }
 
     // MARK: - Possession coupling (Phase 3), keeper reaction (Phase 4), marking (Phase 5)
@@ -635,7 +709,7 @@ final class LegendsMatchSimulationTests: XCTestCase {
         for _ in 0..<ticksToCompleteAnAttack {
             simulation.testAdvance(dt: 0.1)
         }
-        XCTAssertNil(simulation.testMarkerID(), "The marker assignment should release once the sequence hands back to the idle loop.")
+        XCTAssertNil(simulation.testMarkerID(), "The marker assignment should release once the sequence hands back to open play.")
     }
 
     func testDefendingKeeperDivesToTheNearPostAwayFromWhereTheShotGoes() async {
@@ -677,7 +751,7 @@ final class LegendsMatchSimulationTests: XCTestCase {
             simulation.testAdvance(dt: 0.1)
         }
         XCTAssertFalse(simulation.players.contains { simulation.testHasRunOverride(for: $0.id) },
-                        "Run overrides should release once the sequence hands back to the idle loop.")
+                        "Run overrides should release once the sequence hands back to open play.")
     }
 
     func testAnOverriddenRunnersHomeAnchorIsTheirRunTargetNotTheNormalFormula() async {
