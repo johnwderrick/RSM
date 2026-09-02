@@ -385,4 +385,57 @@ final class LegendsLiveMatchTests: XCTestCase {
         XCTAssertEqual(live.minute, minuteAtStop,
                        "No further minutes should tick after stop() — the live loop must be cancelled, not just paused")
     }
+
+    // MARK: - Match launch safety
+
+    func testMatchLaunchValidatorAcceptsACompleteUniqueSignedXI() async {
+        let store = await freshStore()
+        strongestXI(store)
+
+        XCTAssertNil(LegendsMatchLaunchValidator.issue(in: store))
+    }
+
+    func testMatchLaunchValidatorRejectsIncompleteDuplicateAndStaleSavedSquads() async {
+        let store = await freshStore()
+
+        XCTAssertNotNil(LegendsMatchLaunchValidator.issue(in: store),
+                        "An empty XI must not be treated as match-ready")
+
+        strongestXI(store)
+        store.profile.startingXICardIDs[1] = store.profile.startingXICardIDs[0]
+        XCTAssertTrue(LegendsMatchLaunchValidator.issue(in: store)?.contains("more than one") == true)
+
+        strongestXI(store)
+        store.profile.startingXICardIDs[3] = "missing-legacy-card"
+        XCTAssertTrue(LegendsMatchLaunchValidator.issue(in: store)?.contains("unavailable") == true)
+    }
+
+    func testLiveMatchNormalizesMalformedLegacySquadWithoutCrashing() async {
+        let store = await freshStore()
+        guard let first = LegendsCardDatabase.all.first,
+              let second = LegendsCardDatabase.all.dropFirst().first else {
+            return XCTFail("Expected at least two Legends cards")
+        }
+
+        // Deliberately short, duplicated and stale — the exact persisted
+        // shape that used to make KICK OFF fail during the live-view setup.
+        store.profile.startingXICardIDs = [first.id, first.id, "missing-legacy-card"]
+        store.profile.benchCardIDs = [first.id, second.id, second.id, "missing-bench-card"]
+
+        let live = LegendsLiveMatch(store: store, opponent: LegendsOpponent(name: "Rival XI", rating: 60))
+
+        XCTAssertEqual(live.onPitchCardIDs.count, store.startingXISlots.count)
+        XCTAssertEqual(live.energyBySlot.count, store.startingXISlots.count)
+        XCTAssertEqual(live.onPitchCardIDs.first!, first.id)
+        XCTAssertNil(live.onPitchCardIDs[1], "A duplicate XI card should be removed from its later slot")
+        XCTAssertNil(live.onPitchCardIDs[2], "A stale card ID should be removed")
+        XCTAssertEqual(live.benchCardIDs, [second.id],
+                       "The bench should remove on-pitch, stale and duplicate IDs")
+
+        // Regression guard for the parallel-array crash: ticking a normalized
+        // match must be safe even though the incoming save had only 3 XI slots.
+        for _ in 0..<5 { live.testAdvanceMinute() }
+        XCTAssertEqual(live.minute, 5)
+    }
+
 }
