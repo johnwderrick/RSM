@@ -24,6 +24,9 @@ struct ContentView: View {
         if ProcessInfo.processInfo.arguments.contains("UITEST_RESET_LEGENDS_MANAGER") {
             legends.resetManagerOnboardingForDebug()
         }
+        if ProcessInfo.processInfo.arguments.contains("UITEST_LEGENDS_TRAINING") {
+            legends.prepareTrainingFixtureForDebug()
+        }
         #endif
         _legendsStore = State(initialValue: legends)
     }

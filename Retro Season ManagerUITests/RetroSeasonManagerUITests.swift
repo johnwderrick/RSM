@@ -130,6 +130,49 @@ final class RetroSeasonManagerUITests: XCTestCase {
         XCTAssertTrue(squadTabAgain.isHittable, "Sidebar should be interactive, not frozen, after returning Home")
     }
 
+    func testLegendsTrainingPlanPersistsAfterLeavingAndReopening() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_LEGENDS_TRAINING"]
+        app.launch()
+
+        let legendsButton = app.buttons["experience.legends"]
+        XCTAssertTrue(legendsButton.waitForExistence(timeout: 8))
+        legendsButton.tap()
+
+        let trainingTab = app.buttons["legends.nav.training"]
+        XCTAssertTrue(trainingTab.waitForExistence(timeout: 8))
+        trainingTab.tap()
+
+        let player = app.buttons["legends.training.player.miessi-0506"]
+        XCTAssertTrue(player.waitForExistence(timeout: 8))
+        player.tap()
+
+        let focus = app.buttons["legends.training.focusPicker"]
+        XCTAssertTrue(focus.waitForExistence(timeout: 6))
+        focus.tap()
+        let passing = app.buttons["PASSING"]
+        XCTAssertTrue(passing.waitForExistence(timeout: 4))
+        passing.tap()
+
+        let start = app.buttons["legends.training.start"]
+        XCTAssertTrue(start.waitForExistence(timeout: 4))
+        start.tap()
+        XCTAssertTrue(app.staticTexts["1/3 sessions this season"].waitForExistence(timeout: 4))
+
+        app.buttons["Close player details"].tap()
+        let homeTab = app.buttons["legends.nav.home"]
+        XCTAssertTrue(homeTab.waitForExistence(timeout: 6))
+        homeTab.tap()
+        XCTAssertTrue(trainingTab.waitForExistence(timeout: 6))
+        trainingTab.tap()
+        XCTAssertTrue(player.waitForExistence(timeout: 6))
+        player.tap()
+
+        XCTAssertTrue(app.staticTexts["1/3 sessions this season"].waitForExistence(timeout: 4),
+                      "The selected focus and consumed session should persist after navigation")
+        XCTAssertTrue(app.buttons["legends.training.focusPicker"].label.contains("PASSING"))
+    }
+
     /// Shared onboarding flow: pick an archetype, scroll to and tap SELECT
     /// MANAGER, fill in a name, tap REVIEW PROFILE, then BEGIN YOUR LEGEND.
     /// Real XCUITest hit-testing (not raw screen coordinates) is what makes

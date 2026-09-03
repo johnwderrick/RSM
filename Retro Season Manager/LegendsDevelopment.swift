@@ -234,4 +234,34 @@ extension LegendsStore {
     private static func developmentBonusValue(_ career: LegendsPlayerCareer) -> Int {
         max(0, career.developmentProgress / 100)
     }
+
+    #if DEBUG
+    /// Deterministic UI-test fixture: one signed young player and no stale
+    /// save state. Production launches can never invoke this path.
+    func prepareTrainingFixtureForDebug() {
+        guard let card = LegendsCardDatabase.all.first(where: { $0.id == "miessi-0506" }) else { return }
+        profile.managerProfile = LegendsManagerProfile(
+            firstName: "Test", surname: "Manager", nationalityCode: "GB",
+            dateOfBirth: Date(timeIntervalSince1970: 315_532_800), archetype: .architect
+        )
+        profile.ownedCardIDs = [card.id]
+        profile.activatedCardIDs = [card.id]
+        profile.playerCareers = [card.id: Self.makeCareerState(for: card, signedSeason: 1)]
+        profile.ownedPlayerRecords = [
+            "training-fixture": LegendsOwnedPlayerRecord(
+                careerID: "training-fixture", playerDefinitionID: card.id,
+                state: .signed, acquiredSeason: 1, acquisitionMethod: "ui-test", isNew: false
+            )
+        ]
+        profile.startingXICardIDs = Array(repeating: nil, count: 11)
+        profile.benchCardIDs = Array(repeating: nil, count: Self.benchSize)
+        profile.captainCardID = nil
+        profile.currentSeason = 1
+        profile.matchesPlayedThisSeason = 0
+        profile.cardAgeOffsets = [:]
+        profile.legendsHall = []
+        profile.seasonReports = [:]
+        persist()
+    }
+    #endif
 }

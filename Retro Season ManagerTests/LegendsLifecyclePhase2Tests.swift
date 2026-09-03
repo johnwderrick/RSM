@@ -548,4 +548,71 @@ final class LegendsPoint3TrainingTests: XCTestCase {
         XCTAssertEqual(decoded.developedAttributes, original.developedAttributes)
         XCTAssertEqual(decoded.trainingSessionsThisSeason, 1)
     }
+
+    func testYoungPlayerAndRegularMinutesIncreaseTrainingEfficiency() async {
+        let card = outfielder
+        let baselineStore = await isolatedStore(for: card)
+        let sharedCareer = baselineStore.profile.playerCareers[card.id]!
+        let inactive = await isolatedStore(for: card, career: sharedCareer)
+        let regular = await isolatedStore(for: card, career: sharedCareer)
+        regular.profile.playerCareers[card.id]!.seasonAppearances = 8
+        XCTAssertTrue(inactive.trainPlayer(card.id))
+        XCTAssertTrue(regular.trainPlayer(card.id))
+        XCTAssertGreaterThan(regular.profile.playerCareers[card.id]!.developmentProgress,
+                             inactive.profile.playerCareers[card.id]!.developmentProgress)
+
+        let veteran = await isolatedStore(for: card, career: sharedCareer)
+        veteran.profile.cardAgeOffsets[card.id] = max(0, veteran.profile.playerCareers[card.id]!.peakEndAge + 1 - card.age)
+        XCTAssertTrue(veteran.trainPlayer(card.id))
+        XCTAssertGreaterThan(inactive.profile.playerCareers[card.id]!.developmentProgress,
+                             veteran.profile.playerCareers[card.id]!.developmentProgress)
+    }
+
+    func testPlayerAtPotentialCannotGenerateFurtherGrowth() async {
+        let card = outfielder
+        let ceilingCareer = LegendsPlayerCareer(
+            careerID: "at-ceiling", cardID: card.id, startingAge: card.age,
+            startingOverall: card.overall, potential: card.overall,
+            peakStartAge: 25, peakEndAge: 30, developmentRate: 10,
+            declineRate: 1, signedSeason: 1,
+            condition: LegendsPlayerCondition(form: 50, morale: 50, teamwork: 50, fame: 0)
+        )
+        let store = await isolatedStore(for: card, career: ceilingCareer)
+        let before = store.detailedAttributes(for: card)
+        XCTAssertTrue(store.trainPlayer(card.id), "A maintenance session is still consumed at the ceiling")
+        let state = store.profile.playerCareers[card.id]!
+        XCTAssertEqual(state.developmentProgress, 0)
+        XCTAssertEqual(state.developedAttributes, .zero)
+        XCTAssertEqual(store.detailedAttributes(for: card), before)
+        XCTAssertEqual(state.trainingSessionsThisSeason, 1)
+    }
+
+    func testFocusTargetsArePositionAppropriateAndNeverMixGoalkeepingForOutfielders() {
+        let card = outfielder
+        let archetype = LegendsIdentityEngine.profile(for: card).identity.archetype
+        for focus in LegendsDevelopmentFocus.allCases where focus != .goalkeeping {
+            let targets = LegendsStore.focusTargets(focus, for: card, archetype: archetype)
+            XCTAssertFalse(targets.isEmpty, "\(focus.rawValue) should have outfield targets")
+            XCTAssertTrue(Set(targets).isDisjoint(with: ["Handling", "Reflexes", "One-on-ones", "Aerial reach", "Distribution", "Goalkeeper positioning"]))
+        }
+        XCTAssertTrue(LegendsStore.focusTargets(.goalkeeping, for: card, archetype: archetype).isEmpty)
+    }
+
+    func testLegacyReportAndAlumniDecodeWithSafeTrainingDefaults() throws {
+        let reportJSON = """
+        {"cardID":"legacy","playerName":"Legacy Player","completedSeason":2,
+         "ageBefore":24,"ageAfter":25,"overallBefore":75,"overallAfter":76,
+         "previousStage":"ACTIVE","newStage":"ACTIVE"}
+        """.data(using: .utf8)!
+        let report = try JSONDecoder().decode(LegendsSeasonReportEntry.self, from: reportJSON)
+        XCTAssertEqual(report.trainingFocus, .balanced)
+        XCTAssertEqual(report.trainingIntensity, .normal)
+        XCTAssertEqual(report.trainingSessions, 0)
+        XCTAssertTrue(report.trainingAttributeGains.isEmpty)
+
+        let alumni = try JSONDecoder().decode(LegendsHallEntry.self, from: Data("{}".utf8))
+        XCTAssertEqual(alumni.finalTrainingPlan.focus, .balanced)
+        XCTAssertTrue(alumni.finalTrainingPlan.history.isEmpty)
+        XCTAssertEqual(alumni.finalDetailedAttributes, .zero)
+    }
 }
