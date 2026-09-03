@@ -150,36 +150,30 @@ final class LegendsMatchSimulationTests: XCTestCase {
 
     // MARK: - Shared mirrors of the live view's wiring
 
-    /// Forwards any goal/big-chance commentary lines appended since the
-    /// last-handled line into the simulation — the exact id-diff
-    /// `LegendsLiveMatchView.reactToLatestCommentary` performs — shared by
+    /// Forwards authoritative match events appended since the last-handled
+    /// event into the simulation — the exact id-diff
+    /// `LegendsLiveMatchView.reactToLatestEvents` performs — shared by
     /// the synchronous end-to-end test and the live-loop soak below so
     /// both exercise the same mirror of the view's real wiring.
     /// `lastHandled` stays untouched when nothing is new, and advances to
     /// the newest line once a batch has been scanned.
-    private func forwardNewCommentary(from live: LegendsLiveMatch,
-                                      into simulation: LegendsMatchSimulation,
-                                      lastHandled: inout UUID?,
-                                      expected: inout [(side: Side, kind: BallImpact.Kind)]) {
-        let lines = live.commentary
+    private func forwardNewEvents(from live: LegendsLiveMatch,
+                                  into simulation: LegendsMatchSimulation,
+                                  lastHandled: inout String?,
+                                  expected: inout [(id: String, side: Side, kind: BallImpact.Kind)]) {
+        let events = live.events
         let startIndex: Int
-        if let anchor = lastHandled, let index = lines.firstIndex(where: { $0.id == anchor }) {
+        if let anchor = lastHandled, let index = events.firstIndex(where: { $0.id == anchor }) {
             startIndex = index + 1
         } else {
             startIndex = 0
         }
-        guard startIndex < lines.count else { return }
-        for line in lines[startIndex...] {
-            guard let side = line.side else { continue }
-            if line.text.contains("⚽︎ GOAL") {
-                expected.append((side, .goal))
-                simulation.triggerAttack(forUser: side == .home, scored: true)
-            } else if line.text.contains("Big chance for") {
-                expected.append((side, .chance))
-                simulation.triggerAttack(forUser: side == .home, scored: false)
-            }
+        guard startIndex < events.count else { return }
+        for event in events[startIndex...] {
+            expected.append((event.id, event.side, event.scored ? .goal : .chance))
+            simulation.trigger(event)
         }
-        lastHandled = lines.last?.id
+        lastHandled = events.last?.id
     }
 
     /// Records `simulation.lastImpact` if it's newer than the last one
@@ -333,6 +327,46 @@ final class LegendsMatchSimulationTests: XCTestCase {
         // y = 0 is the opponent's goal line in this coordinate system —
         // a user goal should land right on it.
         XCTAssertEqual(impact.position.y, 0.015, accuracy: 0.02)
+    }
+
+    func testAuthoritativeEventActorsReachTheRenderedImpactWithoutReselection() async {
+        let simulation = await freshSimulation()
+        let home = simulation.players.filter { $0.team == .home && $0.role != .goalkeeper }
+        let away = simulation.players.filter { $0.team == .away }
+        guard home.count >= 2,
+              let marker = away.first(where: { $0.role != .goalkeeper }),
+              let keeper = away.first(where: { $0.role == .goalkeeper }) else {
+            return XCTFail("Expected complete home and away teams")
+        }
+        let creator = home[0]
+        let shooter = home[1]
+        let event = LegendsMatchEvent(
+            id: "test-authoritative-1", minute: 12, side: .home,
+            outcome: .goal, channel: .right,
+            creatorID: creator.id, creatorName: creator.name,
+            shooterID: shooter.id, shooterName: shooter.name,
+            markerID: marker.id, markerName: marker.name,
+            goalkeeperID: keeper.id, goalkeeperName: keeper.name,
+            expectedGoals: 0.42
+        )
+
+        simulation.trigger(event)
+        for _ in 0..<ticksToCompleteAnAttack {
+            simulation.testAdvance(dt: 0.1)
+        }
+        guard let impact = simulation.lastImpact else {
+            return XCTFail("Expected the authoritative event to produce an impact")
+        }
+        XCTAssertEqual(impact.eventID, event.id)
+        XCTAssertEqual(impact.runnerID, creator.id)
+        XCTAssertEqual(impact.finisherID, shooter.id)
+        XCTAssertEqual(impact.markerID, marker.id)
+        XCTAssertEqual(impact.goalkeeperID, keeper.id)
+        XCTAssertEqual(impact.runnerName, creator.name)
+        XCTAssertEqual(impact.finisherName, shooter.name)
+        XCTAssertEqual(impact.markerName, marker.name)
+        XCTAssertEqual(simulation.testLastAttackUsedLeftFlank, false,
+                       "The renderer must honor the event's right channel")
     }
 
     func testOpponentGoalAttackEndsAtTheUsersGoalMouthAndFiresAGoalImpact() async {
@@ -930,13 +964,13 @@ final class LegendsMatchSimulationTests: XCTestCase {
         // after every minute — a faithful mirror of the view's
         // `reactToLatestCommentary` id-diff — and recording each
         // goal/big-chance event we expect to flash.
-        var expectedEvents: [(side: Side, kind: BallImpact.Kind)] = []
-        var lastHandledCommentaryID: UUID?
+        var expectedEvents: [(id: String, side: Side, kind: BallImpact.Kind)] = []
+        var lastHandledEventID: String?
         while !live.isFinished {
             live.testAdvanceMinute()
-            forwardNewCommentary(from: live, into: simulation,
-                                 lastHandled: &lastHandledCommentaryID,
-                                 expected: &expectedEvents)
+            forwardNewEvents(from: live, into: simulation,
+                             lastHandled: &lastHandledEventID,
+                             expected: &expectedEvents)
         }
 
         XCTAssertTrue(live.isFinished, "The match should reach full time")
@@ -960,6 +994,7 @@ final class LegendsMatchSimulationTests: XCTestCase {
         XCTAssertEqual(captured.count, expectedEvents.count,
                        "Every triggered attack — immediate or queued — must resolve to an impact")
         for (impact, event) in zip(captured, expectedEvents) {
+            XCTAssertEqual(impact.eventID, event.id)
             XCTAssertEqual(impact.kind, event.kind,
                            "Impacts must match their commentary events in FIFO order")
             let expectedY: Double
@@ -1021,8 +1056,8 @@ final class LegendsMatchSimulationTests: XCTestCase {
 
         // State shared between this test and the watcher task — all
         // MainActor, interleaved via sleeps, so the mutations serialize.
-        var expectedEvents: [(side: Side, kind: BallImpact.Kind)] = []
-        var lastHandledCommentaryID: UUID?
+        var expectedEvents: [(id: String, side: Side, kind: BallImpact.Kind)] = []
+        var lastHandledEventID: String?
         var captured: [BallImpact] = []
         var lastCapturedTime: Date?
 
@@ -1032,9 +1067,9 @@ final class LegendsMatchSimulationTests: XCTestCase {
         // just fired.
         let watcher = Task { @MainActor in
             while !Task.isCancelled {
-                forwardNewCommentary(from: live, into: simulation,
-                                     lastHandled: &lastHandledCommentaryID,
-                                     expected: &expectedEvents)
+                forwardNewEvents(from: live, into: simulation,
+                                 lastHandled: &lastHandledEventID,
+                                 expected: &expectedEvents)
                 captureNewImpact(from: simulation, into: &captured, lastCapturedTime: &lastCapturedTime)
                 try? await Task.sleep(for: .milliseconds(50))
             }
@@ -1065,9 +1100,9 @@ final class LegendsMatchSimulationTests: XCTestCase {
         // The final minute's lines can land a moment after `isFinished`
         // flips — catch up synchronously (idempotent: the anchor diff means
         // nothing already handled is re-forwarded), then tear down.
-        forwardNewCommentary(from: live, into: simulation,
-                             lastHandled: &lastHandledCommentaryID,
-                             expected: &expectedEvents)
+        forwardNewEvents(from: live, into: simulation,
+                         lastHandled: &lastHandledEventID,
+                         expected: &expectedEvents)
         watcher.cancel()
         simulation.stop()
         live.stop()
@@ -1100,6 +1135,7 @@ final class LegendsMatchSimulationTests: XCTestCase {
         XCTAssertLessThanOrEqual(drainTicks, 3 * ticksToCompleteAnAttack,
                                  "The post-match drain must be short — the queue kept draining during live play, not piling up for the end")
         for (impact, event) in zip(captured, expectedEvents) {
+            XCTAssertEqual(impact.eventID, event.id)
             XCTAssertEqual(impact.kind, event.kind,
                            "Impacts must match their commentary events in FIFO order")
             let expectedY: Double

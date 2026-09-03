@@ -33,6 +33,32 @@
 import Foundation
 import Observation
 
+/// One authoritative attacking event produced by the match engine. Score,
+/// commentary, career statistics and the 2D renderer all consume this exact
+/// record; none of those layers is allowed to select participants again.
+struct LegendsMatchEvent: Identifiable, Equatable {
+    enum Outcome: Equatable { case goal, saved }
+    enum Channel: Equatable { case left, right }
+
+    let id: String
+    let minute: Int
+    let side: Side
+    let outcome: Outcome
+    let channel: Channel
+    let creatorID: String?
+    let creatorName: String?
+    let shooterID: String
+    let shooterName: String
+    let markerID: String?
+    let markerName: String?
+    let goalkeeperID: String?
+    let goalkeeperName: String?
+    let expectedGoals: Double
+
+    var scored: Bool { outcome == .goal }
+    var isUserEvent: Bool { side == .home }
+}
+
 @MainActor
 @Observable
 final class LegendsLiveMatch {
@@ -47,6 +73,7 @@ final class LegendsLiveMatch {
     private(set) var teamGoals = 0
     private(set) var opponentGoals = 0
     private(set) var commentary: [CommentaryLine] = []
+    private(set) var events: [LegendsMatchEvent] = []
     private(set) var isPaused = true
     private(set) var isHalfTime = false
     private(set) var isFinished = false
@@ -63,6 +90,11 @@ final class LegendsLiveMatch {
     /// that Starting XI slot, or nil if it was never filled (shouldn't
     /// happen for a match that was allowed to kick off, but defensive).
     private(set) var onPitchCardIDs: [String?]
+    /// Kickoff XI and real minutes played are snapshotted by the engine so
+    /// post-match statistics include substitutes without treating them as
+    /// starters or giving every participant an automatic 90 minutes.
+    private(set) var startingCardIDs: [String]
+    private(set) var minutesPlayedByCardID: [String: Int]
     /// Parallel to `onPitchCardIDs` — 0...100, decays each minute for a
     /// filled slot, reset to 100 by a substitution into that slot.
     private(set) var energyBySlot: [Double]
@@ -80,6 +112,7 @@ final class LegendsLiveMatch {
     /// Goals/subs after minute 45 — drives stoppage time, a cheap echo
     /// of Career's event-counted approach without needing cards/injuries.
     private var secondHalfEventCount = 0
+    private var eventSequence = 0
 
     /// Manager/stadium tactical+gameplay bonus plus a chemistry nudge,
     /// snapshotted once at kickoff — mirrors the shape of the old instant-
@@ -124,7 +157,7 @@ final class LegendsLiveMatch {
         self.slots = slotSnapshot
         let savedXI = store.profile.startingXICardIDs
         var usedCardIDs = Set<String>()
-        self.onPitchCardIDs = (0..<slotSnapshot.count).map { index in
+        let normalizedXI: [String?] = (0..<slotSnapshot.count).map { index in
             guard savedXI.indices.contains(index),
                   let cardID = savedXI[index],
                   !usedCardIDs.contains(cardID),
@@ -135,6 +168,9 @@ final class LegendsLiveMatch {
             usedCardIDs.insert(cardID)
             return cardID
         }
+        self.onPitchCardIDs = normalizedXI
+        self.startingCardIDs = normalizedXI.compactMap { $0 }
+        self.minutesPlayedByCardID = Dictionary(uniqueKeysWithValues: normalizedXI.compactMap { $0 }.map { ($0, 0) })
         self.energyBySlot = Array(repeating: 100.0, count: slotSnapshot.count)
 
         var usedBenchIDs = Set<String>()
@@ -226,6 +262,7 @@ final class LegendsLiveMatch {
     private func tick() {
         guard !isFinished else { return }
         minute += 1
+        recordPlayedMinute()
 
         if minute == 45 && !halfTimeTaken {
             halfTimeTaken = true
@@ -246,6 +283,15 @@ final class LegendsLiveMatch {
 
         if minute >= totalMinutes {
             finishMatch()
+        }
+    }
+
+    private func recordPlayedMinute() {
+        // Career statistics use regulation minutes. Stoppage time is real
+        // match time but does not turn a full appearance into 91–96 minutes.
+        guard minute <= 90 else { return }
+        for cardID in onPitchCardIDs.compactMap({ $0 }) {
+            minutesPlayedByCardID[cardID, default: 0] += 1
         }
     }
 
@@ -323,11 +369,15 @@ final class LegendsLiveMatch {
     struct DefenseContestant {
         let defending: Int
         let physical: Int
-        /// No dedicated goalkeeping attribute exists anywhere in this
-        /// codebase yet — the defending side's keeper's blended `overall`
-        /// stands in for shot-stopping/positioning. A known, flagged
-        /// limitation, not something this pass solves.
         let keeperOverall: Int
+    }
+
+    private struct DefenseSelection {
+        let contestant: DefenseContestant
+        let markerID: String?
+        let markerName: String?
+        let goalkeeperID: String?
+        let goalkeeperName: String?
     }
 
     /// Chances/game at exact parity between the two ratios above — the
@@ -351,25 +401,40 @@ final class LegendsLiveMatch {
     private func resolveChance(forUser: Bool) {
         let attacker: ShotContestant
         let energyFactor: Double
-        let defense: DefenseContestant
+        let creator: (id: String, name: String)?
+        let defense: DefenseSelection
         if forUser {
             guard let picked = pickUserAttacker() else { return }
             (attacker, energyFactor) = picked
-            defense = opponentDefenseProxy()
+            creator = pickUserCreator(excluding: attacker.id)
+            defense = opponentDefenseSelection()
         } else {
             attacker = pickOpponentAttacker()
             energyFactor = 1.0 // no fatigue system for the synthetic opponent roster
-            defense = userDefenseProxy()
+            creator = pickOpponentCreator(excluding: attacker.id)
+            defense = userDefenseSelection()
         }
 
-        let pConvert = conversionProbability(attacker: attacker, defense: defense, energyFactor: energyFactor)
-        if Double.random(in: 0..<1, using: &rng) < pConvert {
-            scoreGoal(forUser: forUser, scorerName: attacker.name, scorerCardID: forUser ? attacker.id : nil)
+        let pConvert = conversionProbability(attacker: attacker, defense: defense.contestant, energyFactor: energyFactor)
+        let scored = Double.random(in: 0..<1, using: &rng) < pConvert
+        eventSequence += 1
+        let event = LegendsMatchEvent(
+            id: "M\(minute)-E\(eventSequence)", minute: minute,
+            side: forUser ? .home : .away,
+            outcome: scored ? .goal : .saved,
+            channel: eventSequence.isMultiple(of: 2) ? .right : .left,
+            creatorID: creator?.id, creatorName: creator?.name,
+            shooterID: attacker.id, shooterName: attacker.name,
+            markerID: defense.markerID, markerName: defense.markerName,
+            goalkeeperID: defense.goalkeeperID, goalkeeperName: defense.goalkeeperName,
+            expectedGoals: pConvert
+        )
+        events.append(event)
+        if scored {
+            scoreGoal(event)
         } else {
-            // Matches Career Mode's own big-chance line (LiveMatch.swift) —
-            // a near-miss here is a keeper making a stop, not a wayward
-            // shot, the same convention Career already settled on.
-            say("Big chance for \(forUser ? store.profile.clubName : opponent.name) — the keeper stands tall!", side: forUser ? .home : .away)
+            let keeper = event.goalkeeperName.map { " — \($0) saves!" } ?? " — the keeper stands tall!"
+            say("Big chance for \(forUser ? store.profile.clubName : opponent.name): \(attacker.name) shoots\(keeper)", side: event.side)
             bumpMomentum(towardUser: forUser, by: 0.05)
         }
     }
@@ -445,32 +510,85 @@ final class LegendsLiveMatch {
                                dribbling: picked.dribbling, pace: picked.pace, overall: picked.overall)
     }
 
+    private func pickUserCreator(excluding shooterID: String) -> (id: String, name: String)? {
+        let candidates = onPitchCardIDs.compactMap { $0 }.filter { $0 != shooterID }.compactMap { id in
+            LegendsCardDatabase.all.first { $0.id == id }
+        }
+        let preferred = candidates.filter { $0.position.broad == .midfielder || $0.position.broad == .forward }
+        let pool = preferred.isEmpty ? candidates : preferred
+        return pool.max { lhs, rhs in
+            let left = store.effectiveDetailedAttributes(for: lhs)
+            let right = store.effectiveDetailedAttributes(for: rhs)
+            let leftScore = LegendsMatchSelectors.chanceCreation(left) + LegendsMatchSelectors.passing(left)
+            let rightScore = LegendsMatchSelectors.chanceCreation(right) + LegendsMatchSelectors.passing(right)
+            return leftScore == rightScore ? lhs.id > rhs.id : leftScore < rightScore
+        }.map { ($0.id, $0.name) }
+    }
+
+    private func pickOpponentCreator(excluding shooterID: String) -> (id: String, name: String)? {
+        let candidates = opponentRoster.players.filter { $0.id != shooterID }
+        let preferred = candidates.filter { $0.position.broad == .midfielder || $0.position.broad == .forward }
+        let pool = preferred.isEmpty ? candidates : preferred
+        return pool.max { lhs, rhs in
+            let leftScore = LegendsMatchSelectors.chanceCreation(lhs.detailed) + LegendsMatchSelectors.passing(lhs.detailed)
+            let rightScore = LegendsMatchSelectors.chanceCreation(rhs.detailed) + LegendsMatchSelectors.passing(rhs.detailed)
+            return leftScore == rightScore ? lhs.id > rhs.id : leftScore < rightScore
+        }.map { ($0.id, $0.name) }
+    }
+
     /// Weighted toward the on-pitch defenders' average, plus the user's
     /// actual on-pitch goalkeeper standing in for shot-stopping.
-    private func userDefenseProxy() -> DefenseContestant {
-        let defenders: [LegendsCard] = slots.indices.compactMap { index in
-            guard slots[index].broad == .defender, let cardID = onPitchCardIDs[index] else { return nil }
+    private func userDefenseSelection() -> DefenseSelection {
+        let outfield: [LegendsCard] = slots.indices.compactMap { index in
+            guard slots[index].broad != .goalkeeper, let cardID = onPitchCardIDs[index] else { return nil }
             return LegendsCardDatabase.all.first { $0.id == cardID }
         }
-        let keeperCard: LegendsCard? = slots.indices.compactMap { index -> LegendsCard? in
+        let defenders = outfield.filter { $0.position.broad == .defender }
+        let pool = defenders.isEmpty ? outfield : defenders
+        let marker = pool.max { lhs, rhs in
+            let left = LegendsMatchSelectors.defending(store.effectiveDetailedAttributes(for: lhs))
+            let right = LegendsMatchSelectors.defending(store.effectiveDetailedAttributes(for: rhs))
+            return left == right ? lhs.id > rhs.id : left < right
+        }
+        let keeper: LegendsCard? = slots.indices.compactMap { index -> LegendsCard? in
             guard slots[index] == .goalkeeper, let cardID = onPitchCardIDs[index] else { return nil }
             return LegendsCardDatabase.all.first { $0.id == cardID }
         }.first
-        let defending = defenders.isEmpty ? Double(opponent.rating) : defenders.map { Double($0.defending) }.reduce(0, +) / Double(defenders.count)
-        let physical = defenders.isEmpty ? Double(opponent.rating) : defenders.map { Double($0.physical) }.reduce(0, +) / Double(defenders.count)
-        let keeperOverall = keeperCard.map { card in
+        let markerAttributes = marker.map { store.effectiveDetailedAttributes(for: $0) }
+        let keeperOverall = keeper.map { card in
             let keeper = LegendsMatchSelectors.goalkeeper(store.effectiveDetailedAttributes(for: card))
             return Int((Double(store.effectiveOverall(for: card)) * 0.7 + Double(keeper) * 0.3).rounded())
         } ?? opponent.rating
-        return DefenseContestant(defending: Int(defending), physical: Int(physical), keeperOverall: keeperOverall)
+        return DefenseSelection(
+            contestant: DefenseContestant(
+                defending: markerAttributes.map { LegendsMatchSelectors.defending($0) } ?? opponent.rating,
+                physical: markerAttributes?.strength ?? opponent.rating,
+                keeperOverall: keeperOverall
+            ),
+            markerID: marker?.id, markerName: marker?.name,
+            goalkeeperID: keeper?.id, goalkeeperName: keeper?.name
+        )
     }
 
-    private func opponentDefenseProxy() -> DefenseContestant {
+    private func opponentDefenseSelection() -> DefenseSelection {
         let defenders = opponentRoster.players.filter { $0.position.broad == .defender }
+        let outfield = opponentRoster.players.filter { $0.position.broad != .goalkeeper }
+        let pool = defenders.isEmpty ? outfield : defenders
+        let marker = pool.max { lhs, rhs in
+            let left = LegendsMatchSelectors.defending(lhs.detailed)
+            let right = LegendsMatchSelectors.defending(rhs.detailed)
+            return left == right ? lhs.id > rhs.id : left < right
+        }
         let keeper = opponentRoster.players.first { $0.position == .goalkeeper }
-        let defending = defenders.isEmpty ? Double(opponent.rating) : defenders.map { Double($0.defending) }.reduce(0, +) / Double(defenders.count)
-        let physical = defenders.isEmpty ? Double(opponent.rating) : defenders.map { Double($0.physical) }.reduce(0, +) / Double(defenders.count)
-        return DefenseContestant(defending: Int(defending), physical: Int(physical), keeperOverall: keeper?.overall ?? opponent.rating)
+        return DefenseSelection(
+            contestant: DefenseContestant(
+                defending: marker.map { LegendsMatchSelectors.defending($0.detailed) } ?? opponent.rating,
+                physical: marker?.physical ?? opponent.rating,
+                keeperOverall: keeper.map { LegendsMatchSelectors.goalkeeper($0.detailed) } ?? opponent.rating
+            ),
+            markerID: marker?.id, markerName: marker?.name,
+            goalkeeperID: keeper?.id, goalkeeperName: keeper?.name
+        )
     }
 
     /// `scorerCardID` is only ever supplied for the user side —
@@ -479,16 +597,18 @@ final class LegendsLiveMatch {
     /// whoever actually took the shot on both sides, finally giving
     /// opponent goals a named scorer in commentary — they previously had
     /// none at all.
-    private func scoreGoal(forUser: Bool, scorerName: String, scorerCardID: String?) {
-        if forUser {
+    private func scoreGoal(_ event: LegendsMatchEvent) {
+        if event.isUserEvent {
             teamGoals += 1
-            if let scorerCardID { scorerCardIDs.append(scorerCardID) }
-            say("⚽︎ GOAL! \(scorerName)! \(store.profile.clubName) \(teamGoals)-\(opponentGoals) \(opponent.name)", side: .home)
+            scorerCardIDs.append(event.shooterID)
+            let assist = event.creatorName.map { " (assist: \($0))" } ?? ""
+            say("⚽︎ GOAL! \(event.shooterName)!\(assist) \(store.profile.clubName) \(teamGoals)-\(opponentGoals) \(opponent.name)", side: .home)
             bumpMomentum(towardUser: true, by: 0.22)
             SoundManager.shared.play(.goalCrowd)
         } else {
             opponentGoals += 1
-            say("⚽︎ GOAL! \(scorerName)! \(opponent.name) \(opponentGoals)-\(teamGoals) \(store.profile.clubName)", side: .away)
+            let assist = event.creatorName.map { " (assist: \($0))" } ?? ""
+            say("⚽︎ GOAL! \(event.shooterName)!\(assist) \(opponent.name) \(opponentGoals)-\(teamGoals) \(store.profile.clubName)", side: .away)
             bumpMomentum(towardUser: false, by: 0.22)
         }
         if minute > 45 { secondHalfEventCount += 1 }
@@ -526,6 +646,7 @@ final class LegendsLiveMatch {
         let onName = LegendsCardDatabase.all.first { $0.id == onCardID }?.name ?? ""
 
         onPitchCardIDs[slotIndex] = onCardID
+        minutesPlayedByCardID[onCardID, default: 0] = 0
         energyBySlot[slotIndex] = 100
         benchCardIDs.remove(at: benchIndex)
 

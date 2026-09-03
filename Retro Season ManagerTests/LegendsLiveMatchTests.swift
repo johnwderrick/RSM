@@ -272,6 +272,87 @@ final class LegendsLiveMatchTests: XCTestCase {
         XCTAssertEqual(live.result.opponentGoals, live.opponentGoals)
     }
 
+    func testSeededMatchProducesOneDeterministicAuthoritativeEventLedger() async {
+        let firstStore = await freshStore()
+        strongestXI(firstStore)
+        let secondStore = await freshStore()
+        strongestXI(secondStore)
+        let opponent = LegendsOpponent(name: "Rival XI", rating: 55)
+        let first = LegendsLiveMatch(store: firstStore, opponent: opponent,
+                                     rng: SeededGenerator(seed: "authoritative-ledger"))
+        let second = LegendsLiveMatch(store: secondStore, opponent: opponent,
+                                      rng: SeededGenerator(seed: "authoritative-ledger"))
+
+        first.skipToEnd()
+        second.skipToEnd()
+
+        XCTAssertEqual(first.events, second.events,
+                       "Fixed inputs must produce the same participants, channels and outcomes")
+        XCTAssertEqual(first.teamGoals, first.events.filter { $0.isUserEvent && $0.scored }.count)
+        XCTAssertEqual(first.opponentGoals, first.events.filter { !$0.isUserEvent && $0.scored }.count)
+        XCTAssertEqual(first.scorerCardIDs,
+                       first.events.filter { $0.isUserEvent && $0.scored }.map(\.shooterID))
+        XCTAssertEqual(Set(first.events.map(\.id)).count, first.events.count)
+        for event in first.events {
+            XCTAssertNotEqual(event.creatorID, event.shooterID)
+            XCTAssertNotNil(event.markerID)
+            XCTAssertNotNil(event.goalkeeperID)
+            XCTAssertGreaterThanOrEqual(event.expectedGoals, 0.05)
+            XCTAssertLessThanOrEqual(event.expectedGoals, 0.75)
+        }
+    }
+
+    func testAuthoritativeLedgerCreditsExactActorsAndRealSubstituteMinutes() async {
+        let store = await freshStore()
+        strongestXI(store)
+        let live = LegendsLiveMatch(store: store, opponent: LegendsOpponent(name: "Rival XI", rating: 55),
+                                    rng: SeededGenerator(seed: "participant-minutes"))
+        for _ in 0..<30 { live.testAdvanceMinute() }
+        let offID = live.onPitchCardIDs[0]!
+        let onID = live.benchCardIDs[0]
+        let creatorID = live.onPitchCardIDs.compactMap { $0 }.first { $0 != offID }!
+        XCTAssertTrue(live.makeUserSub(offCardID: offID, onCardID: onID))
+        live.skipToEnd()
+
+        for cardID in Set(live.startingCardIDs + [onID]) {
+            if let card = LegendsCardDatabase.all.first(where: { $0.id == cardID }) {
+                store.startCareerIfNeeded(for: card)
+            }
+        }
+        let offBefore = store.profile.playerCareers[offID]!
+        let onBefore = store.profile.playerCareers[onID]!
+        let creatorBefore = store.profile.playerCareers[creatorID]!
+        let event = LegendsMatchEvent(
+            id: "stats-event-1", minute: 72, side: .home,
+            outcome: .goal, channel: .left,
+            creatorID: creatorID,
+            creatorName: LegendsCardDatabase.all.first { $0.id == creatorID }?.name,
+            shooterID: onID,
+            shooterName: LegendsCardDatabase.all.first { $0.id == onID }!.name,
+            markerID: nil, markerName: nil, goalkeeperID: nil, goalkeeperName: nil,
+            expectedGoals: 0.4
+        )
+
+        store.recordCareerMatch(
+            LegendsMatchEngine.Result(teamGoals: 1, opponentGoals: 0),
+            events: [event],
+            startingCardIDs: live.startingCardIDs,
+            minutesPlayedByCardID: live.minutesPlayedByCardID
+        )
+
+        let offAfter = store.profile.playerCareers[offID]!
+        let onAfter = store.profile.playerCareers[onID]!
+        let creatorAfter = store.profile.playerCareers[creatorID]!
+        XCTAssertEqual(offAfter.appearances, offBefore.appearances + 1)
+        XCTAssertEqual(offAfter.starts, offBefore.starts + 1)
+        XCTAssertEqual(offAfter.minutesPlayed, offBefore.minutesPlayed + 30)
+        XCTAssertEqual(onAfter.appearances, onBefore.appearances + 1)
+        XCTAssertEqual(onAfter.starts, onBefore.starts)
+        XCTAssertEqual(onAfter.minutesPlayed, onBefore.minutesPlayed + 60)
+        XCTAssertEqual(onAfter.goals, onBefore.goals + 1)
+        XCTAssertEqual(creatorAfter.assists, creatorBefore.assists + 1)
+    }
+
     func testScorerSelectionIsWeightedTowardAttackingPositions() async {
         let store = await freshStore()
         // A forward-heavy pool (every slot filled with the same striker's
