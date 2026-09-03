@@ -141,6 +141,11 @@ final class LegendsLiveMatch {
     private(set) var lastSubOnName = ""
 
     private var loopTask: Task<Void, Never>?
+    /// Engine events currently being presented by the 2D pitch. The match
+    /// clock waits while this set is non-empty, keeping commentary, actors
+    /// and the visible ball sequence on the same authoritative event.
+    private var presentationEventIDs: Set<String> = []
+    var isAwaiting2DPresentation: Bool { !presentationEventIDs.isEmpty }
     /// Goals/subs after minute 45 — drives stoppage time, a cheap echo
     /// of Career's event-counted approach without needing cards/injuries.
     private var secondHalfEventCount = 0
@@ -257,10 +262,12 @@ final class LegendsLiveMatch {
     func stop() {
         loopTask?.cancel()
         loopTask = nil
+        presentationEventIDs.removeAll()
         isPaused = true
     }
 
     func skipToEnd() {
+        presentationEventIDs.removeAll()
         isHalfTime = false
         isPaused = false
         while !isFinished { tick() }
@@ -269,8 +276,17 @@ final class LegendsLiveMatch {
     /// Synchronous single-minute advance, no delay — the async-free path
     /// unit tests drive instead of the real `Task`-based loop in `start()`.
     func testAdvanceMinute() {
+        guard !isAwaiting2DPresentation else { return }
         isHalfTime = false
         tick()
+    }
+
+    func begin2DPresentation(for eventID: String) {
+        presentationEventIDs.insert(eventID)
+    }
+
+    func complete2DPresentation(for eventID: String) {
+        presentationEventIDs.remove(eventID)
     }
 
     private func loop() async {
@@ -279,7 +295,7 @@ final class LegendsLiveMatch {
         // here the loop would keep sleeping forever in the paused branch
         // — `try?` swallows the cancellation error — leaking the engine.
         while !isFinished && !Task.isCancelled {
-            if isPaused || isHalfTime {
+            if isPaused || isHalfTime || isAwaiting2DPresentation {
                 try? await Task.sleep(for: .milliseconds(80))
                 continue
             }

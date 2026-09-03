@@ -89,7 +89,10 @@ final class LegendsMatchSimulationTests: XCTestCase {
         }
     }
 
-    private func freshSimulation() async -> LegendsMatchSimulation {
+    private func freshSimulation(
+        mentality: Mentality = .balanced,
+        instruction: MatchInstruction = .balanced
+    ) async -> LegendsMatchSimulation {
         let userSlots = fourFourTwoUserSlots()
         let opponent = LegendsOpponentRoster.generateRoster(for: LegendsOpponent(name: "Test Rivals", rating: 65))
         return await Task { @MainActor in
@@ -97,7 +100,9 @@ final class LegendsMatchSimulationTests: XCTestCase {
                 userSlots: userSlots,
                 userFormation: Formation.all.first { $0.name == "4-4-2" }!,
                 opponentFormation: opponent.formation,
-                opponentPlayers: opponent.players
+                opponentPlayers: opponent.players,
+                userMentality: mentality,
+                userInstruction: instruction
             )
         }.value
     }
@@ -223,6 +228,75 @@ final class LegendsMatchSimulationTests: XCTestCase {
         let simulation = await freshSimulation()
         XCTAssertEqual(simulation.ball.position.x, 0.5, accuracy: 0.0001)
         XCTAssertEqual(simulation.ball.position.y, 0.5, accuracy: 0.0001)
+    }
+
+    func testGoalReturnsTheBallToCentreForTheConcedingTeamsKickoff() async {
+        let simulation = await freshSimulation()
+        simulation.triggerAttack(forUser: true, scored: true)
+
+        for _ in 0..<ticksToCompleteAnAttack where simulation.testHasActiveAttack() {
+            simulation.testAdvance(dt: 0.1)
+        }
+
+        XCTAssertFalse(simulation.testHasActiveAttack())
+        XCTAssertEqual(simulation.ball.position.x, 0.5, accuracy: 0.0001)
+        XCTAssertEqual(simulation.ball.position.y, 0.5, accuracy: 0.0001,
+                       "A goal must visibly restart at the centre spot")
+        XCTAssertEqual(simulation.possessionTeam, .away,
+                       "The team that conceded must take the kickoff")
+        guard let possessorID = simulation.testAmbientPossessorID(),
+              let possessor = simulation.players.first(where: { $0.id == possessorID }) else {
+            return XCTFail("The kickoff must be assigned to a real on-pitch player")
+        }
+        XCTAssertEqual(possessor.team, .away)
+        XCTAssertNotEqual(possessor.role, .goalkeeper)
+    }
+
+    func testAuthoritativeEventHoldsCommentaryUntilIts2DSequenceCompletes() async {
+        let store = await freshStore()
+        strongestXI(store)
+        let live = LegendsLiveMatch(
+            store: store,
+            opponent: LegendsOpponent(name: "Linked Commentary Rivals", rating: 65),
+            rng: SeededGenerator(seed: "linked-commentary")
+        )
+        let simulation = await freshSimulation()
+        let home = simulation.players.filter { $0.team == .home && $0.role != .goalkeeper }
+        let away = simulation.players.filter { $0.team == .away }
+        guard home.count >= 2,
+              let marker = away.first(where: { $0.role != .goalkeeper }),
+              let keeper = away.first(where: { $0.role == .goalkeeper }) else {
+            return XCTFail("Expected complete home and away teams")
+        }
+        let event = LegendsMatchEvent(
+            id: "linked-event", minute: 12, side: .home,
+            outcome: .goal, channel: .left, attackPattern: .cutback,
+            creatorID: home[0].id, creatorName: home[0].name,
+            shooterID: home[1].id, shooterName: home[1].name,
+            markerID: marker.id, markerName: marker.name,
+            goalkeeperID: keeper.id, goalkeeperName: keeper.name,
+            expectedGoals: 0.41
+        )
+        let startingMinute = live.minute
+
+        simulation.onEventPresentationCompleted = { eventID in
+            live.complete2DPresentation(for: eventID)
+        }
+        live.begin2DPresentation(for: event.id)
+        simulation.trigger(event)
+
+        for _ in 0..<ticksToCompleteAnAttack where simulation.testHasActiveAttack() {
+            live.testAdvanceMinute()
+            XCTAssertEqual(live.minute, startingMinute,
+                           "Commentary must not advance while its matching movement is playing")
+            simulation.testAdvance(dt: 0.1)
+        }
+
+        XCTAssertFalse(simulation.testHasActiveAttack())
+        XCTAssertFalse(live.isAwaiting2DPresentation,
+                       "The exact event completion callback must release its presentation hold")
+        live.testAdvanceMinute()
+        XCTAssertEqual(live.minute, startingMinute + 1)
     }
 
     func testIdleBallMovesOverTicksWithNoTriggeredAttack() async {
@@ -387,6 +461,103 @@ final class LegendsMatchSimulationTests: XCTestCase {
             XCTAssertEqual(lhs.homeAnchor.x, rhs.homeAnchor.x, accuracy: 0.0001)
             XCTAssertEqual(lhs.homeAnchor.y, rhs.homeAnchor.y, accuracy: 0.0001)
         }
+    }
+
+    func testAttackingTacticsPushTheForwardSupportHigherThanDefensiveTactics() async {
+        let attacking = await freshSimulation(mentality: .attacking, instruction: .pushForward)
+        let defensive = await freshSimulation(mentality: .defensive, instruction: .containment)
+        attacking.testAdvance(dt: 0.1)
+        defensive.testAdvance(dt: 0.1)
+
+        guard attacking.testSupportPlayerIDs().count == 2,
+              defensive.testSupportPlayerIDs().count == 2,
+              let attackingSupport = attacking.players.first(where: {
+                  $0.id == attacking.testSupportPlayerIDs()[1]
+              }),
+              let defensiveSupport = defensive.players.first(where: {
+                  $0.id == defensive.testSupportPlayerIDs()[1]
+              }) else {
+            return XCTFail("Both tactical shapes should assign a forward passing option")
+        }
+        XCTAssertLessThan(attackingSupport.homeAnchor.y, defensiveSupport.homeAnchor.y,
+                          "A home attacking shape should send its forward support closer to the opponent goal")
+    }
+
+    func testTacticsChangeHomePressAndDefensiveLineHeight() async {
+        let attacking = await freshSimulation(mentality: .attacking, instruction: .pushForward)
+        let defensive = await freshSimulation(mentality: .defensive, instruction: .containment)
+        attacking.testBeginAmbientPossession(for: .away)
+        defensive.testBeginAmbientPossession(for: .away)
+        attacking.testAdvance(dt: 0.1)
+        defensive.testAdvance(dt: 0.1)
+
+        guard let attackingPresserID = attacking.testAmbientPresserID(),
+              let defensivePresserID = defensive.testAmbientPresserID(),
+              attackingPresserID == defensivePresserID,
+              let attackingPresser = attacking.players.first(where: { $0.id == attackingPresserID }),
+              let defensivePresser = defensive.players.first(where: { $0.id == defensivePresserID }) else {
+            return XCTFail("Identical teams should assign the same presser before tactical positioning differs")
+        }
+        XCTAssertLessThan(attackingPresser.homeAnchor.y, defensivePresser.homeAnchor.y,
+                          "Attacking tactics should press higher; defensive tactics should stay goal-side")
+
+        let attackingExcluded = Set(
+            [attacking.testAmbientPresserID(), attacking.testCoverDefenderID()].compactMap { $0 }
+                + Array(attacking.testMarkingAssignments().keys)
+        )
+        let defensiveExcluded = Set(
+            [defensive.testAmbientPresserID(), defensive.testCoverDefenderID()].compactMap { $0 }
+                + Array(defensive.testMarkingAssignments().keys)
+        )
+        guard let playerID = attacking.players.first(where: {
+            $0.team == .home && $0.role.broad == .defender
+                && !attackingExcluded.contains($0.id)
+                && !defensiveExcluded.contains($0.id)
+        })?.id,
+              let highLine = attacking.players.first(where: { $0.id == playerID }),
+              let deepLine = defensive.players.first(where: { $0.id == playerID }) else {
+            return XCTFail("Expected an unassigned defender in both defensive blocks")
+        }
+        XCTAssertLessThan(highLine.homeAnchor.y, deepLine.homeAnchor.y,
+                          "Attacking tactics should hold a higher home defensive line")
+    }
+
+    func testTimeWastingVisiblySlowsPossessionDecisions() async {
+        let balanced = await freshSimulation()
+        let timeWasting = await freshSimulation(mentality: .defensive, instruction: .timeWaste)
+        for _ in 0..<7 {
+            balanced.testAdvance(dt: 0.1)
+            timeWasting.testAdvance(dt: 0.1)
+        }
+
+        XCTAssertNotNil(balanced.testLastAmbientAction,
+                        "Balanced play should have selected its first action")
+        XCTAssertNil(timeWasting.testLastAmbientAction,
+                     "Time-wasting should visibly retain possession longer before choosing")
+    }
+
+    func testMidMatchTacticalChangeImmediatelyRepositionsSupport() async {
+        let simulation = await freshSimulation()
+        simulation.testAdvance(dt: 0.1)
+        let balancedSupports = simulation.testSupportPlayerIDs().compactMap { id in
+            simulation.players.first(where: { $0.id == id })
+        }
+        guard let balancedY = balancedSupports.map(\.homeAnchor.y).min() else {
+            return XCTFail("Expected a forward support player")
+        }
+
+        simulation.userMentality = .attacking
+        simulation.userInstruction = .pushForward
+        simulation.testAdvance(dt: 0.1)
+
+        let attackingSupports = simulation.testSupportPlayerIDs().compactMap { id in
+            simulation.players.first(where: { $0.id == id })
+        }
+        guard let attackingY = attackingSupports.map(\.homeAnchor.y).min() else {
+            return XCTFail("Expected attacking support to remain available")
+        }
+        XCTAssertLessThan(attackingY, balancedY,
+                          "Changing the live controls should alter the next 2D shape tick")
     }
 
     func testOpenPlayIncludesVisibleDeterministicTurnovers() async {

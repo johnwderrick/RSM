@@ -127,6 +127,54 @@ final class LegendsLiveMatchTests: XCTestCase {
     // this trimmed-down count, so this has real margin, not just luck.
     private let managerStadiumTrialCount = 500
 
+    func test2DPresentationHoldStopsTheMatchClockUntilAcknowledged() async {
+        let store = await freshStore()
+        strongestXI(store)
+        let live = LegendsLiveMatch(
+            store: store,
+            opponent: LegendsOpponent(name: "Presentation Rivals", rating: 60),
+            rng: SeededGenerator(seed: "presentation-hold")
+        )
+        let startingMinute = live.minute
+
+        live.begin2DPresentation(for: "event-1")
+        live.testAdvanceMinute()
+        XCTAssertEqual(live.minute, startingMinute,
+                       "The clock must not move ahead of an event still playing on the 2D pitch")
+        XCTAssertTrue(live.isAwaiting2DPresentation)
+
+        live.complete2DPresentation(for: "event-1")
+        live.testAdvanceMinute()
+        XCTAssertEqual(live.minute, startingMinute + 1)
+        XCTAssertFalse(live.isAwaiting2DPresentation)
+    }
+
+    func testEveryQueued2DPresentationMustFinishBeforeTheClockResumes() async {
+        let store = await freshStore()
+        strongestXI(store)
+        let live = LegendsLiveMatch(
+            store: store,
+            opponent: LegendsOpponent(name: "Queued Presentation Rivals", rating: 60),
+            rng: SeededGenerator(seed: "queued-presentation-holds")
+        )
+        let startingMinute = live.minute
+
+        live.begin2DPresentation(for: "event-1")
+        live.begin2DPresentation(for: "event-2")
+        live.complete2DPresentation(for: "event-1")
+        live.testAdvanceMinute()
+
+        XCTAssertEqual(live.minute, startingMinute,
+                       "Finishing one event must not release another event still queued on the pitch")
+        XCTAssertTrue(live.isAwaiting2DPresentation)
+
+        live.complete2DPresentation(for: "event-2")
+        live.testAdvanceMinute()
+
+        XCTAssertEqual(live.minute, startingMinute + 1)
+        XCTAssertFalse(live.isAwaiting2DPresentation)
+    }
+
     func testGoalRateIncreasesWithStrongerAttackRating() async {
         let strongAvg = await averageGoals(trials: statisticalTrialCount) { self.strongestXI($0) }
         let weakAvg = await averageGoals(trials: statisticalTrialCount) { self.weakestXI($0) }
