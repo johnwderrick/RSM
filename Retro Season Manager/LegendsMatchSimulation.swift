@@ -515,6 +515,7 @@ final class LegendsMatchSimulation {
         let forUser = attack.forUser
         let scored = attack.scored
         let authoritative = attack.event
+        let presentation = authoritative?.presentationScript
         activeAttack = attack
         testAttackStartCount += 1
         possessionTeam = forUser ? .home : .away
@@ -535,29 +536,29 @@ final class LegendsMatchSimulation {
         // the finisher is the best shooting/positioning candidate among
         // the finishing roles. Deterministic on the roster — no extra
         // randomness beyond the deterministic flank rotation below.
-        let authoritativeRunner = authoritative.flatMap { event -> PlayerSimState? in
-            guard let creatorID = event.creatorID else { return nil }
+        let authoritativeRunner = presentation.flatMap { script -> PlayerSimState? in
+            guard let creatorID = script.creatorID else { return nil }
             return attackers.first { $0.id == creatorID }
         }
         let wideRunner = authoritativeRunner
             ?? Self.pickRunner(from: attackers, preferring: Self.wideRunnerPreference,
                                score: { LegendsMatchSelectors.passing($0.detailed) + $0.detailed.sprintSpeed })
-        let authoritativeFinisher = authoritative.flatMap { event in
-            attackers.first { $0.id == event.shooterID }
+        let authoritativeFinisher = presentation.flatMap { script in
+            attackers.first { $0.id == script.shooterID }
         }
         let finisher = authoritativeFinisher
             ?? Self.pickRunner(from: attackers.filter { $0.id != wideRunner?.id }, preferring: Self.finisherPreference,
                                score: { LegendsMatchSelectors.shooting($0.detailed) + $0.detailed.positioning })
 
         let wideLeft: Bool
-        if let authoritative {
-            wideLeft = authoritative.channel == .left
+        if let presentation {
+            wideLeft = presentation.channel == .left
         } else {
             wideLeft = nextAttackUsesLeftFlank
             nextAttackUsesLeftFlank.toggle()
         }
         testLastAttackUsedLeftFlank = wideLeft
-        let pattern = authoritative?.attackPattern ?? .wideCross
+        let pattern = presentation?.attackPattern ?? .wideCross
         testLastAttackPattern = pattern
         let channelX = wideLeft ? 0.14 : 0.86
         let farPostX = wideLeft ? 0.62 : 0.38
@@ -630,8 +631,8 @@ final class LegendsMatchSimulation {
         if let finisher {
             runTargetOverrides[finisher.id] = finisherPoint
         }
-        let authoritativeKeeper = authoritative.flatMap { event -> PlayerSimState? in
-            guard let goalkeeperID = event.goalkeeperID else { return nil }
+        let authoritativeKeeper = presentation.flatMap { script -> PlayerSimState? in
+            guard let goalkeeperID = script.goalkeeperID else { return nil }
             return defenders.first { $0.id == goalkeeperID }
         }
         let keeper = authoritativeKeeper
@@ -646,7 +647,7 @@ final class LegendsMatchSimulation {
         // selector score (positioning/anticipation/tackling) among the
         // three closest to the wide run — closing-down duty goes to the
         // defender best equipped for it, not merely the nearest body.
-        if let authoritativeMarkerID = authoritative?.markerID,
+        if let authoritativeMarkerID = presentation?.markerID,
            outfieldDefenders.contains(where: { $0.id == authoritativeMarkerID }) {
             markerID = authoritativeMarkerID
         } else if outfieldDefenders.count > 3 {

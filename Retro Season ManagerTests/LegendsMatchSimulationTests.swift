@@ -652,6 +652,61 @@ final class LegendsMatchSimulationTests: XCTestCase {
                        "The renderer must honor the event's right channel")
     }
 
+    func testDetailedCommentaryAnd2DMovementConsumeTheSamePresentationScript() async {
+        let simulation = await freshSimulation()
+        let home = simulation.players.filter { $0.team == .home && $0.role != .goalkeeper }
+        let away = simulation.players.filter { $0.team == .away }
+        guard home.count >= 2,
+              let marker = away.first(where: { $0.role != .goalkeeper }),
+              let keeper = away.first(where: { $0.role == .goalkeeper }) else {
+            return XCTFail("Expected complete home and away teams")
+        }
+        let event = LegendsMatchEvent(
+            id: "single-script", minute: 36, side: .home,
+            outcome: .saved, channel: .right, attackPattern: .cutback,
+            creatorID: home[0].id, creatorName: home[0].name,
+            shooterID: home[1].id, shooterName: home[1].name,
+            markerID: marker.id, markerName: marker.name,
+            goalkeeperID: keeper.id, goalkeeperName: keeper.name,
+            expectedGoals: 0.38
+        )
+        let script = event.presentationScript
+
+        XCTAssertEqual(script.eventID, event.id)
+        XCTAssertEqual(script.creatorID, home[0].id)
+        XCTAssertEqual(script.shooterID, home[1].id)
+        XCTAssertEqual(script.markerID, marker.id)
+        XCTAssertEqual(script.goalkeeperID, keeper.id)
+        XCTAssertEqual(script.channel, .right)
+        XCTAssertEqual(script.attackPattern, .cutback)
+        XCTAssertTrue(script.detailedText.contains(home[0].name))
+        XCTAssertTrue(script.detailedText.contains(home[1].name))
+        XCTAssertTrue(script.detailedText.contains(marker.name))
+        XCTAssertTrue(script.detailedText.contains(keeper.name))
+        XCTAssertTrue(script.detailedText.contains("right"))
+        XCTAssertTrue(script.detailedText.contains("cuts the ball back"))
+        XCTAssertTrue(script.detailedText.contains("saves"))
+
+        simulation.trigger(event)
+        XCTAssertEqual(simulation.testLastAttackPattern, script.attackPattern)
+        XCTAssertEqual(simulation.testLastAttackUsedLeftFlank, false)
+        guard let creatorID = script.creatorID else {
+            return XCTFail("The scripted creator must remain available to the renderer")
+        }
+        XCTAssertNotNil(simulation.testRunTarget(for: creatorID))
+        XCTAssertNotNil(simulation.testRunTarget(for: script.shooterID))
+        XCTAssertEqual(simulation.testMarkerID(), script.markerID)
+
+        for _ in 0..<ticksToCompleteAnAttack where simulation.testHasActiveAttack() {
+            simulation.testAdvance(dt: 0.1)
+        }
+        XCTAssertEqual(simulation.lastImpact?.eventID, script.eventID)
+        XCTAssertEqual(simulation.lastImpact?.runnerID, script.creatorID)
+        XCTAssertEqual(simulation.lastImpact?.finisherID, script.shooterID)
+        XCTAssertEqual(simulation.lastImpact?.markerID, script.markerID)
+        XCTAssertEqual(simulation.lastImpact?.goalkeeperID, script.goalkeeperID)
+    }
+
     func testAuthoritativeAttackPatternsProduceDistinctPlayerRoutes() async {
         var creatorTargets = Set<String>()
         for pattern in LegendsMatchEvent.AttackPattern.allCases {
