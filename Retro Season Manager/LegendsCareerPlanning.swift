@@ -64,6 +64,12 @@ struct LegendsSeasonReportEntry: Codable, Hashable, Identifiable {
     let favourite: Bool
     let attributeDeltas: [String: Int]
     let enteredPrime: Bool
+    let trainingFocus: LegendsDevelopmentFocus
+    let trainingIntensity: LegendsTrainingIntensity
+    let trainingSessions: Int
+    let trainingProgress: Int
+    let trainingAttributeGains: [String: Int]
+    let trainingExplanation: String
     var id: String { cardID }
 
     init(cardID: String, playerName: String, completedSeason: Int, ageBefore: Int, ageAfter: Int,
@@ -72,7 +78,12 @@ struct LegendsSeasonReportEntry: Codable, Hashable, Identifiable {
          stable: Bool, declined: Bool, enteredFinalSeason: Bool, retired: Bool,
          retirementRecordID: String? = nil, portraitReference: String? = nil,
          position: DetailedPosition = .goalkeeper, favourite: Bool = false,
-         attributeDeltas: [String: Int] = [:], enteredPrime: Bool = false) {
+         attributeDeltas: [String: Int] = [:], enteredPrime: Bool = false,
+         trainingFocus: LegendsDevelopmentFocus = .balanced,
+         trainingIntensity: LegendsTrainingIntensity = .normal,
+         trainingSessions: Int = 0, trainingProgress: Int = 0,
+         trainingAttributeGains: [String: Int] = [:],
+         trainingExplanation: String = "No training completed.") {
         self.cardID = cardID; self.playerName = playerName; self.completedSeason = completedSeason
         self.ageBefore = ageBefore; self.ageAfter = ageAfter; self.overallBefore = overallBefore
         self.overallAfter = overallAfter; self.previousStage = previousStage; self.newStage = newStage
@@ -81,9 +92,13 @@ struct LegendsSeasonReportEntry: Codable, Hashable, Identifiable {
         self.retirementRecordID = retirementRecordID; self.portraitReference = portraitReference
         self.position = position; self.favourite = favourite; self.attributeDeltas = attributeDeltas
         self.enteredPrime = enteredPrime
+        self.trainingFocus = trainingFocus; self.trainingIntensity = trainingIntensity
+        self.trainingSessions = trainingSessions; self.trainingProgress = trainingProgress
+        self.trainingAttributeGains = trainingAttributeGains
+        self.trainingExplanation = trainingExplanation
     }
 
-    private enum CodingKeys: String, CodingKey { case cardID, playerName, completedSeason, ageBefore, ageAfter, overallBefore, overallAfter, previousStage, newStage, developmentProfile, improved, stable, declined, enteredFinalSeason, retired, retirementRecordID, portraitReference, position, favourite, attributeDeltas, enteredPrime }
+    private enum CodingKeys: String, CodingKey { case cardID, playerName, completedSeason, ageBefore, ageAfter, overallBefore, overallAfter, previousStage, newStage, developmentProfile, improved, stable, declined, enteredFinalSeason, retired, retirementRecordID, portraitReference, position, favourite, attributeDeltas, enteredPrime, trainingFocus, trainingIntensity, trainingSessions, trainingProgress, trainingAttributeGains, trainingExplanation }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         cardID = try c.decodeIfPresent(String.self, forKey: .cardID) ?? ""; playerName = try c.decodeIfPresent(String.self, forKey: .playerName) ?? ""
@@ -94,6 +109,12 @@ struct LegendsSeasonReportEntry: Codable, Hashable, Identifiable {
         improved = try c.decodeIfPresent(Bool.self, forKey: .improved) ?? false; stable = try c.decodeIfPresent(Bool.self, forKey: .stable) ?? false; declined = try c.decodeIfPresent(Bool.self, forKey: .declined) ?? false
         enteredFinalSeason = try c.decodeIfPresent(Bool.self, forKey: .enteredFinalSeason) ?? false; retired = try c.decodeIfPresent(Bool.self, forKey: .retired) ?? false; retirementRecordID = try c.decodeIfPresent(String.self, forKey: .retirementRecordID)
         portraitReference = try c.decodeIfPresent(String.self, forKey: .portraitReference); position = try c.decodeIfPresent(DetailedPosition.self, forKey: .position) ?? .goalkeeper; favourite = try c.decodeIfPresent(Bool.self, forKey: .favourite) ?? false; attributeDeltas = try c.decodeIfPresent([String: Int].self, forKey: .attributeDeltas) ?? [:]; enteredPrime = try c.decodeIfPresent(Bool.self, forKey: .enteredPrime) ?? false
+        trainingFocus = try c.decodeIfPresent(LegendsDevelopmentFocus.self, forKey: .trainingFocus) ?? .balanced
+        trainingIntensity = try c.decodeIfPresent(LegendsTrainingIntensity.self, forKey: .trainingIntensity) ?? .normal
+        trainingSessions = try c.decodeIfPresent(Int.self, forKey: .trainingSessions) ?? 0
+        trainingProgress = try c.decodeIfPresent(Int.self, forKey: .trainingProgress) ?? 0
+        trainingAttributeGains = try c.decodeIfPresent([String: Int].self, forKey: .trainingAttributeGains) ?? [:]
+        trainingExplanation = try c.decodeIfPresent(String.self, forKey: .trainingExplanation) ?? "No training completed."
     }
 }
 

@@ -47,9 +47,20 @@ private struct LegendsSeasonReportDetailView: View {
         Section(title) {
             if entries.isEmpty { Text("None").foregroundStyle(.secondary) }
             ForEach(entries) { entry in
-                HStack {
-                    VStack(alignment: .leading) { Text(entry.playerName).font(.headline); Text("AGE \(entry.ageBefore) → \(entry.ageAfter) · OVR \(entry.overallBefore) → \(entry.overallAfter)").font(.caption).foregroundStyle(.secondary) }
-                    Spacer(); Text(entry.developmentProfile.rawValue).font(.caption2).multilineTextAlignment(.trailing)
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(entry.playerName).font(.headline)
+                        Text("AGE \(entry.ageBefore) → \(entry.ageAfter) · OVR \(entry.overallBefore) → \(entry.overallAfter)").font(.caption).foregroundStyle(.secondary)
+                        Text("\(entry.trainingFocus.rawValue) · \(entry.trainingIntensity.rawValue) · \(entry.trainingSessions) SESSIONS")
+                            .font(.caption2).fontWeight(.bold).foregroundStyle(.secondary)
+                        if !entry.trainingAttributeGains.isEmpty {
+                            Text(entry.trainingAttributeGains.keys.sorted().map { "\($0) +\(entry.trainingAttributeGains[$0] ?? 0)" }.joined(separator: " · "))
+                                .font(.caption2).foregroundStyle(.green)
+                        }
+                        Text(entry.trainingExplanation).font(.caption2).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Text(entry.developmentProfile.rawValue).font(.caption2).multilineTextAlignment(.trailing)
                 }
                 .accessibilityIdentifier("legends.report.\(entry.cardID)")
             }

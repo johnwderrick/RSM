@@ -153,6 +153,10 @@ struct LegendsPlayerDetailView: View {
     private var collectionPanel: some View {
         Panel(title: "UNSIGNED · CAREER NOT STARTED") {
             VStack(spacing: 10) {
+                Text("SIGN THIS PLAYER TO BEGIN TRAINING AND CAREER DEVELOPMENT")
+                    .font(.system(.caption, design: .monospaced).bold())
+                    .foregroundStyle(Retro.highlight)
+                    .multilineTextAlignment(.center)
                 Text("Age frozen at \(card.age). Signing starts this player's career clock and makes them eligible for the Active Club.")
                     .font(.system(.footnote, design: .monospaced))
                     .foregroundStyle(Retro.highlight)
@@ -313,6 +317,47 @@ struct LegendsPlayerDetailView: View {
                     statRow("SEASON", "S\(store.profile.currentSeason) of career")
                     statRow("TRAINING", "\(state.trainingSessionsThisSeason)/\(LegendsStore.maxTrainingSessionsPerSeason) sessions this season")
                     statRow("APPEARANCES", "\(state.seasonAppearances) this season · \(state.starts) starts")
+                    HStack(spacing: 8) {
+                        Menu("FOCUS: \(state.trainingPlan.focus.rawValue)") {
+                            ForEach(store.availableDevelopmentFocuses(for: card)) { option in
+                                Button(option.rawValue) { store.setDevelopmentFocus(option, for: card.id) }
+                            }
+                        }
+                        .accessibilityIdentifier("legends.training.focusPicker")
+                        Menu("INTENSITY: \(state.trainingPlan.intensity.rawValue)") {
+                            ForEach(LegendsTrainingIntensity.allCases) { option in
+                                Button(option.rawValue) { store.setTrainingIntensity(option, for: card.id) }
+                            }
+                        }
+                        .accessibilityIdentifier("legends.training.intensityPicker")
+                    }
+                    .font(.system(size: 9, weight: .black, design: .monospaced))
+                    Button {
+                        if store.trainPlayer(card.id) { Haptics.success() }
+                        else { Haptics.error() }
+                    } label: {
+                        Text(state.trainingSessionsThisSeason < LegendsStore.maxTrainingSessionsPerSeason
+                             ? "START TRAINING SESSION" : "SEASONAL SESSIONS COMPLETE")
+                            .font(.system(size: 10, weight: .black, design: .monospaced))
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(LegendsPalette.green)
+                    .disabled(state.trainingSessionsThisSeason >= LegendsStore.maxTrainingSessionsPerSeason)
+                    .accessibilityIdentifier("legends.training.start")
+                    ProgressView(value: Double(state.trainingPlan.seasonProgress % 100), total: 100)
+                        .tint(LegendsPalette.green)
+                        .accessibilityIdentifier("legends.training.playerProgress")
+                    Text(state.trainingPlan.lastExplanation)
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundStyle(Retro.text.opacity(0.72))
+                    if !state.trainingPlan.recentAttributeGains.isEmpty {
+                        Text(state.trainingPlan.recentAttributeGains.keys.sorted().map {
+                            "\($0) +\(state.trainingPlan.recentAttributeGains[$0] ?? 0)"
+                        }.joined(separator: " · "))
+                        .font(.system(.caption2, design: .monospaced).bold())
+                        .foregroundStyle(Retro.emerald)
+                    }
                     if let event {
                         Text(event.rawValue)
                             .font(.system(.caption, design: .monospaced))
@@ -322,6 +367,16 @@ struct LegendsPlayerDetailView: View {
                     Text("Young players develop through matches and training; minutes matter. Players past their peak decline instead.")
                         .font(.system(.caption2, design: .monospaced))
                         .foregroundStyle(Retro.text.opacity(0.6))
+                    if !state.trainingPlan.history.isEmpty {
+                        Divider()
+                        Text("RECENT TRAINING")
+                            .font(.system(size: 9, weight: .black, design: .monospaced))
+                        ForEach(state.trainingPlan.history.suffix(3).reversed()) { record in
+                            Text("S\(record.season) · \(record.focus.rawValue) · +\(record.progress) progress")
+                                .font(.system(.caption2, design: .monospaced))
+                                .foregroundStyle(Retro.text.opacity(0.65))
+                        }
+                    }
                 }
             }
         }
