@@ -307,7 +307,7 @@ struct LegendsPlayerCareer: Codable, Hashable {
 /// later; the new pull starts a new `careerID` and gets a new story.
 struct LegendsHallEntry: Codable, Hashable, Identifiable {
     private enum CodingKeys: String, CodingKey {
-        case id, cardID, playerName, position, nation, startingAge, startingOverall, highestOverall, finalAge, appearances, goals, assists, cleanSheets, seasonsAtClub, signedSeason, retiredSeason, finalOverall, trophies, milestones, isClubLegend, legacyScore, careerHistory, identityProfile, finalCondition, honours, individualAwards, finalTrainingPlan, finalDetailedAttributes
+        case id, cardID, playerName, position, nation, startingAge, startingOverall, highestOverall, finalAge, appearances, goals, assists, cleanSheets, seasonsAtClub, signedSeason, retiredSeason, finalOverall, trophies, milestones, isClubLegend, legacyScore, careerHistory, identityProfile, finalCondition, honours, individualAwards, finalTrainingPlan, finalTrainingSessions, finalDetailedAttributes
     }
     let id: String
     let cardID: String
@@ -337,6 +337,7 @@ struct LegendsHallEntry: Codable, Hashable, Identifiable {
     let honours: [LegendsHonour]
     let individualAwards: [LegendsIndividualAward]
     let finalTrainingPlan: LegendsTrainingPlan
+    let finalTrainingSessions: Int
     let finalDetailedAttributes: LegendsDetailedAttributes
 
     init(id: String, cardID: String, playerName: String, position: DetailedPosition,
@@ -345,7 +346,7 @@ struct LegendsHallEntry: Codable, Hashable, Identifiable {
          seasonsAtClub: Int, signedSeason: Int, retiredSeason: Int,
          finalOverall: Int = 0, trophies: Int = 0,
          milestones: Set<LegendsCareerMilestone> = [], isClubLegend: Bool = false,
-         legacyScore: Int = 0, careerHistory: [LegendsSeasonRecord] = [], identityProfile: LegendsPlayerIdentityProfile? = nil, finalCondition: LegendsPlayerCondition = LegendsPlayerCondition(), honours: [LegendsHonour] = [], individualAwards: [LegendsIndividualAward] = [], finalTrainingPlan: LegendsTrainingPlan = LegendsTrainingPlan(), finalDetailedAttributes: LegendsDetailedAttributes = .zero) {
+         legacyScore: Int = 0, careerHistory: [LegendsSeasonRecord] = [], identityProfile: LegendsPlayerIdentityProfile? = nil, finalCondition: LegendsPlayerCondition = LegendsPlayerCondition(), honours: [LegendsHonour] = [], individualAwards: [LegendsIndividualAward] = [], finalTrainingPlan: LegendsTrainingPlan = LegendsTrainingPlan(), finalTrainingSessions: Int = 0, finalDetailedAttributes: LegendsDetailedAttributes = .zero) {
         self.id = id
         self.cardID = cardID
         self.playerName = playerName
@@ -373,6 +374,7 @@ struct LegendsHallEntry: Codable, Hashable, Identifiable {
         self.honours = honours
         self.individualAwards = individualAwards
         self.finalTrainingPlan = finalTrainingPlan
+        self.finalTrainingSessions = finalTrainingSessions
         self.finalDetailedAttributes = finalDetailedAttributes
     }
 
@@ -412,6 +414,7 @@ struct LegendsHallEntry: Codable, Hashable, Identifiable {
         honours = try c.decodeIfPresent([LegendsHonour].self, forKey: .honours) ?? []
         individualAwards = try c.decodeIfPresent([LegendsIndividualAward].self, forKey: .individualAwards) ?? []
         finalTrainingPlan = try c.decodeIfPresent(LegendsTrainingPlan.self, forKey: .finalTrainingPlan) ?? LegendsTrainingPlan()
+        finalTrainingSessions = try c.decodeIfPresent(Int.self, forKey: .finalTrainingSessions) ?? 0
         finalDetailedAttributes = try c.decodeIfPresent(LegendsDetailedAttributes.self, forKey: .finalDetailedAttributes) ?? .zero
     }
 }
@@ -1003,6 +1006,7 @@ extension LegendsStore {
                                                      honours: state.honours,
                                                      individualAwards: state.individualAwards,
                                                      finalTrainingPlan: state.trainingPlan,
+                                                     finalTrainingSessions: state.trainingSessions,
                                                      finalDetailedAttributes: detailedAttributes(for: card)))
     }
 

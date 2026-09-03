@@ -531,6 +531,7 @@ final class LegendsPoint3TrainingTests: XCTestCase {
         let alumni = store.profile.legendsHall.first { $0.cardID == card.id }
         XCTAssertEqual(alumni?.finalTrainingPlan.focus, .shooting)
         XCTAssertEqual(alumni?.finalTrainingPlan.history.count, 1)
+        XCTAssertEqual(alumni?.finalTrainingSessions, 1)
         XCTAssertEqual(alumni?.finalDetailedAttributes, trained)
         XCTAssertNil(store.profile.playerCareers[card.id])
         XCTAssertFalse(store.trainPlayer(card.id))
@@ -613,6 +614,7 @@ final class LegendsPoint3TrainingTests: XCTestCase {
         let alumni = try JSONDecoder().decode(LegendsHallEntry.self, from: Data("{}".utf8))
         XCTAssertEqual(alumni.finalTrainingPlan.focus, .balanced)
         XCTAssertTrue(alumni.finalTrainingPlan.history.isEmpty)
+        XCTAssertEqual(alumni.finalTrainingSessions, 0)
         XCTAssertEqual(alumni.finalDetailedAttributes, .zero)
     }
 }

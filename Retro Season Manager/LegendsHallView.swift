@@ -331,7 +331,7 @@ private struct LegendsHallEntryDetailView: View {
                         VStack(alignment: .leading, spacing: 6) {
                             detailLine("Focus", entry.finalTrainingPlan.focus.rawValue)
                             detailLine("Intensity", entry.finalTrainingPlan.intensity.rawValue)
-                            detailLine("Training sessions", "\(entry.finalTrainingPlan.history.count)")
+                            detailLine("Training sessions", "\(entry.finalTrainingSessions)")
                             Text(entry.finalTrainingPlan.lastExplanation)
                                 .font(.system(.caption2, design: .monospaced))
                                 .foregroundStyle(Retro.text.opacity(0.65))
