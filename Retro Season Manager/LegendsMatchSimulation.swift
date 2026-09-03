@@ -220,6 +220,17 @@ private struct PendingAttack {
     }
 }
 
+/// The visible choice made by the player in possession during continuous
+/// open play. These decisions affect only how the authoritative match is
+/// represented; they never create goals or rewrite engine outcomes.
+enum LegendsAmbientAction: String, Equatable {
+    case carry
+    case progressivePass
+    case recycle
+    case switchPlay
+    case interceptedPass
+}
+
 // Deliberately not @Observable: the rendering view drives its Canvas
 // redraws off TimelineView's own per-frame ticks (see
 // LegendsLiveMatchPitchView.swift), not Observation change-tracking, so
@@ -270,6 +281,7 @@ final class LegendsMatchSimulation {
     /// and made snapshot tests order-dependent.
     private var nextAttackUsesLeftFlank = true
     private(set) var testLastAttackUsedLeftFlank: Bool?
+    private(set) var testLastAttackPattern: LegendsMatchEvent.AttackPattern?
 
     // MARK: - Possession
 
@@ -295,9 +307,11 @@ final class LegendsMatchSimulation {
     private var ambientHoldElapsed = 0.0
     private var ambientCompletedPasses = 0
     private var ambientSequencePasses = 0
+    private var ambientDecisionIndex = 0
+    private(set) var testLastAmbientAction: LegendsAmbientAction?
+    private(set) var testAmbientActionHistory: [LegendsAmbientAction] = []
 
     private let ambientHoldDuration = 0.55
-    private let ambientTurnoverInterval = 6
 
     /// The two attacking runners, the defending goalkeeper, and the
     /// marking defender from an active attack sequence, each mapped to a
@@ -520,29 +534,62 @@ final class LegendsMatchSimulation {
             nextAttackUsesLeftFlank.toggle()
         }
         testLastAttackUsedLeftFlank = wideLeft
-        let wideX = wideLeft ? 0.14 : 0.86
+        let pattern = authoritative?.attackPattern ?? .wideCross
+        testLastAttackPattern = pattern
+        let channelX = wideLeft ? 0.14 : 0.86
         let farPostX = wideLeft ? 0.62 : 0.38
         let nearPostX = wideLeft ? 0.38 : 0.62
 
-        var widePoint = CGPoint(x: wideX, y: 0.16)
-        var finisherPoint = CGPoint(x: 0.5, y: 0.06)
-        var keeperDivePoint = CGPoint(x: nearPostX, y: 0.03)
+        /// Coordinates are described for a home attack toward y=0, then
+        /// mirrored for the away team. Every route still ends with the exact
+        /// authoritative shooter/outcome selected by the match engine.
+        func attackPoint(_ x: Double, _ homeY: Double) -> CGPoint {
+            CGPoint(x: x, y: forUser ? homeY : 1 - homeY)
+        }
+
+        let buildupOne: CGPoint
+        let buildupTwo: CGPoint
+        let creatorPoint: CGPoint
+        let finisherPoint: CGPoint
+        switch pattern {
+        case .wideCross:
+            buildupOne = attackPoint(0.50, 0.42)
+            buildupTwo = attackPoint(0.50, 0.28)
+            creatorPoint = attackPoint(channelX, 0.16)
+            finisherPoint = attackPoint(0.50, 0.06)
+        case .cutback:
+            buildupOne = attackPoint(wideLeft ? 0.42 : 0.58, 0.38)
+            buildupTwo = attackPoint(wideLeft ? 0.28 : 0.72, 0.24)
+            creatorPoint = attackPoint(channelX, 0.055)
+            finisherPoint = attackPoint(wideLeft ? 0.42 : 0.58, 0.105)
+        case .centralCombination:
+            buildupOne = attackPoint(wideLeft ? 0.44 : 0.56, 0.40)
+            buildupTwo = attackPoint(wideLeft ? 0.40 : 0.60, 0.26)
+            creatorPoint = attackPoint(wideLeft ? 0.44 : 0.56, 0.17)
+            finisherPoint = attackPoint(0.50, 0.065)
+        case .counterAttack:
+            buildupOne = attackPoint(wideLeft ? 0.38 : 0.62, 0.62)
+            buildupTwo = attackPoint(wideLeft ? 0.32 : 0.68, 0.42)
+            creatorPoint = attackPoint(wideLeft ? 0.34 : 0.66, 0.25)
+            finisherPoint = attackPoint(0.50, 0.075)
+        case .longShot:
+            buildupOne = attackPoint(wideLeft ? 0.40 : 0.60, 0.42)
+            buildupTwo = attackPoint(wideLeft ? 0.45 : 0.55, 0.32)
+            creatorPoint = attackPoint(wideLeft ? 0.43 : 0.57, 0.25)
+            finisherPoint = attackPoint(0.50, 0.205)
+        }
+
+        let keeperDivePoint = attackPoint(nearPostX, 0.03)
         // A goal beats the keeper at the far post; a save meets them
         // exactly where they're diving to — same point, so the two
         // waypoints below (shot and keeper) are deliberately identical
         // for `!scored`.
-        var shotPoint = scored ? CGPoint(x: farPostX, y: 0.015) : keeperDivePoint
-        if !forUser {
-            widePoint.y = 1 - widePoint.y
-            finisherPoint.y = 1 - finisherPoint.y
-            shotPoint.y = 1 - shotPoint.y
-            keeperDivePoint.y = 1 - keeperDivePoint.y
-        }
+        let shotPoint = scored ? attackPoint(farPostX, 0.015) : keeperDivePoint
 
         var points: [BallWaypoint] = [
-            .fixed(CGPoint(x: 0.5, y: forUser ? 0.42 : 0.58)),
-            .fixed(CGPoint(x: 0.5, y: forUser ? 0.28 : 0.72)),
-            wideRunner.map { BallWaypoint.followPlayer(id: $0.id, fallback: widePoint) } ?? .fixed(widePoint),
+            .fixed(buildupOne),
+            .fixed(buildupTwo),
+            wideRunner.map { BallWaypoint.followPlayer(id: $0.id, fallback: creatorPoint) } ?? .fixed(creatorPoint),
             finisher.map { BallWaypoint.followPlayer(id: $0.id, fallback: finisherPoint) } ?? .fixed(finisherPoint),
             .fixed(shotPoint),
         ]
@@ -555,7 +602,7 @@ final class LegendsMatchSimulation {
         waypointIndex = 0
         runTargetOverrides.removeAll()
         if let wideRunner {
-            runTargetOverrides[wideRunner.id] = widePoint
+            runTargetOverrides[wideRunner.id] = creatorPoint
         }
         if let finisher {
             runTargetOverrides[finisher.id] = finisherPoint
@@ -582,7 +629,7 @@ final class LegendsMatchSimulation {
         } else if outfieldDefenders.count > 3 {
             let nearestThree = Array(
                 outfieldDefenders
-                    .sorted { distance($0.position, widePoint) < distance($1.position, widePoint) }
+                    .sorted { distance($0.position, creatorPoint) < distance($1.position, creatorPoint) }
                     .prefix(3)
             )
             let closest = nearestThree.max { lhs, rhs in
@@ -590,7 +637,7 @@ final class LegendsMatchSimulation {
             }
             markerID = closest?.id
         } else {
-            markerID = outfieldDefenders.min(by: { distance($0.position, widePoint) < distance($1.position, widePoint) })?.id
+            markerID = outfieldDefenders.min(by: { distance($0.position, creatorPoint) < distance($1.position, creatorPoint) })?.id
         }
         if let markerID {
             runTargetOverrides[markerID] = players.first(where: { $0.id == markerID })?.position
@@ -682,6 +729,7 @@ final class LegendsMatchSimulation {
     func testAmbientPresserID() -> String? { ambientPresserID }
     func testAmbientCompletedPasses() -> Int { ambientCompletedPasses }
     func testHasActiveAttack() -> Bool { activeAttack != nil }
+    func testRunTarget(for playerID: String) -> CGPoint? { runTargetOverrides[playerID] }
 
     private func loop() async {
         var lastTick = Date()
@@ -786,19 +834,53 @@ final class LegendsMatchSimulation {
         ambientHoldElapsed += dt
         guard ambientHoldElapsed >= ambientHoldDuration else { return }
 
-        if ambientSequencePasses >= ambientTurnoverInterval,
-           let interceptor = Self.closestOutfieldPlayer(
-               in: players, team: possessionTeam.opposite, to: ball.position
-           ) {
-            ambientPassTargetID = interceptor.id
-            pendingAmbientTurnoverTeam = possessionTeam.opposite
+        ambientDecisionIndex += 1
+        let presser = players.first { $0.id == ambientPresserID }
+        let pressureDistance = presser.map { distance($0.position, possessor.position) } ?? 1
+        let pressured = pressureDistance < 0.14
+        let dribbling = LegendsMatchSelectors.dribbling(possessor.detailed)
+        let defending = presser.map { LegendsMatchSelectors.defending($0.detailed) } ?? 50
+
+        let action: LegendsAmbientAction
+        if pressured {
+            action = ambientDecisionIndex.isMultiple(of: 2) ? .recycle : .switchPlay
+        } else if dribbling > defending + 8 && ambientDecisionIndex.isMultiple(of: 4) {
+            action = .carry
+        } else if ambientDecisionIndex.isMultiple(of: 5) {
+            action = .switchPlay
+        } else if ambientSequencePasses > 1 && ambientDecisionIndex.isMultiple(of: 3) {
+            action = .recycle
+        } else {
+            action = .progressivePass
+        }
+
+        if action == .carry {
+            recordAmbientAction(.carry)
             ambientHoldElapsed = 0
             return
         }
 
-        if let receiver = choosePassRecipient(from: possessor) {
-            ambientPassTargetID = receiver.id
+        if let receiver = choosePassRecipient(from: possessor, action: action) {
+            if passWillBeIntercepted(from: possessor, to: receiver, presser: presser),
+               let interceptor = Self.closestOutfieldPlayer(
+                   in: players, team: possessionTeam.opposite, to: midpoint(possessor.position, receiver.position)
+               ) {
+                recordAmbientAction(.interceptedPass)
+                ambientPassTargetID = interceptor.id
+                pendingAmbientTurnoverTeam = possessionTeam.opposite
+            } else {
+                recordAmbientAction(action)
+                ambientPassTargetID = receiver.id
+            }
             ambientHoldElapsed = 0
+        }
+    }
+
+    private func recordAmbientAction(_ action: LegendsAmbientAction) {
+        testLastAmbientAction = action
+        testAmbientActionHistory.append(action)
+        if testAmbientActionHistory.count > 100 {
+            testAmbientActionHistory.removeFirst(testAmbientActionHistory.count - 100)
         }
     }
 
@@ -850,27 +932,38 @@ final class LegendsMatchSimulation {
         }.first
     }
 
-    /// Selects a plausible nearby option. Most passes progress toward goal;
-    /// every third completed pass favours recycling possession, preventing a
-    /// repetitive straight-line march. First-touch quality helps a receiver
-    /// without overpowering spacing and direction.
-    private func choosePassRecipient(from possessor: PlayerSimState) -> PlayerSimState? {
+    /// Selects a teammate for the chosen football action. Progressive passes
+    /// seek useful vertical gain, recycling offers a safe backward angle and
+    /// switches favour the opposite side of the pitch.
+    private func choosePassRecipient(
+        from possessor: PlayerSimState,
+        action: LegendsAmbientAction
+    ) -> PlayerSimState? {
         var candidates = players.filter {
             $0.team == possessor.team && $0.id != possessor.id && $0.role != .goalkeeper
         }
         if candidates.count > 1, let previousID = ambientPreviousPossessorID {
             candidates.removeAll { $0.id == previousID }
         }
-        let recycle = ambientSequencePasses % 3 == 2
         let attackDirection = possessor.team == .home ? -1.0 : 1.0
 
         func score(_ candidate: PlayerSimState) -> Double {
             let separation = distance(possessor.position, candidate.position)
             let forwardProgress = (candidate.position.y - possessor.position.y) * attackDirection
             let idealDistance = 1.0 - min(1.0, abs(separation - 0.24) / 0.24)
-            let directionScore = recycle ? -forwardProgress : forwardProgress
             let control = Double(LegendsMatchSelectors.firstTouch(candidate.detailed)) / 99.0
-            return idealDistance * 1.8 + directionScore * 1.4 + control * 0.25
+            let directionScore: Double
+            switch action {
+            case .progressivePass:
+                directionScore = forwardProgress * 1.7
+            case .recycle:
+                directionScore = -forwardProgress * 1.45
+            case .switchPlay:
+                directionScore = abs(candidate.position.x - possessor.position.x) * 1.8
+            case .carry, .interceptedPass:
+                directionScore = forwardProgress
+            }
+            return idealDistance * 1.6 + directionScore + control * 0.25
         }
 
         return candidates.sorted {
@@ -879,6 +972,30 @@ final class LegendsMatchSimulation {
             if abs(lhs - rhs) > 0.0001 { return lhs > rhs }
             return $0.id < $1.id
         }.first
+    }
+
+    /// Deterministic pass-risk model. Distance, pressure and the nearest
+    /// defender raise risk; passing and first touch lower it. A stable action
+    /// index replaces random rolls so identical simulations remain identical.
+    private func passWillBeIntercepted(
+        from passer: PlayerSimState,
+        to receiver: PlayerSimState,
+        presser: PlayerSimState?
+    ) -> Bool {
+        let passDistance = distance(passer.position, receiver.position)
+        let passing = LegendsMatchSelectors.passing(passer.detailed)
+        let touch = LegendsMatchSelectors.firstTouch(receiver.detailed)
+        let defending = presser.map { LegendsMatchSelectors.defending($0.detailed) } ?? 50
+        let pressure = presser.map { max(0, 0.20 - distance($0.position, passer.position)) * 220 } ?? 0
+        let risk = max(5.0, min(55.0,
+            10 + passDistance * 55 + pressure + Double(defending - passing) * 0.20 - Double(touch - 50) * 0.08
+        ))
+        let stableRoll = (ambientDecisionIndex * 37 + ambientSequencePasses * 17 + passer.id.count * 11 + receiver.id.count * 7) % 100
+        return Double(stableRoll) < risk
+    }
+
+    private func midpoint(_ first: CGPoint, _ second: CGPoint) -> CGPoint {
+        CGPoint(x: (first.x + second.x) / 2, y: (first.y + second.y) / 2)
     }
 
     private func moveBall(toward target: CGPoint, speed: Double, dt: Double) -> Bool {
