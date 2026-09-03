@@ -177,15 +177,27 @@ struct BallImpact: Equatable {
     let runnerName: String?
     let finisherName: String?
     let markerName: String?
+    let eventID: String?
+    let runnerID: String?
+    let finisherID: String?
+    let markerID: String?
+    let goalkeeperID: String?
 
     init(position: CGPoint, kind: Kind, time: Date,
-         runnerName: String? = nil, finisherName: String? = nil, markerName: String? = nil) {
+         runnerName: String? = nil, finisherName: String? = nil, markerName: String? = nil,
+         eventID: String? = nil, runnerID: String? = nil, finisherID: String? = nil,
+         markerID: String? = nil, goalkeeperID: String? = nil) {
         self.position = position
         self.kind = kind
         self.time = time
         self.runnerName = runnerName
         self.finisherName = finisherName
         self.markerName = markerName
+        self.eventID = eventID
+        self.runnerID = runnerID
+        self.finisherID = finisherID
+        self.markerID = markerID
+        self.goalkeeperID = goalkeeperID
     }
 }
 
@@ -195,6 +207,17 @@ struct BallImpact: Equatable {
 private struct PendingAttack {
     let forUser: Bool
     let scored: Bool
+    let event: LegendsMatchEvent?
+
+    init(forUser: Bool, scored: Bool, event: LegendsMatchEvent? = nil) {
+        self.forUser = forUser
+        self.scored = scored
+        self.event = event
+    }
+
+    init(event: LegendsMatchEvent) {
+        self.init(forUser: event.isUserEvent, scored: event.scored, event: event)
+    }
 }
 
 // Deliberately not @Observable: the rendering view drives its Canvas
@@ -223,7 +246,7 @@ final class LegendsMatchSimulation {
     /// rather than a repeating list of fixed pitch coordinates.
     private var waypoints: [BallWaypoint] = []
     private var waypointIndex = 0
-    private var pendingImpact: (index: Int, kind: BallImpact.Kind, runnerName: String?, finisherName: String?, markerName: String?)?
+    private var pendingImpact: (index: Int, kind: BallImpact.Kind, runnerName: String?, finisherName: String?, markerName: String?, eventID: String?, runnerID: String?, finisherID: String?, markerID: String?, goalkeeperID: String?)?
 
     /// The attack sequence currently playing out, if any — set by
     /// `startAttack` and cleared the instant the sequence's last waypoint
@@ -428,22 +451,35 @@ final class LegendsMatchSimulation {
     /// far post (away from the cross side) while the keeper commits to
     /// the near post — wrong-footed, beaten by design.
     func triggerAttack(forUser: Bool, scored: Bool) {
+        enqueueOrStart(PendingAttack(forUser: forUser, scored: scored))
+    }
+
+    /// Production entry point. The engine has already chosen every actor,
+    /// outcome and channel; the renderer only animates that immutable event.
+    func trigger(_ event: LegendsMatchEvent) {
+        enqueueOrStart(PendingAttack(event: event))
+    }
+
+    private func enqueueOrStart(_ attack: PendingAttack) {
         // A sequence is already mid-flight (or queued) — the single-ball
         // model can only play one at a time, so this one waits its turn
         // rather than replacing the in-flight sequence and dropping the
         // first event's on-pitch moment (Phase 9).
         guard activeAttack == nil else {
-            attackQueue.append(PendingAttack(forUser: forUser, scored: scored))
+            attackQueue.append(attack)
             return
         }
-        startAttack(forUser: forUser, scored: scored)
+        startAttack(attack)
     }
 
     /// Builds and starts one attack sequence for the given side/outcome —
     /// the shared body behind both an immediate `triggerAttack` and a
     /// dequeued follow-up (see `advanceBall`'s resolution branch).
-    private func startAttack(forUser: Bool, scored: Bool) {
-        activeAttack = PendingAttack(forUser: forUser, scored: scored)
+    private func startAttack(_ attack: PendingAttack) {
+        let forUser = attack.forUser
+        let scored = attack.scored
+        let authoritative = attack.event
+        activeAttack = attack
         testAttackStartCount += 1
         possessionTeam = forUser ? .home : .away
         ambientPassTargetID = nil
@@ -462,17 +498,27 @@ final class LegendsMatchSimulation {
         // the finisher is the best shooting/positioning candidate among
         // the finishing roles. Deterministic on the roster — no extra
         // randomness beyond the deterministic flank rotation below.
-        let wideRunner = Self.pickRunner(
-            from: attackers, preferring: Self.wideRunnerPreference,
-            score: { LegendsMatchSelectors.passing($0.detailed) + $0.detailed.sprintSpeed }
-        )
-        let finisher = Self.pickRunner(
-            from: attackers.filter { $0.id != wideRunner?.id }, preferring: Self.finisherPreference,
-            score: { LegendsMatchSelectors.shooting($0.detailed) + $0.detailed.positioning }
-        )
+        let authoritativeRunner = authoritative.flatMap { event -> PlayerSimState? in
+            guard let creatorID = event.creatorID else { return nil }
+            return attackers.first { $0.id == creatorID }
+        }
+        let wideRunner = authoritativeRunner
+            ?? Self.pickRunner(from: attackers, preferring: Self.wideRunnerPreference,
+                               score: { LegendsMatchSelectors.passing($0.detailed) + $0.detailed.sprintSpeed })
+        let authoritativeFinisher = authoritative.flatMap { event in
+            attackers.first { $0.id == event.shooterID }
+        }
+        let finisher = authoritativeFinisher
+            ?? Self.pickRunner(from: attackers.filter { $0.id != wideRunner?.id }, preferring: Self.finisherPreference,
+                               score: { LegendsMatchSelectors.shooting($0.detailed) + $0.detailed.positioning })
 
-        let wideLeft = nextAttackUsesLeftFlank
-        nextAttackUsesLeftFlank.toggle()
+        let wideLeft: Bool
+        if let authoritative {
+            wideLeft = authoritative.channel == .left
+        } else {
+            wideLeft = nextAttackUsesLeftFlank
+            nextAttackUsesLeftFlank.toggle()
+        }
         testLastAttackUsedLeftFlank = wideLeft
         let wideX = wideLeft ? 0.14 : 0.86
         let farPostX = wideLeft ? 0.62 : 0.38
@@ -507,14 +553,6 @@ final class LegendsMatchSimulation {
 
         waypoints = points
         waypointIndex = 0
-        pendingImpact = (
-            impactIndex,
-            scored ? .goal : .chance,
-            wideRunner?.name,
-            finisher?.name,
-            markerID.flatMap { id in players.first(where: { $0.id == id })?.name }
-        )
-
         runTargetOverrides.removeAll()
         if let wideRunner {
             runTargetOverrides[wideRunner.id] = widePoint
@@ -522,7 +560,13 @@ final class LegendsMatchSimulation {
         if let finisher {
             runTargetOverrides[finisher.id] = finisherPoint
         }
-        if let keeper = defenders.first(where: { $0.role == .goalkeeper }) {
+        let authoritativeKeeper = authoritative.flatMap { event -> PlayerSimState? in
+            guard let goalkeeperID = event.goalkeeperID else { return nil }
+            return defenders.first { $0.id == goalkeeperID }
+        }
+        let keeper = authoritativeKeeper
+            ?? defenders.first(where: { $0.role == .goalkeeper })
+        if let keeper {
             runTargetOverrides[keeper.id] = keeperDivePoint
         }
 
@@ -532,7 +576,10 @@ final class LegendsMatchSimulation {
         // selector score (positioning/anticipation/tackling) among the
         // three closest to the wide run — closing-down duty goes to the
         // defender best equipped for it, not merely the nearest body.
-        if outfieldDefenders.count > 3 {
+        if let authoritativeMarkerID = authoritative?.markerID,
+           outfieldDefenders.contains(where: { $0.id == authoritativeMarkerID }) {
+            markerID = authoritativeMarkerID
+        } else if outfieldDefenders.count > 3 {
             let nearestThree = Array(
                 outfieldDefenders
                     .sorted { distance($0.position, widePoint) < distance($1.position, widePoint) }
@@ -548,6 +595,12 @@ final class LegendsMatchSimulation {
         if let markerID {
             runTargetOverrides[markerID] = players.first(where: { $0.id == markerID })?.position
         }
+        pendingImpact = (
+            impactIndex, scored ? .goal : .chance,
+            wideRunner?.name, finisher?.name,
+            markerID.flatMap { id in players.first(where: { $0.id == id })?.name },
+            authoritative?.id, wideRunner?.id, finisher?.id, markerID, keeper?.id
+        )
     }
 
     /// Attribute-aware role-preference pick: candidates are ordered by the
@@ -912,7 +965,12 @@ final class LegendsMatchSimulation {
                     time: Date(),
                     runnerName: pending.runnerName,
                     finisherName: pending.finisherName,
-                    markerName: pending.markerName
+                    markerName: pending.markerName,
+                    eventID: pending.eventID,
+                    runnerID: pending.runnerID,
+                    finisherID: pending.finisherID,
+                    markerID: pending.markerID,
+                    goalkeeperID: pending.goalkeeperID
                 )
                 pendingImpact = nil
             }
@@ -925,7 +983,7 @@ final class LegendsMatchSimulation {
                     activeAttack = nil
                     if !attackQueue.isEmpty {
                         let next = attackQueue.removeFirst()
-                        startAttack(forUser: next.forUser, scored: next.scored)
+                        startAttack(next)
                         return // startAttack sets possession
                     }
                     // No queued attack — the defending team gains the ball

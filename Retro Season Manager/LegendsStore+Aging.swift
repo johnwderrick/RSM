@@ -924,17 +924,30 @@ extension LegendsStore {
         return age < state.intendedRetirementAge && age == state.intendedRetirementAge - 1
     }
 
-    func recordCareerMatch(_ result: LegendsMatchEngine.Result) {
-        let xiIDs = profile.startingXICardIDs.compactMap { $0 }
-        guard !xiIDs.isEmpty else { return }
-        for id in xiIDs {
+    func recordCareerMatch(
+        _ result: LegendsMatchEngine.Result,
+        events: [LegendsMatchEvent] = [],
+        startingCardIDs: [String]? = nil,
+        minutesPlayedByCardID: [String: Int]? = nil
+    ) {
+        let xiIDs = startingCardIDs ?? profile.startingXICardIDs.compactMap { $0 }
+        let starterSet = Set(xiIDs)
+        let participantMinutes: [String: Int]
+        if let minutesPlayedByCardID {
+            participantMinutes = minutesPlayedByCardID.filter { $0.value > 0 }
+        } else {
+            participantMinutes = Dictionary(uniqueKeysWithValues: xiIDs.map { ($0, 90) })
+        }
+        guard !participantMinutes.isEmpty else { return }
+
+        for (id, minutes) in participantMinutes {
             guard let card = LegendsCardDatabase.all.first(where: { $0.id == id }) else { continue }
             startCareerIfNeeded(for: card)
             guard var state = profile.playerCareers[id] else { continue }
             state.appearances += 1
             state.condition.applyMatch(outcome: result.outcome, goals: 0, assists: 0, cleanSheet: result.opponentGoals == 0 && card.position.broad == .goalkeeper)
-            state.starts += 1
-            state.minutesPlayed += 90
+            if starterSet.contains(id) { state.starts += 1 }
+            state.minutesPlayed += min(90, max(1, minutes))
             state.seasonAppearances += 1
             let wasCleanSheet = result.opponentGoals == 0
             if wasCleanSheet && card.position.broad == .goalkeeper {
@@ -954,6 +967,30 @@ extension LegendsStore {
             profile.playerCareers[id] = state
         }
 
+        let homeGoals = events.filter { $0.isUserEvent && $0.scored }
+        if !events.isEmpty {
+            for event in homeGoals {
+                guard participantMinutes[event.shooterID] != nil,
+                      var state = profile.playerCareers[event.shooterID] else { continue }
+                state.goals += 1
+                state.seasonGoals += 1
+                state.condition.applyPerformance(goals: 1)
+                profile.playerCareers[event.shooterID] = state
+
+                guard let creatorID = event.creatorID,
+                      creatorID != event.shooterID,
+                      participantMinutes[creatorID] != nil,
+                      var assistState = profile.playerCareers[creatorID] else { continue }
+                assistState.assists += 1
+                assistState.seasonAssists += 1
+                assistState.condition.applyPerformance(assists: 1)
+                profile.playerCareers[creatorID] = assistState
+            }
+            return
+        }
+
+        // Backward-compatible attribution for the non-live instant engine,
+        // which produces only a scoreline and has no participant ledger.
         let attackers = xiIDs.compactMap { id in LegendsCardDatabase.all.first { $0.id == id } }
             .filter { $0.position.broad == .forward }
         let scorers = attackers.isEmpty ? xiIDs.compactMap { id in LegendsCardDatabase.all.first { $0.id == id } } : attackers

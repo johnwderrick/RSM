@@ -19,8 +19,8 @@
 //  now this view owns the `LegendsMatchSimulation` driving it directly,
 //  keeps its `speedMultiplier` in lockstep with `live.speed`/`isPaused`
 //  so the pitch speeds up and freezes exactly in step with the
-//  commentary, and forwards goal/big-chance commentary lines into
-//  `simulation.triggerAttack(forUser:scored:)` plus substitutions into
+//  commentary, and forwards authoritative match events into
+//  `simulation.trigger(_:)` plus substitutions into
 //  `simulation.applySubstitution(...)` — so the pitch dots track the
 //  real XI as it changes, not just the kickoff snapshot. The text
 //  commentary feed is still one tap away via the control bar's toggle,
@@ -44,13 +44,10 @@ struct LegendsLiveMatchView: View {
     /// Which main content the score bar sits above — the animated pitch
     /// by default, or the scrolling text commentary one tap away.
     @State private var showCommentary = false
-    /// The `id` of the newest commentary line already forwarded to the
-    /// pitch — the anchor `reactToLatestCommentary` diffs against, so a
-    /// tick that appends two lines (a goal and a big chance in the same
-    /// minute) forwards *both* rather than only the newest. Compared by
-    /// stable id rather than index because the feed is trimmed to 60
-    /// lines from the front, which would otherwise shift indices.
-    @State private var lastHandledCommentaryID: UUID?
+    /// The newest authoritative match event already forwarded to the pitch.
+    /// Event IDs are stable and ordered, so two chances produced in one
+    /// engine tick are both animated without parsing presentation strings.
+    @State private var lastHandledEventID: String?
     @State private var hasFinishedHandoff = false
 
     @State private var goalFlash = false
@@ -146,7 +143,7 @@ struct LegendsLiveMatchView: View {
         .onChange(of: live.isFinished) { _, finished in if finished { triggerFullTimeConfettiIfWon() } }
         .onChange(of: live.speed) { _, newSpeed in simulation.speedMultiplier = live.isPaused ? 0 : newSpeed }
         .onChange(of: live.isPaused) { _, isPaused in simulation.speedMultiplier = isPaused ? 0 : live.speed }
-        .onChange(of: live.commentary.count) { _, _ in reactToLatestCommentary() }
+        .onChange(of: live.events.count) { _, _ in reactToLatestEvents() }
         .onChange(of: live.onPitchCardIDs) { oldIDs, newIDs in
             applyPitchSubstitutions(from: oldIDs, to: newIDs)
         }
@@ -183,44 +180,22 @@ struct LegendsLiveMatchView: View {
             .padding(.vertical, 6)
     }
 
-    /// Reads every commentary line appended since the last one this
-    /// method handled and, for each that's a goal or a big chance, fires
-    /// the matching attack sequence on the pitch — diffing against
-    /// `lastHandledCommentaryID` rather than only reading `.last`, since
-    /// `LegendsLiveMatch` can append two lines in one tick (each side is
-    /// rolled independently) and the second would otherwise hide the
-    /// first. Both sides now share the one "Big chance for X — the keeper
-    /// stands tall!" template (matching Career Mode's own big-chance line
-    /// in `LiveMatch.swift`) — a Legends near-miss is a save, not a
-    /// wayward shot, so `triggerAttack`'s `scored: false` path can send
-    /// the shot at the keeper rather than off into space. Everything else
-    /// — kick-off, half-time, substitutions (always `side: .home`
-    /// regardless of which team subs, since only the user has a bench to
-    /// draw from) — is deliberately ignored by keying off the exact
-    /// templates `LegendsLiveMatch.rollGoalChances()`/`scoreGoal(forUser:)`
-    /// use, rather than just checking `side != nil`.
-    private func reactToLatestCommentary() {
-        let lines = live.commentary
-        // The anchor may have been trimmed off the front of the 60-line
-        // cap if a large batch of lines landed at once — in that case
-        // everything still present is unhandled, so start from the top.
+    /// Forwards immutable engine events to the visual layer. The renderer
+    /// receives the exact creator, shooter, marker, keeper, flank and outcome
+    /// chosen by `LegendsLiveMatch`; it never infers gameplay from commentary.
+    private func reactToLatestEvents() {
+        let events = live.events
         let startIndex: Int
-        if let anchor = lastHandledCommentaryID, let index = lines.firstIndex(where: { $0.id == anchor }) {
+        if let anchor = lastHandledEventID, let index = events.firstIndex(where: { $0.id == anchor }) {
             startIndex = index + 1
         } else {
             startIndex = 0
         }
-        guard startIndex < lines.count else { return }
-        for line in lines[startIndex...] {
-            guard let side = line.side else { continue }
-            let forUser = side == .home
-            if line.text.contains("⚽︎ GOAL") {
-                simulation.triggerAttack(forUser: forUser, scored: true)
-            } else if line.text.contains("Big chance for") {
-                simulation.triggerAttack(forUser: forUser, scored: false)
-            }
+        guard startIndex < events.count else { return }
+        for event in events[startIndex...] {
+            simulation.trigger(event)
         }
-        lastHandledCommentaryID = lines.last?.id
+        lastHandledEventID = events.last?.id
     }
 
     /// Syncs the pitch's user dots with a substitution: `makeUserSub`

@@ -185,7 +185,13 @@ extension LegendsStore {
     /// `playMatch()` above, or a `LegendsLiveMatch` that's just finished.
     /// Call this exactly once per completed match; `advanceSeasonIfNeeded()`
     /// inside it assumes one call == one match played.
-    func applyMatchOutcome(opponent: LegendsOpponent, result: LegendsMatchEngine.Result) -> LegendsMatchOutcomeSummary {
+    func applyMatchOutcome(
+        opponent: LegendsOpponent,
+        result: LegendsMatchEngine.Result,
+        events: [LegendsMatchEvent] = [],
+        startingCardIDs: [String]? = nil,
+        minutesPlayedByCardID: [String: Int]? = nil
+    ) -> LegendsMatchOutcomeSummary {
         let coins: Int
         let tokens: Int
         let xp: Int
@@ -248,10 +254,15 @@ extension LegendsStore {
             }
         }
 
-        // Signed Starting XI players receive the only match experience
-        // that drives their individual careers. Unsigned collection cards
-        // are never touched by this path.
-        recordCareerMatch(result)
+        // Live matches supply their immutable event ledger and real
+        // participation snapshot. Instant simulation keeps the legacy
+        // fallback through the default arguments.
+        recordCareerMatch(
+            result,
+            events: events,
+            startingCardIDs: startingCardIDs,
+            minutesPlayedByCardID: minutesPlayedByCardID
+        )
 
         // Every match counts toward the current season, win or not —
         // aging doesn't care about the scoreline, only that time passed.

@@ -65,7 +65,13 @@ struct LegendsMatchView: View {
             if let liveMatch {
                 LegendsLiveMatchView(store: store, live: liveMatch,
                                      onFinished: {
-                    let result = store.applyMatchOutcome(opponent: liveMatch.opponent, result: liveMatch.result)
+                    let result = store.applyMatchOutcome(
+                        opponent: liveMatch.opponent,
+                        result: liveMatch.result,
+                        events: liveMatch.events,
+                        startingCardIDs: liveMatch.startingCardIDs,
+                        minutesPlayedByCardID: liveMatch.minutesPlayedByCardID
+                    )
                     announceResult(result)
                     withAnimation(.spring(duration: 0.5)) {
                         summary = result
@@ -77,8 +83,13 @@ struct LegendsMatchView: View {
                     // regardless of the scoreline at the moment of
                     // abandonment — an abandon is always a loss, never a
                     // way to salvage a draw from a losing position.
-                    let result = store.applyMatchOutcome(opponent: liveMatch.opponent,
-                                                         result: LegendsMatchEngine.Result(teamGoals: 0, opponentGoals: 3))
+                    let result = store.applyMatchOutcome(
+                        opponent: liveMatch.opponent,
+                        result: LegendsMatchEngine.Result(teamGoals: 0, opponentGoals: 3),
+                        events: liveMatch.events,
+                        startingCardIDs: liveMatch.startingCardIDs,
+                        minutesPlayedByCardID: liveMatch.minutesPlayedByCardID
+                    )
                     announceResult(result)
                     withAnimation(.spring(duration: 0.5)) {
                         summary = result
