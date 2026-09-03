@@ -327,6 +327,18 @@ private struct LegendsHallEntryDetailView: View {
                     }
                     .accessibilityIdentifier("legends.alumni.condition")
 
+                    Panel(title: "FINAL DEVELOPMENT PLAN") {
+                        VStack(alignment: .leading, spacing: 6) {
+                            detailLine("Focus", entry.finalTrainingPlan.focus.rawValue)
+                            detailLine("Intensity", entry.finalTrainingPlan.intensity.rawValue)
+                            detailLine("Training sessions", "\(entry.finalTrainingSessions)")
+                            Text(entry.finalTrainingPlan.lastExplanation)
+                                .font(.system(.caption2, design: .monospaced))
+                                .foregroundStyle(Retro.text.opacity(0.65))
+                        }
+                    }
+                    .accessibilityIdentifier("legends.alumni.training")
+
                     if !entry.honours.isEmpty {
                         Panel(title: "HONOURS") {
                             VStack(alignment: .leading, spacing: 6) {
@@ -373,7 +385,10 @@ private struct LegendsHallEntryDetailView: View {
                         .accessibilityIdentifier("legends.alumni.awards")
                     }
 
-                    if let attributes = entry.identityProfile?.attributes {
+                    if entry.identityProfile != nil {
+                        let attributes = entry.finalDetailedAttributes == .zero
+                            ? (entry.identityProfile?.attributes ?? .zero)
+                            : entry.finalDetailedAttributes
                         Panel(title: "FINAL DETAILED ATTRIBUTES") {
                             VStack(alignment: .leading, spacing: 8) {
                                 ForEach(LegendsAttributeGroup.allCases, id: \.self) { group in

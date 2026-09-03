@@ -388,6 +388,7 @@ private struct ExperienceEntryButtonStyle: ButtonStyle {
 enum LegendsNavItem: String, CaseIterable, Identifiable {
     case home = "HOME"
     case squad = "SQUAD"
+    case training = "TRAINING"
     case packs = "PACKS"
     case collection = "PLAYERS"
     case challenges = "CHALLENGES"
@@ -405,6 +406,7 @@ enum LegendsNavItem: String, CaseIterable, Identifiable {
         switch self {
         case .home: return "house.fill"
         case .squad: return "person.3.fill"
+        case .training: return "figure.run.circle.fill"
         case .packs: return "shippingbox.fill"
         case .collection: return "square.stack.3d.up.fill"
         case .challenges: return "flag.checkered"
@@ -423,7 +425,7 @@ enum LegendsNavItem: String, CaseIterable, Identifiable {
 /// the dashboard itself; the other cases are the full-screen menus that
 /// previously used modal covers.
 enum LegendsScreen {
-    case squad, packs, collection, match, challenges, table, club, managers, stadiums, hall, profile, settings, planning, reports
+    case squad, training, packs, collection, match, challenges, table, club, managers, stadiums, hall, profile, settings, planning, reports
 }
 
 /// The real RSM Legends home screen. All displayed progression values are
@@ -451,6 +453,11 @@ struct LegendsHomeView: View {
                 case .squad:
                     LegendsSquadView(store: store, onNavigate: { item in
                         navigateFromDestination(item, current: .squad)
+                    }) { requestExit() }
+                    .transition(.opacity)
+                case .training:
+                    LegendsTrainingView(store: store, onNavigate: { item in
+                        navigateFromDestination(item, current: .training)
                     }) { requestExit() }
                     .transition(.opacity)
                 case .packs:
@@ -900,6 +907,7 @@ struct LegendsHomeView: View {
         switch item {
         case .home: screen = nil
         case .squad: screen = .squad
+        case .training: screen = .training
         case .packs: screen = .packs
         case .collection: screen = .collection
         case .challenges: screen = .challenges
@@ -1090,6 +1098,7 @@ struct LegendsSidebar: View {
                             .clipShape(RoundedRectangle(cornerRadius: 9))
                         }
                         .accessibilityLabel(item.rawValue.capitalized)
+                        .accessibilityIdentifier("legends.nav.\(item.rawValue.lowercased())")
                         .buttonStyle(PressableButtonStyle())
                     }
                 }

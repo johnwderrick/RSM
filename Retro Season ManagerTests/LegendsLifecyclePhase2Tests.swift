@@ -341,21 +341,280 @@ final class LegendsLifecyclePhase2Tests: XCTestCase {
     }
 
     func testDevelopmentEventIsDeterministicAndBendsTraining() async {
-        let store = await freshStore()
+        let baselineStore = await freshStore()
+        let boostedStore = await freshStore()
         let young = card("miessi-0506")
-        store.profile.ownedCardIDs.insert(young.id)
-        store.startCareerIfNeeded(for: young)
-        store.assign(cardID: young.id, toXISlot: 0)
-        var state = store.profile.playerCareers[young.id]!
-        state.developmentMultiplier = 1.5 // BREAKTHROUGH SEASON flavour
-        state.trainingSeason = store.profile.currentSeason
-        state.trainingSessionsThisSeason = 0
-        store.profile.playerCareers[young.id] = state
+        var sharedState = LegendsStore.makeCareerState(for: young, signedSeason: baselineStore.profile.currentSeason)
+        sharedState.condition = LegendsPlayerCondition(form: 50, morale: 50, teamwork: 50, fame: 0)
+        for store in [baselineStore, boostedStore] {
+            store.profile.ownedCardIDs = [young.id]
+            store.profile.activatedCardIDs = [young.id]
+            store.profile.ownedPlayerRecords = [:]
+            store.signAllOwnedCardsForTesting()
+            store.profile.playerCareers[young.id] = sharedState
+        }
+        boostedStore.profile.playerCareers[young.id]!.developmentMultiplier = 1.5
 
-        let before = store.profile.playerCareers[young.id]!.developmentProgress
-        XCTAssertTrue(store.trainPlayer(young.id))
-        let after = store.profile.playerCareers[young.id]!.developmentProgress
-        XCTAssertEqual(after, before + Int((Double(state.developmentRate * 2 * 2) * 1.5).rounded()),
-                       "The season's development event multiplies training gains")
+        XCTAssertTrue(baselineStore.trainPlayer(young.id))
+        XCTAssertTrue(boostedStore.trainPlayer(young.id))
+        let baseline = baselineStore.profile.playerCareers[young.id]!.developmentProgress
+        let boosted = boostedStore.profile.playerCareers[young.id]!.developmentProgress
+        XCTAssertGreaterThan(boosted, baseline, "A 1.5× lifecycle event should bend bounded training upward")
+
+        let repeated = await freshStore()
+        repeated.profile.ownedCardIDs = [young.id]
+        repeated.profile.activatedCardIDs = [young.id]
+        repeated.profile.ownedPlayerRecords = [:]
+        repeated.signAllOwnedCardsForTesting()
+        var repeatedState = sharedState
+        repeatedState.developmentMultiplier = 1.5
+        repeated.profile.playerCareers[young.id] = repeatedState
+        XCTAssertTrue(repeated.trainPlayer(young.id))
+        XCTAssertEqual(repeated.profile.playerCareers[young.id]?.developmentProgress, boosted,
+                       "Fixed career inputs must produce identical bounded progress")
+    }
+}
+
+@MainActor
+final class LegendsPoint3TrainingTests: XCTestCase {
+    private func isolatedStore(for card: LegendsCard, career: LegendsPlayerCareer? = nil) async -> LegendsStore {
+        let store = await Task { @MainActor in LegendsStore() }.value
+        store.profile.ownedCardIDs = [card.id]
+        store.profile.activatedCardIDs = [card.id]
+        store.profile.playerCareers = [:]
+        store.profile.ownedPlayerRecords = [:]
+        store.profile.startingXICardIDs = Array(repeating: nil, count: 11)
+        store.profile.benchCardIDs = Array(repeating: nil, count: LegendsStore.benchSize)
+        store.profile.captainCardID = nil
+        store.profile.legendsHall = []
+        store.profile.seasonReports = [:]
+        store.profile.cardAgeOffsets = [:]
+        store.profile.currentSeason = 1
+        store.profile.matchesPlayedThisSeason = 0
+        store.signAllOwnedCardsForTesting()
+        var state = career ?? LegendsStore.makeCareerState(for: card, signedSeason: 1)
+        state.condition = LegendsPlayerCondition(form: 50, morale: 50, teamwork: 50, fame: 0)
+        store.profile.playerCareers[card.id] = state
+        return store
+    }
+
+    private var outfielder: LegendsCard {
+        LegendsCardDatabase.all.first { $0.id == "miessi-0506" }!
+    }
+
+    private var goalkeeper: LegendsCard {
+        LegendsCardDatabase.all.first { $0.position.broad == .goalkeeper && $0.age < 25 }!
+    }
+
+    func testLegacyCareerDefaultsToBalancedNormalPlanWithoutInventedHistory() throws {
+        let json = """
+        {"careerID":"legacy","cardID":"legacy-card","startingAge":20,"startingOverall":70,
+         "potential":80,"peakStartAge":25,"peakEndAge":30,"developmentRate":8,"declineRate":1,"signedSeason":1}
+        """.data(using: .utf8)!
+        let career = try JSONDecoder().decode(LegendsPlayerCareer.self, from: json)
+        XCTAssertEqual(career.trainingPlan.focus, .balanced)
+        XCTAssertEqual(career.trainingPlan.intensity, .normal)
+        XCTAssertTrue(career.trainingPlan.history.isEmpty)
+        XCTAssertEqual(career.developedAttributes, .zero)
+    }
+
+    func testUnsignedPlayerCannotReceiveAPlanOrTrainingProgress() async {
+        let card = outfielder
+        let store = await isolatedStore(for: card)
+        store.profile.activatedCardIDs = []
+        store.profile.playerCareers = [:]
+        XCTAssertFalse(store.trainPlayer(card.id))
+        XCTAssertFalse(store.setDevelopmentFocus(.shooting, for: card.id))
+        XCTAssertNil(store.trainingPlan(for: card))
+    }
+
+    func testFocusIntensityAndSessionsPersistOnTheCareer() async {
+        let card = outfielder
+        let store = await isolatedStore(for: card)
+        XCTAssertTrue(store.setDevelopmentFocus(.passing, for: card.id))
+        XCTAssertTrue(store.setTrainingIntensity(.intensive, for: card.id))
+        XCTAssertTrue(store.trainPlayer(card.id))
+        let career = store.profile.playerCareers[card.id]!
+        XCTAssertEqual(career.trainingPlan.focus, .passing)
+        XCTAssertEqual(career.trainingPlan.intensity, .intensive)
+        XCTAssertEqual(career.trainingSessionsThisSeason, 1)
+        XCTAssertEqual(career.trainingSessions, 1)
+        XCTAssertEqual(career.trainingPlan.history.count, 1)
+        XCTAssertLessThan(career.condition.form, 50)
+    }
+
+    func testPassingFocusMutatesRelevantDetailedAttributesUsedByProductionAccessor() async {
+        let card = outfielder
+        let store = await isolatedStore(for: card)
+        let before = store.detailedAttributes(for: card)
+        XCTAssertTrue(store.setDevelopmentFocus(.passing, for: card.id))
+        XCTAssertTrue(store.trainPlayer(card.id))
+        let after = store.detailedAttributes(for: card)
+        let improved = ["Passing", "Vision", "Decisions", "Crossing"].filter {
+            after.value(for: $0) > before.value(for: $0)
+        }
+        XCTAssertFalse(improved.isEmpty)
+        XCTAssertEqual(store.effectiveDetailedAttributes(for: card).passing,
+                       min(99, after.passing + store.formBoost(for: card)))
+        XCTAssertEqual(LegendsIdentityEngine.profile(for: card).attributes, before,
+                       "The immutable base identity attributes must not be rewritten")
+    }
+
+    func testOutfielderCannotSelectGoalkeepingFocusOrGainGoalkeepingAttributes() async {
+        let card = outfielder
+        let store = await isolatedStore(for: card)
+        let before = store.detailedAttributes(for: card)
+        XCTAssertFalse(store.setDevelopmentFocus(.goalkeeping, for: card.id))
+        XCTAssertTrue(store.trainPlayer(card.id))
+        let after = store.detailedAttributes(for: card)
+        XCTAssertEqual(after.handling, before.handling)
+        XCTAssertEqual(after.reflexes, before.reflexes)
+        XCTAssertEqual(after.goalkeeperPositioning, before.goalkeeperPositioning)
+    }
+
+    func testGoalkeeperTrainingImprovesGoalkeepingAttributes() async {
+        let card = goalkeeper
+        let store = await isolatedStore(for: card)
+        let before = store.detailedAttributes(for: card)
+        XCTAssertTrue(store.setDevelopmentFocus(.goalkeeping, for: card.id))
+        XCTAssertTrue(store.trainPlayer(card.id))
+        let after = store.detailedAttributes(for: card)
+        let improved = ["Handling", "Reflexes", "One-on-ones", "Goalkeeper positioning", "Aerial reach", "Distribution"].filter {
+            after.value(for: $0) > before.value(for: $0)
+        }
+        XCTAssertFalse(improved.isEmpty)
+    }
+
+    func testFourthSessionIsRejectedAndConditionRemainsBounded() async {
+        let card = outfielder
+        let store = await isolatedStore(for: card)
+        XCTAssertTrue(store.setTrainingIntensity(.intensive, for: card.id))
+        for _ in 0..<LegendsStore.maxTrainingSessionsPerSeason { XCTAssertTrue(store.trainPlayer(card.id)) }
+        let afterThree = store.profile.playerCareers[card.id]!
+        XCTAssertFalse(store.trainPlayer(card.id))
+        let afterFour = store.profile.playerCareers[card.id]!
+        XCTAssertEqual(afterFour.trainingSessions, afterThree.trainingSessions)
+        XCTAssertTrue((0...100).contains(afterFour.condition.form))
+        XCTAssertTrue((0...100).contains(afterFour.condition.morale))
+        XCTAssertTrue((0...100).contains(afterFour.condition.teamwork))
+        for group in LegendsAttributeGroup.allCases {
+            XCTAssertTrue(store.detailedAttributes(for: card).values(in: group).allSatisfy { (0...99).contains($0.1) })
+        }
+    }
+
+    func testSeasonReportSnapshotsTrainingAndResetsOnlySeasonCounters() async {
+        let card = outfielder
+        let store = await isolatedStore(for: card)
+        XCTAssertTrue(store.setDevelopmentFocus(.dribbling, for: card.id))
+        XCTAssertTrue(store.trainPlayer(card.id))
+        let lifetimeSessions = store.profile.playerCareers[card.id]!.trainingSessions
+        store.profile.matchesPlayedThisSeason = LegendsStore.matchesPerSeason - 1
+        _ = store.advanceSeasonIfNeeded()
+        let entry = store.profile.seasonReports[1]?.entries.first { $0.cardID == card.id }
+        XCTAssertEqual(entry?.trainingFocus, .dribbling)
+        XCTAssertEqual(entry?.trainingSessions, 1)
+        XCTAssertFalse(entry?.trainingAttributeGains.isEmpty ?? true)
+        XCTAssertEqual(store.profile.playerCareers[card.id]?.trainingSessionsThisSeason, 0)
+        XCTAssertEqual(store.profile.playerCareers[card.id]?.trainingSessions, lifetimeSessions)
+    }
+
+    func testRetirementPreservesFinalPlanHistoryAndAttributesInAlumni() async {
+        let card = outfielder
+        let store = await isolatedStore(for: card)
+        XCTAssertTrue(store.setDevelopmentFocus(.shooting, for: card.id))
+        XCTAssertTrue(store.trainPlayer(card.id))
+        let trained = store.detailedAttributes(for: card)
+        let targetAge = store.profile.playerCareers[card.id]!.intendedRetirementAge
+        store.profile.cardAgeOffsets[card.id] = targetAge - 1 - card.age
+        store.profile.matchesPlayedThisSeason = LegendsStore.matchesPerSeason - 1
+        _ = store.advanceSeasonIfNeeded()
+        let alumni = store.profile.legendsHall.first { $0.cardID == card.id }
+        XCTAssertEqual(alumni?.finalTrainingPlan.focus, .shooting)
+        XCTAssertEqual(alumni?.finalTrainingPlan.history.count, 1)
+        XCTAssertEqual(alumni?.finalTrainingSessions, 1)
+        XCTAssertEqual(alumni?.finalDetailedAttributes, trained)
+        XCTAssertNil(store.profile.playerCareers[card.id])
+        XCTAssertFalse(store.trainPlayer(card.id))
+    }
+
+    func testCurrentCareerRoundTripPreservesPlanAndDevelopedAttributes() async throws {
+        let card = outfielder
+        let store = await isolatedStore(for: card)
+        XCTAssertTrue(store.setDevelopmentFocus(.physical, for: card.id))
+        XCTAssertTrue(store.trainPlayer(card.id))
+        let original = store.profile.playerCareers[card.id]!
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(LegendsPlayerCareer.self, from: data)
+        XCTAssertEqual(decoded.trainingPlan, original.trainingPlan)
+        XCTAssertEqual(decoded.developedAttributes, original.developedAttributes)
+        XCTAssertEqual(decoded.trainingSessionsThisSeason, 1)
+    }
+
+    func testYoungPlayerAndRegularMinutesIncreaseTrainingEfficiency() async {
+        let card = outfielder
+        let baselineStore = await isolatedStore(for: card)
+        let sharedCareer = baselineStore.profile.playerCareers[card.id]!
+        let inactive = await isolatedStore(for: card, career: sharedCareer)
+        let regular = await isolatedStore(for: card, career: sharedCareer)
+        regular.profile.playerCareers[card.id]!.seasonAppearances = 8
+        XCTAssertTrue(inactive.trainPlayer(card.id))
+        XCTAssertTrue(regular.trainPlayer(card.id))
+        XCTAssertGreaterThan(regular.profile.playerCareers[card.id]!.developmentProgress,
+                             inactive.profile.playerCareers[card.id]!.developmentProgress)
+
+        let veteran = await isolatedStore(for: card, career: sharedCareer)
+        veteran.profile.cardAgeOffsets[card.id] = max(0, veteran.profile.playerCareers[card.id]!.peakEndAge + 1 - card.age)
+        XCTAssertTrue(veteran.trainPlayer(card.id))
+        XCTAssertGreaterThan(inactive.profile.playerCareers[card.id]!.developmentProgress,
+                             veteran.profile.playerCareers[card.id]!.developmentProgress)
+    }
+
+    func testPlayerAtPotentialCannotGenerateFurtherGrowth() async {
+        let card = outfielder
+        let ceilingCareer = LegendsPlayerCareer(
+            careerID: "at-ceiling", cardID: card.id, startingAge: card.age,
+            startingOverall: card.overall, potential: card.overall,
+            peakStartAge: 25, peakEndAge: 30, developmentRate: 10,
+            declineRate: 1, signedSeason: 1,
+            condition: LegendsPlayerCondition(form: 50, morale: 50, teamwork: 50, fame: 0)
+        )
+        let store = await isolatedStore(for: card, career: ceilingCareer)
+        let before = store.detailedAttributes(for: card)
+        XCTAssertTrue(store.trainPlayer(card.id), "A maintenance session is still consumed at the ceiling")
+        let state = store.profile.playerCareers[card.id]!
+        XCTAssertEqual(state.developmentProgress, 0)
+        XCTAssertEqual(state.developedAttributes, .zero)
+        XCTAssertEqual(store.detailedAttributes(for: card), before)
+        XCTAssertEqual(state.trainingSessionsThisSeason, 1)
+    }
+
+    func testFocusTargetsArePositionAppropriateAndNeverMixGoalkeepingForOutfielders() {
+        let card = outfielder
+        let archetype = LegendsIdentityEngine.profile(for: card).identity.archetype
+        for focus in LegendsDevelopmentFocus.allCases where focus != .goalkeeping {
+            let targets = LegendsStore.focusTargets(focus, for: card, archetype: archetype)
+            XCTAssertFalse(targets.isEmpty, "\(focus.rawValue) should have outfield targets")
+            XCTAssertTrue(Set(targets).isDisjoint(with: ["Handling", "Reflexes", "One-on-ones", "Aerial reach", "Distribution", "Goalkeeper positioning"]))
+        }
+        XCTAssertTrue(LegendsStore.focusTargets(.goalkeeping, for: card, archetype: archetype).isEmpty)
+    }
+
+    func testLegacyReportAndAlumniDecodeWithSafeTrainingDefaults() throws {
+        let reportJSON = """
+        {"cardID":"legacy","playerName":"Legacy Player","completedSeason":2,
+         "ageBefore":24,"ageAfter":25,"overallBefore":75,"overallAfter":76,
+         "previousStage":"ACTIVE","newStage":"ACTIVE"}
+        """.data(using: .utf8)!
+        let report = try JSONDecoder().decode(LegendsSeasonReportEntry.self, from: reportJSON)
+        XCTAssertEqual(report.trainingFocus, .balanced)
+        XCTAssertEqual(report.trainingIntensity, .normal)
+        XCTAssertEqual(report.trainingSessions, 0)
+        XCTAssertTrue(report.trainingAttributeGains.isEmpty)
+
+        let alumni = try JSONDecoder().decode(LegendsHallEntry.self, from: Data("{}".utf8))
+        XCTAssertEqual(alumni.finalTrainingPlan.focus, .balanced)
+        XCTAssertTrue(alumni.finalTrainingPlan.history.isEmpty)
+        XCTAssertEqual(alumni.finalTrainingSessions, 0)
+        XCTAssertEqual(alumni.finalDetailedAttributes, .zero)
     }
 }

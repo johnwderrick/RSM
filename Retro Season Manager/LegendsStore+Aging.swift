@@ -165,6 +165,10 @@ struct LegendsPlayerCareer: Codable, Hashable {
     var lifecycleProfile: LegendsCareerLifecyclePolicy.DevelopmentProfile
     /// Deterministic retirement target selected at signing.
     var intendedRetirementAge: Int
+    /// Point 3: mutable development is stored on the career, never on the
+    /// immutable card definition or unsigned collection copy.
+    var trainingPlan: LegendsTrainingPlan
+    var developedAttributes: LegendsDetailedAttributes
 
     init(careerID: String = UUID().uuidString, cardID: String, startingAge: Int,
          startingOverall: Int, potential: Int, peakStartAge: Int, peakEndAge: Int,
@@ -183,7 +187,9 @@ struct LegendsPlayerCareer: Codable, Hashable {
          milestones: Set<LegendsCareerMilestone> = [], isClubLegend: Bool = false,
          seasonStartAppearances: Int = 0, seasonStartGoals: Int = 0,
          lifecycleProfile: LegendsCareerLifecyclePolicy.DevelopmentProfile = .standardDeveloper,
-         intendedRetirementAge: Int = 36) {
+         intendedRetirementAge: Int = 36,
+         trainingPlan: LegendsTrainingPlan = LegendsTrainingPlan(),
+         developedAttributes: LegendsDetailedAttributes = .zero) {
         self.careerID = careerID
         self.cardID = cardID
         self.startingAge = startingAge
@@ -225,6 +231,8 @@ struct LegendsPlayerCareer: Codable, Hashable {
         self.seasonStartGoals = seasonStartGoals
         self.lifecycleProfile = lifecycleProfile
         self.intendedRetirementAge = intendedRetirementAge
+        self.trainingPlan = trainingPlan
+        self.developedAttributes = developedAttributes
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -235,6 +243,7 @@ struct LegendsPlayerCareer: Codable, Hashable {
         case seasonStartOverall, developmentMultiplier, formBoost, condition, honours, individualAwards, identitySnapshot, seasonAppearances, seasonGoals
         case seasonAssists, seasonCleanSheets, seasonRecords, milestones, isClubLegend
         case seasonStartAppearances, seasonStartGoals, lifecycleProfile, intendedRetirementAge
+        case trainingPlan, developedAttributes
     }
 
     /// Lenient decode — every field added after the career record first
@@ -289,6 +298,8 @@ struct LegendsPlayerCareer: Codable, Hashable {
         seasonStartGoals = try c.decodeIfPresent(Int.self, forKey: .seasonStartGoals) ?? 0
         lifecycleProfile = try c.decodeIfPresent(LegendsCareerLifecyclePolicy.DevelopmentProfile.self, forKey: .lifecycleProfile) ?? .standardDeveloper
         intendedRetirementAge = try c.decodeIfPresent(Int.self, forKey: .intendedRetirementAge) ?? LegendsStore.retirementAge
+        trainingPlan = try c.decodeIfPresent(LegendsTrainingPlan.self, forKey: .trainingPlan) ?? LegendsTrainingPlan()
+        developedAttributes = try c.decodeIfPresent(LegendsDetailedAttributes.self, forKey: .developedAttributes) ?? .zero
     }
 }
 
@@ -296,7 +307,7 @@ struct LegendsPlayerCareer: Codable, Hashable {
 /// later; the new pull starts a new `careerID` and gets a new story.
 struct LegendsHallEntry: Codable, Hashable, Identifiable {
     private enum CodingKeys: String, CodingKey {
-        case id, cardID, playerName, position, nation, startingAge, startingOverall, highestOverall, finalAge, appearances, goals, assists, cleanSheets, seasonsAtClub, signedSeason, retiredSeason, finalOverall, trophies, milestones, isClubLegend, legacyScore, careerHistory, identityProfile, finalCondition, honours, individualAwards
+        case id, cardID, playerName, position, nation, startingAge, startingOverall, highestOverall, finalAge, appearances, goals, assists, cleanSheets, seasonsAtClub, signedSeason, retiredSeason, finalOverall, trophies, milestones, isClubLegend, legacyScore, careerHistory, identityProfile, finalCondition, honours, individualAwards, finalTrainingPlan, finalTrainingSessions, finalDetailedAttributes
     }
     let id: String
     let cardID: String
@@ -325,6 +336,9 @@ struct LegendsHallEntry: Codable, Hashable, Identifiable {
     let finalCondition: LegendsPlayerCondition
     let honours: [LegendsHonour]
     let individualAwards: [LegendsIndividualAward]
+    let finalTrainingPlan: LegendsTrainingPlan
+    let finalTrainingSessions: Int
+    let finalDetailedAttributes: LegendsDetailedAttributes
 
     init(id: String, cardID: String, playerName: String, position: DetailedPosition,
          nation: String, startingAge: Int, startingOverall: Int, highestOverall: Int,
@@ -332,7 +346,7 @@ struct LegendsHallEntry: Codable, Hashable, Identifiable {
          seasonsAtClub: Int, signedSeason: Int, retiredSeason: Int,
          finalOverall: Int = 0, trophies: Int = 0,
          milestones: Set<LegendsCareerMilestone> = [], isClubLegend: Bool = false,
-         legacyScore: Int = 0, careerHistory: [LegendsSeasonRecord] = [], identityProfile: LegendsPlayerIdentityProfile? = nil, finalCondition: LegendsPlayerCondition = LegendsPlayerCondition(), honours: [LegendsHonour] = [], individualAwards: [LegendsIndividualAward] = []) {
+         legacyScore: Int = 0, careerHistory: [LegendsSeasonRecord] = [], identityProfile: LegendsPlayerIdentityProfile? = nil, finalCondition: LegendsPlayerCondition = LegendsPlayerCondition(), honours: [LegendsHonour] = [], individualAwards: [LegendsIndividualAward] = [], finalTrainingPlan: LegendsTrainingPlan = LegendsTrainingPlan(), finalTrainingSessions: Int = 0, finalDetailedAttributes: LegendsDetailedAttributes = .zero) {
         self.id = id
         self.cardID = cardID
         self.playerName = playerName
@@ -359,6 +373,9 @@ struct LegendsHallEntry: Codable, Hashable, Identifiable {
         self.finalCondition = finalCondition
         self.honours = honours
         self.individualAwards = individualAwards
+        self.finalTrainingPlan = finalTrainingPlan
+        self.finalTrainingSessions = finalTrainingSessions
+        self.finalDetailedAttributes = finalDetailedAttributes
     }
 
     /// Lenient decode: keeps pre-14-match saves loading (the old milestone
@@ -396,6 +413,9 @@ struct LegendsHallEntry: Codable, Hashable, Identifiable {
         finalCondition = try c.decodeIfPresent(LegendsPlayerCondition.self, forKey: .finalCondition) ?? LegendsPlayerCondition()
         honours = try c.decodeIfPresent([LegendsHonour].self, forKey: .honours) ?? []
         individualAwards = try c.decodeIfPresent([LegendsIndividualAward].self, forKey: .individualAwards) ?? []
+        finalTrainingPlan = try c.decodeIfPresent(LegendsTrainingPlan.self, forKey: .finalTrainingPlan) ?? LegendsTrainingPlan()
+        finalTrainingSessions = try c.decodeIfPresent(Int.self, forKey: .finalTrainingSessions) ?? 0
+        finalDetailedAttributes = try c.decodeIfPresent(LegendsDetailedAttributes.self, forKey: .finalDetailedAttributes) ?? .zero
     }
 }
 
@@ -687,7 +707,9 @@ extension LegendsStore {
     }
 
     func detailedAttributes(for card: LegendsCard) -> LegendsDetailedAttributes {
-        identityProfile(for: card).attributes
+        let base = identityProfile(for: card).attributes
+        guard let career = profile.playerCareers[card.id] else { return base }
+        return base.applyingDevelopment(career.developedAttributes)
     }
 
     @discardableResult
@@ -742,8 +764,10 @@ extension LegendsStore {
         return min(max(0, state.potential - card.overall), max(0, state.developmentProgress / 100))
     }
 
-    /// Trains a signed player up to three times per aging season. Training
-    /// is intentionally a modest accelerator, not an infinite OVR button.
+    /// The authoritative Point 3 training transaction. It consumes one of
+    /// three persisted seasonal sessions, applies bounded OVR progress,
+    /// mutates only relevant detailed career attributes and records a stable
+    /// explanation/history entry. Unsigned and retired cards never enter.
     @discardableResult
     func trainPlayer(_ cardID: String) -> Bool {
         guard profile.activatedCardIDs.contains(cardID),
@@ -753,14 +777,80 @@ extension LegendsStore {
         if state.trainingSeason != profile.currentSeason {
             state.trainingSeason = profile.currentSeason
             state.trainingSessionsThisSeason = 0
+            state.trainingPlan.seasonProgress = 0
+            state.trainingPlan.seasonAttributeGains = [:]
+            state.trainingPlan.recentAttributeGains = [:]
+            state.trainingPlan.consecutiveIntensiveSessions = 0
         }
         guard state.trainingSessionsThisSeason < Self.maxTrainingSessionsPerSeason else { return false }
         let age = effectiveAge(for: card)
-        let ageFactor = age < state.peakStartAge ? 2 : age <= state.peakEndAge ? 1 : 0
-        guard ageFactor > 0, state.potential > card.overall else { return false }
+
+        let lifecycle = LegendsCareerLifecyclePolicy.configuration(for: state.lifecycleProfile)
+        let ageFactor: Double = age < state.peakStartAge ? 1.15 : (age <= state.peakEndAge ? 0.8 : 0.35)
+        let minutesFactor: Double = state.seasonAppearances >= 8 ? 1.1 : (state.seasonAppearances == 0 ? 0.7 : 1.0)
+        let conditionAverage = Double(state.condition.form + state.condition.morale + state.condition.teamwork) / 3.0
+        let conditionFactor = min(1.1, max(0.85, conditionAverage / 50.0))
+        let repeatedIntensiveFactor = state.trainingPlan.intensity == .intensive
+            && state.trainingPlan.consecutiveIntensiveSessions > 0 ? 0.85 : 1.0
+        let rawProgress = Double(state.developmentRate * 2)
+            * ageFactor * minutesFactor * conditionFactor
+            * lifecycle.growthMultiplier * state.developmentMultiplier
+            * state.trainingPlan.intensity.progressMultiplier * repeatedIntensiveFactor
+        let proposedProgress = max(1, Int(rawProgress.rounded()))
+        let progressCeiling = max(0, state.potential - state.startingOverall) * 100
+        let appliedProgress = min(proposedProgress, max(0, progressCeiling - state.developmentProgress))
+
         state.trainingSessionsThisSeason += 1
         state.trainingSessions += 1
-        state.developmentProgress += Int((Double(state.developmentRate * ageFactor * 2) * state.developmentMultiplier).rounded())
+        state.developmentProgress += appliedProgress
+        state.trainingPlan.seasonProgress += appliedProgress
+
+        let identity = identityProfile(for: card)
+        let targets = Self.focusTargets(state.trainingPlan.focus, for: card, archetype: identity.identity.archetype)
+        let attributeCeiling = max(0, state.potential - state.startingOverall)
+        var gains: [String: Int] = [:]
+        if !targets.isEmpty, appliedProgress > 0, attributeCeiling > 0 {
+            let gainBudget = min(3, max(1, appliedProgress / 14))
+            let seed = Self.stableSeed("\(state.careerID)|\(profile.currentSeason)|\(state.trainingSessionsThisSeason)|\(state.trainingPlan.focus.rawValue)")
+            for step in 0..<gainBudget {
+                let key = targets[(seed + step) % targets.count]
+                let existingOffset = state.developedAttributes.value(for: key)
+                let baseValue = identity.attributes.value(for: key)
+                guard existingOffset < attributeCeiling, baseValue + existingOffset < 99 else { continue }
+                state.developedAttributes.addDevelopment(1, to: key)
+                gains[key, default: 0] += 1
+                state.trainingPlan.seasonAttributeGains[key, default: 0] += 1
+            }
+            let perTargetProgress = max(1, appliedProgress / targets.count)
+            for key in targets {
+                state.trainingPlan.attributeProgress[key] = min(99, (state.trainingPlan.attributeProgress[key] ?? 0) + perTargetProgress)
+            }
+        }
+
+        state.trainingPlan.recentAttributeGains = gains
+        state.trainingPlan.lastExplanation = Self.trainingExplanation(age: age, career: state,
+                                                                       progress: appliedProgress, gains: gains)
+        switch state.trainingPlan.intensity {
+        case .light:
+            state.condition.morale = min(100, state.condition.morale + 1)
+            state.condition.teamwork = min(100, state.condition.teamwork + 1)
+            state.trainingPlan.consecutiveIntensiveSessions = 0
+        case .normal:
+            state.trainingPlan.consecutiveIntensiveSessions = 0
+        case .intensive:
+            state.condition.form = max(0, state.condition.form - 2)
+            state.condition.morale = max(0, state.condition.morale - 1)
+            state.trainingPlan.consecutiveIntensiveSessions += 1
+            state.trainingPlan.lastExplanation += " Intensive training affected condition."
+        }
+        let history = LegendsTrainingRecord(
+            id: "\(state.careerID)-S\(profile.currentSeason)-T\(state.trainingSessionsThisSeason)",
+            season: profile.currentSeason, session: state.trainingSessionsThisSeason,
+            focus: state.trainingPlan.focus, intensity: state.trainingPlan.intensity,
+            progress: appliedProgress, attributeGains: gains,
+            explanation: state.trainingPlan.lastExplanation
+        )
+        state.trainingPlan.history.append(history)
         profile.playerCareers[cardID] = state
         persist()
         return true
@@ -914,7 +1004,10 @@ extension LegendsStore {
                                                      identityProfile: state.identitySnapshot,
                                                      finalCondition: state.condition,
                                                      honours: state.honours,
-                                                     individualAwards: state.individualAwards))
+                                                     individualAwards: state.individualAwards,
+                                                     finalTrainingPlan: state.trainingPlan,
+                                                     finalTrainingSessions: state.trainingSessions,
+                                                     finalDetailedAttributes: detailedAttributes(for: card)))
     }
 
     // Fame granted once per newly inserted achievement — deliberately
@@ -1209,7 +1302,7 @@ extension LegendsStore {
         }
 
         profile.lastSeasonReview = developmentReview
-        let reportEntries = developmentReview.values.map { entry in
+        var reportEntries = developmentReview.values.map { entry in
             let card = LegendsCardDatabase.all.first { $0.id == entry.cardID }
             let career = profile.playerCareers[entry.cardID]
             let afterAge = card.map { effectiveAge(for: $0) } ?? entry.overallDelta
@@ -1224,13 +1317,52 @@ extension LegendsStore {
                                             improved: entry.overallDelta > 0, stable: entry.overallDelta == 0,
                                             declined: entry.overallDelta < 0, enteredFinalSeason: entry.reason.contains("Final Season"),
                                             retired: false, retirementRecordID: nil, position: entry.position,
-                                            favourite: profile.favouriteCardIDs.contains(entry.cardID))
+                                            favourite: profile.favouriteCardIDs.contains(entry.cardID),
+                                            trainingFocus: career?.trainingPlan.focus ?? .balanced,
+                                            trainingIntensity: career?.trainingPlan.intensity ?? .normal,
+                                            trainingSessions: career?.trainingSeason == finishingSeason ? (career?.trainingSessionsThisSeason ?? 0) : 0,
+                                            trainingProgress: career?.trainingPlan.seasonProgress ?? 0,
+                                            trainingAttributeGains: career?.trainingPlan.seasonAttributeGains ?? [:],
+                                            trainingExplanation: career?.trainingPlan.lastExplanation ?? "No training completed.")
+        }
+        for card in retiredCards {
+            guard let hall = profile.legendsHall.last(where: { $0.cardID == card.id && $0.retiredSeason == profile.currentSeason }) else { continue }
+            let plan = hall.finalTrainingPlan
+            reportEntries.append(LegendsSeasonReportEntry(
+                cardID: card.id, playerName: hall.playerName, completedSeason: finishingSeason,
+                ageBefore: max(0, hall.finalAge - 1), ageAfter: hall.finalAge,
+                overallBefore: hall.careerHistory.last?.overallAtStart ?? hall.finalOverall,
+                overallAfter: hall.finalOverall, previousStage: "FINAL SEASON", newStage: "RETIRED",
+                developmentProfile: .standardDeveloper, improved: false, stable: true, declined: false,
+                enteredFinalSeason: false, retired: true, retirementRecordID: hall.id,
+                position: hall.position, favourite: profile.favouriteCardIDs.contains(card.id),
+                trainingFocus: plan.focus, trainingIntensity: plan.intensity,
+                trainingSessions: plan.history.filter { $0.season == finishingSeason }.count,
+                trainingProgress: plan.history.filter { $0.season == finishingSeason }.reduce(0) { $0 + $1.progress },
+                trainingAttributeGains: plan.history.filter { $0.season == finishingSeason }
+                    .reduce(into: [:]) { totals, record in
+                        for (key, value) in record.attributeGains { totals[key, default: 0] += value }
+                    },
+                trainingExplanation: plan.lastExplanation
+            ))
         }
         let plan = squadCareerPlan()
         profile.seasonReports[finishingSeason] = LegendsSeasonDevelopmentReport(season: finishingSeason, entries: reportEntries,
                                                                                   squadAgeWarning: plan.warning,
                                                                                   positionsNeedingReplacements: plan.positionsNeedingReplacements,
                                                                                   signedAverageAgeAfter: plan.signedAverageAge)
+        // The persisted report owns the completed-season snapshot. Reset
+        // only seasonal training counters for surviving careers; lifetime
+        // totals, plans, attribute offsets and history remain untouched.
+        for id in profile.playerCareers.keys {
+            guard var career = profile.playerCareers[id] else { continue }
+            career.trainingSeason = profile.currentSeason
+            career.trainingSessionsThisSeason = 0
+            career.trainingPlan.seasonProgress = 0
+            career.trainingPlan.seasonAttributeGains = [:]
+            career.trainingPlan.consecutiveIntensiveSessions = 0
+            profile.playerCareers[id] = career
+        }
         persist()
         return LegendsSeasonAdvanceResult(newSeason: profile.currentSeason, retiredCards: retiredCards,
                                           divisionResult: divisionResult,
