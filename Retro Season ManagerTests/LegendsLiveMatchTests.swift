@@ -302,6 +302,23 @@ final class LegendsLiveMatchTests: XCTestCase {
         }
     }
 
+    func testLiveEngineProducesVariedContextualAttackPatterns() async {
+        var patterns = Set<String>()
+        for index in 0..<12 {
+            let store = await freshStore()
+            strongestXI(store)
+            let live = LegendsLiveMatch(
+                store: store,
+                opponent: LegendsOpponent(name: "Pattern Rivals", rating: 55),
+                rng: SeededGenerator(seed: "pattern-match-\(index)")
+            )
+            live.skipToEnd()
+            patterns.formUnion(live.events.map { $0.attackPattern.rawValue })
+        }
+        XCTAssertGreaterThanOrEqual(patterns.count, 3,
+                                    "Contextual events should not all collapse into one scripted attack route")
+    }
+
     func testAuthoritativeLedgerCreditsExactActorsAndRealSubstituteMinutes() async {
         let store = await freshStore()
         strongestXI(store)

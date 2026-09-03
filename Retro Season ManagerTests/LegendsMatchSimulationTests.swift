@@ -258,11 +258,18 @@ final class LegendsMatchSimulationTests: XCTestCase {
         }
 
         guard let targetID = simulation.testAmbientPassTargetID(),
-              let target = simulation.players.first(where: { $0.id == targetID }) else {
-            return XCTFail("The possessor should select a live teammate as a passing option.")
+              let target = simulation.players.first(where: { $0.id == targetID }),
+              let action = simulation.testLastAmbientAction else {
+            return XCTFail("Open play should select a real player for the first pass.")
         }
         XCTAssertNotEqual(targetID, startingPossessorID)
-        XCTAssertEqual(target.team, .home)
+        if action == .interceptedPass {
+            XCTAssertEqual(target.team, .away,
+                           "An intercepted pass should travel to the real opposing interceptor.")
+        } else {
+            XCTAssertEqual(target.team, .home,
+                           "A completed pass should travel to a real teammate.")
+        }
         XCTAssertNotEqual(target.role, .goalkeeper)
         XCTAssertNil(simulation.possessionPlayerID,
                      "A pass in flight should not display a possession ring on the nearest player.")
@@ -303,6 +310,12 @@ final class LegendsMatchSimulationTests: XCTestCase {
         XCTAssertGreaterThan(first.testAmbientCompletedPasses(), 0)
         XCTAssertTrue(sawAwayPossession,
                       "Open play should change hands through a visible interception instead of resetting to home possession.")
+        XCTAssertEqual(first.testAmbientActionHistory, second.testAmbientActionHistory,
+                       "Open-play decisions must remain deterministic for identical state")
+        XCTAssertGreaterThanOrEqual(Set(first.testAmbientActionHistory.map(\.rawValue)).count, 3,
+                                    "Open play should mix progressive, safe and turnover decisions")
+        XCTAssertTrue(first.testAmbientActionHistory.contains(.progressivePass))
+        XCTAssertTrue(first.testAmbientActionHistory.contains(.interceptedPass))
         XCTAssertTrue(first.ball.position.x >= 0 && first.ball.position.x <= 1)
         XCTAssertTrue(first.ball.position.y >= 0 && first.ball.position.y <= 1)
     }
@@ -367,6 +380,41 @@ final class LegendsMatchSimulationTests: XCTestCase {
         XCTAssertEqual(impact.markerName, marker.name)
         XCTAssertEqual(simulation.testLastAttackUsedLeftFlank, false,
                        "The renderer must honor the event's right channel")
+    }
+
+    func testAuthoritativeAttackPatternsProduceDistinctPlayerRoutes() async {
+        var creatorTargets = Set<String>()
+        for pattern in LegendsMatchEvent.AttackPattern.allCases {
+            let simulation = await freshSimulation()
+            let home = simulation.players.filter { $0.team == .home && $0.role != .goalkeeper }
+            let away = simulation.players.filter { $0.team == .away }
+            guard home.count >= 2,
+                  let marker = away.first(where: { $0.role != .goalkeeper }),
+                  let keeper = away.first(where: { $0.role == .goalkeeper }) else {
+                return XCTFail("Expected complete teams")
+            }
+            let creator = home[0]
+            let shooter = home[1]
+            let event = LegendsMatchEvent(
+                id: "pattern-\(pattern.rawValue)", minute: 20, side: .home,
+                outcome: .goal, channel: .left, attackPattern: pattern,
+                creatorID: creator.id, creatorName: creator.name,
+                shooterID: shooter.id, shooterName: shooter.name,
+                markerID: marker.id, markerName: marker.name,
+                goalkeeperID: keeper.id, goalkeeperName: keeper.name,
+                expectedGoals: 0.35
+            )
+
+            simulation.trigger(event)
+
+            XCTAssertEqual(simulation.testLastAttackPattern, pattern)
+            guard let target = simulation.testRunTarget(for: creator.id) else {
+                return XCTFail("Every pattern should give its selected creator a real run")
+            }
+            creatorTargets.insert(String(format: "%.3f,%.3f", target.x, target.y))
+        }
+        XCTAssertEqual(creatorTargets.count, LegendsMatchEvent.AttackPattern.allCases.count,
+                       "Each attack pattern should create a visibly different creator route")
     }
 
     func testOpponentGoalAttackEndsAtTheUsersGoalMouthAndFiresAGoalImpact() async {

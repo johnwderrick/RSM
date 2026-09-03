@@ -39,12 +39,20 @@ import Observation
 struct LegendsMatchEvent: Identifiable, Equatable {
     enum Outcome: Equatable { case goal, saved }
     enum Channel: Equatable { case left, right }
+    enum AttackPattern: String, CaseIterable, Equatable {
+        case wideCross
+        case cutback
+        case centralCombination
+        case counterAttack
+        case longShot
+    }
 
     let id: String
     let minute: Int
     let side: Side
     let outcome: Outcome
     let channel: Channel
+    let attackPattern: AttackPattern
     let creatorID: String?
     let creatorName: String?
     let shooterID: String
@@ -54,6 +62,30 @@ struct LegendsMatchEvent: Identifiable, Equatable {
     let goalkeeperID: String?
     let goalkeeperName: String?
     let expectedGoals: Double
+
+    init(
+        id: String, minute: Int, side: Side, outcome: Outcome, channel: Channel,
+        attackPattern: AttackPattern = .wideCross,
+        creatorID: String?, creatorName: String?, shooterID: String, shooterName: String,
+        markerID: String?, markerName: String?, goalkeeperID: String?, goalkeeperName: String?,
+        expectedGoals: Double
+    ) {
+        self.id = id
+        self.minute = minute
+        self.side = side
+        self.outcome = outcome
+        self.channel = channel
+        self.attackPattern = attackPattern
+        self.creatorID = creatorID
+        self.creatorName = creatorName
+        self.shooterID = shooterID
+        self.shooterName = shooterName
+        self.markerID = markerID
+        self.markerName = markerName
+        self.goalkeeperID = goalkeeperID
+        self.goalkeeperName = goalkeeperName
+        self.expectedGoals = expectedGoals
+    }
 
     var scored: Bool { outcome == .goal }
     var isUserEvent: Bool { side == .home }
@@ -423,6 +455,7 @@ final class LegendsLiveMatch {
             side: forUser ? .home : .away,
             outcome: scored ? .goal : .saved,
             channel: eventSequence.isMultiple(of: 2) ? .right : .left,
+            attackPattern: attackPattern(forUser: forUser, shooterID: attacker.id, creatorID: creator?.id),
             creatorID: creator?.id, creatorName: creator?.name,
             shooterID: attacker.id, shooterName: attacker.name,
             markerID: defense.markerID, markerName: defense.markerName,
@@ -437,6 +470,28 @@ final class LegendsLiveMatch {
             say("Big chance for \(forUser ? store.profile.clubName : opponent.name): \(attacker.name) shoots\(keeper)", side: event.side)
             bumpMomentum(towardUser: forUser, by: 0.05)
         }
+    }
+
+    /// Chooses a plausible route from the selected players and match context.
+    /// This is intentionally deterministic and consumes no extra RNG draw, so
+    /// adding visual variety cannot change later score rolls in the same match.
+    private func attackPattern(forUser: Bool, shooterID: String, creatorID: String?) -> LegendsMatchEvent.AttackPattern {
+        let shooterPosition: DetailedPosition? = forUser
+            ? LegendsCardDatabase.all.first(where: { $0.id == shooterID })?.position
+            : opponentRoster.players.first(where: { $0.id == shooterID })?.position
+        let creatorPosition: DetailedPosition? = creatorID.flatMap { id in
+            forUser
+                ? LegendsCardDatabase.all.first(where: { $0.id == id })?.position
+                : opponentRoster.players.first(where: { $0.id == id })?.position
+        }
+        let selector = (minute + eventSequence * 7) % 10
+        if shooterPosition?.broad == .midfielder && selector <= 2 { return .longShot }
+        if let creatorPosition, [.leftWing, .rightWing, .leftMid, .rightMid, .leftBack, .rightBack].contains(creatorPosition) {
+            return selector.isMultiple(of: 2) ? .wideCross : .cutback
+        }
+        if selector == 3 || selector == 8 { return .counterAttack }
+        if selector <= 5 { return .centralCombination }
+        return selector.isMultiple(of: 2) ? .wideCross : .cutback
     }
 
     private func attackerPower(_ a: ShotContestant, energyFactor: Double) -> Double {
