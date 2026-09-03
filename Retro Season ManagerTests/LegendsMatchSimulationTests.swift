@@ -290,6 +290,105 @@ final class LegendsMatchSimulationTests: XCTestCase {
         XCTAssertEqual(presser.homeAnchor.y, expectedGoalSideY, accuracy: 0.0001)
     }
 
+    func testPossessionCreatesTwoRealPassingSupports() async {
+        let simulation = await freshSimulation()
+        simulation.testAdvance(dt: 0.1)
+
+        guard let possessorID = simulation.testAmbientPossessorID(),
+              let possessor = simulation.players.first(where: { $0.id == possessorID }) else {
+            return XCTFail("Expected a real possessor")
+        }
+        let supportIDs = simulation.testSupportPlayerIDs()
+        XCTAssertEqual(supportIDs.count, 2)
+        XCTAssertEqual(Set(supportIDs).count, 2)
+
+        let supports = supportIDs.compactMap { id in
+            simulation.players.first(where: { $0.id == id })
+        }
+        XCTAssertEqual(supports.count, 2)
+        XCTAssertTrue(supports.allSatisfy { $0.team == possessor.team && $0.role != .goalkeeper })
+        XCTAssertTrue(supports.allSatisfy {
+            hypot($0.homeAnchor.x - possessor.position.x,
+                  $0.homeAnchor.y - possessor.position.y) < 0.20
+        }, "Both support players should form reachable passing angles around the ball")
+        XCTAssertNotEqual(supports[0].homeAnchor.x, supports[1].homeAnchor.x, accuracy: 0.001)
+        XCTAssertNotEqual(supports[0].homeAnchor.y, supports[1].homeAnchor.y, accuracy: 0.001)
+    }
+
+    func testDefendingTeamAssignsCoverAndGoalSideMarkers() async {
+        let simulation = await freshSimulation()
+        simulation.testAdvance(dt: 0.1)
+
+        guard let presserID = simulation.testAmbientPresserID(),
+              let coverID = simulation.testCoverDefenderID(),
+              let cover = simulation.players.first(where: { $0.id == coverID }) else {
+            return XCTFail("Expected separate pressure and cover responsibilities")
+        }
+        XCTAssertNotEqual(coverID, presserID)
+        XCTAssertEqual(cover.team, .away)
+        XCTAssertLessThan(cover.homeAnchor.y, simulation.ball.position.y,
+                          "Away cover should protect the space between the ball and the away goal")
+
+        let assignments = simulation.testMarkingAssignments()
+        XCTAssertEqual(assignments.count, 2)
+        XCTAssertEqual(Set(assignments.keys).count, assignments.count)
+        XCTAssertEqual(Set(assignments.values).count, assignments.count)
+        for (markerID, threatID) in assignments {
+            guard let marker = simulation.players.first(where: { $0.id == markerID }),
+                  let threat = simulation.players.first(where: { $0.id == threatID }) else {
+                return XCTFail("Marking duties must reference real on-pitch players")
+            }
+            XCTAssertEqual(marker.team, .away)
+            XCTAssertEqual(threat.team, .home)
+            XCTAssertNotEqual(markerID, presserID)
+            XCTAssertNotEqual(markerID, coverID)
+            XCTAssertLessThan(marker.homeAnchor.y, threat.position.y,
+                              "An away marker should remain goal-side of the tracked attacker")
+        }
+    }
+
+    func testRestOfDefensiveBlockNarrowsTowardBallWithoutSwarmingIt() async {
+        let simulation = await freshSimulation()
+        simulation.testAdvance(dt: 0.1)
+
+        let excluded = Set(
+            [simulation.testAmbientPresserID(), simulation.testCoverDefenderID()].compactMap { $0 }
+                + Array(simulation.testMarkingAssignments().keys)
+        )
+        let block = simulation.players.filter {
+            $0.team == .away && $0.role != .goalkeeper && !excluded.contains($0.id)
+        }
+        XCTAssertGreaterThan(block.count, 0)
+        for player in block {
+            XCTAssertLessThanOrEqual(abs(player.homeAnchor.x - simulation.ball.position.x),
+                                     abs(player.baseAnchor.x - simulation.ball.position.x) + 0.0001,
+                                     "Every unassigned defender should narrow toward the ball")
+            XCTAssertGreaterThan(hypot(player.homeAnchor.x - simulation.ball.position.x,
+                                       player.homeAnchor.y - simulation.ball.position.y),
+                                 0.04,
+                                 "The compact block should not collapse into twenty-player ball chasing")
+        }
+    }
+
+    func testOpenPlayShapeAssignmentsAreDeterministic() async {
+        let first = await freshSimulation()
+        let second = await freshSimulation()
+        for _ in 0..<80 {
+            first.testAdvance(dt: 0.1)
+            second.testAdvance(dt: 0.1)
+        }
+
+        XCTAssertEqual(first.testSupportPlayerIDs(), second.testSupportPlayerIDs())
+        XCTAssertEqual(first.testAmbientPresserID(), second.testAmbientPresserID())
+        XCTAssertEqual(first.testCoverDefenderID(), second.testCoverDefenderID())
+        XCTAssertEqual(first.testMarkingAssignments(), second.testMarkingAssignments())
+        for (lhs, rhs) in zip(first.players, second.players) {
+            XCTAssertEqual(lhs.id, rhs.id)
+            XCTAssertEqual(lhs.homeAnchor.x, rhs.homeAnchor.x, accuracy: 0.0001)
+            XCTAssertEqual(lhs.homeAnchor.y, rhs.homeAnchor.y, accuracy: 0.0001)
+        }
+    }
+
     func testOpenPlayIncludesVisibleDeterministicTurnovers() async {
         let first = await freshSimulation()
         let second = await freshSimulation()

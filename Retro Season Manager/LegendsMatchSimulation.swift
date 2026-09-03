@@ -313,6 +313,14 @@ final class LegendsMatchSimulation {
 
     private let ambientHoldDuration = 0.55
 
+    /// Open-play responsibilities are recalculated from the live possessor
+    /// and ball position. Two teammates offer a passing triangle; the
+    /// defending side assigns one presser, one covering defender and up to
+    /// two goal-side markers. IDs are stable for identical simulation state.
+    private var supportPlayerIDs: [String] = []
+    private var coverDefenderID: String?
+    private var markingAssignments: [String: String] = [:]
+
     /// The two attacking runners, the defending goalkeeper, and the
     /// marking defender from an active attack sequence, each mapped to a
     /// point — fixed (the ball's own waypoints, for the runners; the
@@ -500,6 +508,7 @@ final class LegendsMatchSimulation {
         ambientPresserID = nil
         pendingAmbientTurnoverTeam = nil
         ambientHoldElapsed = 0
+        clearOpenPlayAssignments()
 
         let attackingTeam: Side = forUser ? .home : .away
         let defendingTeam: Side = forUser ? .away : .home
@@ -730,6 +739,9 @@ final class LegendsMatchSimulation {
     func testAmbientCompletedPasses() -> Int { ambientCompletedPasses }
     func testHasActiveAttack() -> Bool { activeAttack != nil }
     func testRunTarget(for playerID: String) -> CGPoint? { runTargetOverrides[playerID] }
+    func testSupportPlayerIDs() -> [String] { supportPlayerIDs }
+    func testCoverDefenderID() -> String? { coverDefenderID }
+    func testMarkingAssignments() -> [String: String] { markingAssignments }
 
     private func loop() async {
         var lastTick = Date()
@@ -802,6 +814,7 @@ final class LegendsMatchSimulation {
 
         let possessor = players[possessorIndex]
         ambientPresserID = bestPresser(for: possessionTeam.opposite, near: ball.position)?.id
+        refreshOpenPlayAssignments(around: possessor)
 
         if let targetID = ambientPassTargetID,
            let target = players.first(where: { $0.id == targetID }) {
@@ -895,6 +908,91 @@ final class LegendsMatchSimulation {
         ambientSequencePasses = 0
         ambientPossessorID = Self.closestOutfieldPlayer(in: players, team: team, to: point)?.id
         ambientPresserID = bestPresser(for: team.opposite, near: point)?.id
+        supportPlayerIDs = []
+        coverDefenderID = nil
+        markingAssignments = [:]
+    }
+
+    private func clearOpenPlayAssignments() {
+        supportPlayerIDs = []
+        coverDefenderID = nil
+        markingAssignments = [:]
+    }
+
+    /// Builds coordinated responsibilities around the player in possession.
+    /// The nearest useful teammates become a short outlet and a forward
+    /// option instead of every attacker remaining glued to a formation dot.
+    /// Defenders retain a compact block: one presses, one covers the space
+    /// behind them, and two others track the most advanced available threats.
+    private func refreshOpenPlayAssignments(around possessor: PlayerSimState) {
+        let attackDirection = possessor.team == .home ? -1.0 : 1.0
+        let teammates = players.filter {
+            $0.team == possessor.team && $0.id != possessor.id && $0.role != .goalkeeper
+        }
+
+        func supportScore(_ player: PlayerSimState, forward: Bool) -> Double {
+            let separation = distance(player.position, possessor.position)
+            let ideal = 1 - min(1, abs(separation - 0.20) / 0.20)
+            let progress = (player.position.y - possessor.position.y) * attackDirection
+            let vertical = forward ? progress : -abs(progress + 0.04)
+            let control = Double(LegendsMatchSelectors.firstTouch(player.detailed)) / 99
+            return ideal * 1.8 + vertical * 1.4 + control * 0.2
+        }
+
+        let shortOutlet = teammates.sorted {
+            let lhs = supportScore($0, forward: false)
+            let rhs = supportScore($1, forward: false)
+            if abs(lhs - rhs) > 0.0001 { return lhs > rhs }
+            return $0.id < $1.id
+        }.first
+        let forwardOutlet = teammates.filter { $0.id != shortOutlet?.id }.sorted {
+            let lhs = supportScore($0, forward: true)
+            let rhs = supportScore($1, forward: true)
+            if abs(lhs - rhs) > 0.0001 { return lhs > rhs }
+            return $0.id < $1.id
+        }.first
+        supportPlayerIDs = [shortOutlet?.id, forwardOutlet?.id].compactMap { $0 }
+
+        let defendingTeam = possessor.team.opposite
+        let availableDefenders = players.filter {
+            $0.team == defendingTeam
+                && $0.role != .goalkeeper
+                && $0.id != ambientPresserID
+        }
+        coverDefenderID = availableDefenders.sorted {
+            let lhs = distance($0.position, ball.position)
+            let rhs = distance($1.position, ball.position)
+            if abs(lhs - rhs) > 0.0001 { return lhs < rhs }
+            let lhsDefending = LegendsMatchSelectors.defending($0.detailed)
+            let rhsDefending = LegendsMatchSelectors.defending($1.detailed)
+            if lhsDefending != rhsDefending { return lhsDefending > rhsDefending }
+            return $0.id < $1.id
+        }.first?.id
+
+        let threats = teammates
+            .filter { !supportPlayerIDs.contains($0.id) }
+            .sorted {
+                let ownGoalY = defendingTeam == .home ? 1.0 : 0.0
+                let lhs = abs($0.position.y - ownGoalY)
+                let rhs = abs($1.position.y - ownGoalY)
+                if abs(lhs - rhs) > 0.0001 { return lhs < rhs }
+                return $0.id < $1.id
+            }
+            .prefix(2)
+
+        var unassigned = availableDefenders.filter { $0.id != coverDefenderID }
+        var assignments: [String: String] = [:]
+        for threat in threats {
+            guard let marker = unassigned.min(by: {
+                let lhs = distance($0.position, threat.position)
+                let rhs = distance($1.position, threat.position)
+                if abs(lhs - rhs) > 0.0001 { return lhs < rhs }
+                return $0.id < $1.id
+            }) else { break }
+            assignments[marker.id] = threat.id
+            unassigned.removeAll { $0.id == marker.id }
+        }
+        markingAssignments = assignments
     }
 
     private static func closestOutfieldPlayer(
@@ -963,7 +1061,8 @@ final class LegendsMatchSimulation {
             case .carry, .interceptedPass:
                 directionScore = forwardProgress
             }
-            return idealDistance * 1.6 + directionScore + control * 0.25
+            let supportBonus = supportPlayerIDs.contains(candidate.id) ? 0.32 : 0
+            return idealDistance * 1.6 + directionScore + control * 0.25 + supportBonus
         }
 
         return candidates.sorted {
@@ -983,12 +1082,29 @@ final class LegendsMatchSimulation {
         presser: PlayerSimState?
     ) -> Bool {
         let passDistance = distance(passer.position, receiver.position)
+        let lanePoint = midpoint(passer.position, receiver.position)
+        let laneDefender = players
+            .filter { $0.team != passer.team && $0.role != .goalkeeper }
+            .min {
+                let lhs = distance($0.position, lanePoint)
+                let rhs = distance($1.position, lanePoint)
+                if abs(lhs - rhs) > 0.0001 { return lhs < rhs }
+                return $0.id < $1.id
+            }
         let passing = LegendsMatchSelectors.passing(passer.detailed)
         let touch = LegendsMatchSelectors.firstTouch(receiver.detailed)
-        let defending = presser.map { LegendsMatchSelectors.defending($0.detailed) } ?? 50
-        let pressure = presser.map { max(0, 0.20 - distance($0.position, passer.position)) * 220 } ?? 0
+        let defending = laneDefender.map { LegendsMatchSelectors.defending($0.detailed) }
+            ?? presser.map { LegendsMatchSelectors.defending($0.detailed) }
+            ?? 50
+        let pressure = presser.map {
+            max(0, 0.20 - distance($0.position, passer.position)) * 180
+        } ?? 0
+        let lanePressure = laneDefender.map {
+            max(0, 0.18 - distance($0.position, lanePoint)) * 170
+        } ?? 0
         let risk = max(5.0, min(55.0,
-            10 + passDistance * 55 + pressure + Double(defending - passing) * 0.20 - Double(touch - 50) * 0.08
+            8 + passDistance * 52 + pressure + lanePressure
+                + Double(defending - passing) * 0.20 - Double(touch - 50) * 0.08
         ))
         let stableRoll = (ambientDecisionIndex * 37 + ambientSequencePasses * 17 + passer.id.count * 11 + receiver.id.count * 7) % 100
         return Double(stableRoll) < risk
@@ -1028,14 +1144,104 @@ final class LegendsMatchSimulation {
         ))
     }
 
-    /// Attacking sides advance and retain some width; defending sides
-    /// compress toward the ball. Only the possessor and nearest presser break
-    /// the shape, which keeps the pitch readable and avoids twenty-player
-    /// ball chasing.
+    private func supportTarget(for player: PlayerSimState, index: Int) -> CGPoint {
+        guard let possessor = players.first(where: { $0.id == ambientPossessorID }) else {
+            return player.baseAnchor
+        }
+        let direction = player.team == .home ? -1.0 : 1.0
+        let side: Double
+        if index == 0 {
+            side = possessor.position.x <= 0.5 ? 0.13 : -0.13
+        } else {
+            side = possessor.position.x <= 0.5 ? -0.11 : 0.11
+        }
+        let vertical = index == 0 ? -direction * 0.075 : direction * 0.12
+        return clampedToPitch(CGPoint(
+            x: possessor.position.x + side,
+            y: possessor.position.y + vertical
+        ))
+    }
+
+    private func coverTarget(for player: PlayerSimState) -> CGPoint {
+        let ownGoalY = player.team == .home ? 1.0 : 0.0
+        return clampedToPitch(CGPoint(
+            x: ball.position.x * 0.72 + player.baseAnchor.x * 0.28,
+            y: ball.position.y + (ownGoalY - ball.position.y) * 0.18
+        ))
+    }
+
+    private func markingTarget(for player: PlayerSimState, threatID: String) -> CGPoint {
+        guard let threat = players.first(where: { $0.id == threatID }) else {
+            return player.baseAnchor
+        }
+        let ownGoalY = player.team == .home ? 1.0 : 0.0
+        return clampedToPitch(CGPoint(
+            x: threat.position.x * 0.78 + player.baseAnchor.x * 0.22,
+            y: threat.position.y + (ownGoalY - threat.position.y) * 0.07
+        ))
+    }
+
+    private func defensiveBlockAnchor(for player: PlayerSimState) -> CGPoint {
+        if player.role == .goalkeeper {
+            let ownGoalY = player.team == .home ? 1.0 : 0.0
+            return clampedToPitch(CGPoint(
+                x: 0.5 + (ball.position.x - 0.5) * 0.18,
+                y: ownGoalY + (ball.position.y - ownGoalY) * 0.08
+            ))
+        }
+
+        let ownGoalY = player.team == .home ? 1.0 : 0.0
+        let shiftedY = player.baseAnchor.y + (ball.position.y - 0.5) * depthPull * 0.72
+        let goalSideOffset: Double
+        switch player.role.broad {
+        case .goalkeeper: goalSideOffset = 0
+        case .defender: goalSideOffset = 0.11
+        case .midfielder: goalSideOffset = 0.055
+        case .forward: goalSideOffset = 0
+        }
+        let goalSideY = ball.position.y + (ownGoalY - ball.position.y) * goalSideOffset
+        let ballInDefensiveHalf = player.team == .home ? ball.position.y > 0.5 : ball.position.y < 0.5
+        let y: Double
+        if ballInDefensiveHalf && player.role.broad != .forward {
+            y = player.team == .home ? max(shiftedY, goalSideY) : min(shiftedY, goalSideY)
+        } else {
+            y = shiftedY
+        }
+        return clampedToPitch(CGPoint(
+            x: player.baseAnchor.x + (ball.position.x - player.baseAnchor.x) * sidewaysPull * 1.35,
+            y: y
+        ))
+    }
+
+    /// Attacking players form passing triangles around the possessor while
+    /// retaining formation width. The defending team moves as a compact
+    /// block with explicit pressing, cover and goal-side marking duties.
+    /// Goalkeepers sweep only a few yards and remain tied to their own goal.
     private func openPlayAnchor(for player: PlayerSimState) -> CGPoint {
         let attacking = player.team == possessionTeam
-        let xPull = attacking ? sidewaysPull * 0.65 : sidewaysPull * 1.15
-        let yPull = attacking ? depthPull * 1.15 : depthPull * 0.75
+        if !attacking {
+            if player.id == coverDefenderID {
+                return coverTarget(for: player)
+            }
+            if let threatID = markingAssignments[player.id] {
+                return markingTarget(for: player, threatID: threatID)
+            }
+            return defensiveBlockAnchor(for: player)
+        }
+
+        if let supportIndex = supportPlayerIDs.firstIndex(of: player.id) {
+            return supportTarget(for: player, index: supportIndex)
+        }
+        if player.role == .goalkeeper {
+            let ownGoalY = player.team == .home ? 1.0 : 0.0
+            return clampedToPitch(CGPoint(
+                x: 0.5 + (ball.position.x - 0.5) * 0.14,
+                y: ownGoalY + (ball.position.y - ownGoalY) * 0.12
+            ))
+        }
+
+        let xPull = sidewaysPull * 0.62
+        let yPull = depthPull * 1.05
         let direction = player.team == .home ? -1.0 : 1.0
         let roleAdvance: Double
         switch player.role.broad {
@@ -1044,9 +1250,11 @@ final class LegendsMatchSimulation {
         case .midfielder: roleAdvance = attacking ? 0.032 : 0
         case .forward: roleAdvance = attacking ? 0.05 : 0
         }
+        let wideRole = [.leftBack, .rightBack, .leftMid, .rightMid, .leftWing, .rightWing].contains(player.role)
+        let width = wideRole ? (player.baseAnchor.x < 0.5 ? -0.025 : 0.025) : 0
 
         return clampedToPitch(CGPoint(
-            x: player.baseAnchor.x + (ball.position.x - player.baseAnchor.x) * xPull,
+            x: player.baseAnchor.x + (ball.position.x - player.baseAnchor.x) * xPull + width,
             y: player.baseAnchor.y + (ball.position.y - 0.5) * yPull + direction * roleAdvance
         ))
     }
