@@ -28,13 +28,11 @@
 //  target moves every tick rather than being fixed once at trigger time
 //  — a real closing-down chase, not another scripted waypoint. All
 //  overridden players release automatically once the sequence resolves
-//  (goal, chance, or handoff back to the idle loop), letting them steer
-//  back into the normal ball-relative formation shape `teamShapeShift`
-//  still drives for everyone else. Goal/score logic itself is still
-//  untouched, and the marker never actually contests/tackles anything —
-//  this remains a pure visual layer reacting to `LegendsLiveMatch`'s
-//  existing tick loop and Bernoulli goal model, never feeding back into
-//  it.
+//  (goal, chance, or handoff back to continuous open play), letting them steer
+//  back into the possession-aware formation shape `openPlayAnchor`
+//  drives for everyone else. Goal/score logic itself remains untouched:
+//  open play, pressing and turnovers make the visual layer believable
+//  without feeding a second result model back into `LegendsLiveMatch`.
 //
 //  Two independent update rates, matching Phase 1's design: physics/
 //  steering ticks at ~10Hz on a background `Task` loop (mirroring
@@ -114,8 +112,8 @@ struct PlayerSimState: Identifiable {
     let baseAnchor: CGPoint
     var position: CGPoint
     var velocity: CGVector
-    /// Recomputed every physics tick from `baseAnchor` plus the shared
-    /// ball-relative shift (`LegendsMatchSimulation.teamShapeShift`), or
+    /// Recomputed every physics tick from `baseAnchor` plus the current
+    /// possession-aware team shape, or
     /// from `runTargetOverrides` while this player is one of an active
     /// attack sequence's two runners — what `position` is currently
     /// steering toward.
@@ -220,11 +218,10 @@ final class LegendsMatchSimulation {
 
     private var loopTask: Task<Void, Never>?
 
-    /// The ball's current path — starts as the ambient idle loop and gets
-    /// swapped out for a scripted attack sequence whenever `triggerAttack`
-    /// fires, then swapped back once that sequence's last waypoint is
-    /// reached.
-    private var waypoints: [BallWaypoint] = LegendsMatchSimulation.idleWaypoints
+    /// The ball's scripted path while a real engine chance is being shown.
+    /// Ordinary play is handled by the continuous possession state below,
+    /// rather than a repeating list of fixed pitch coordinates.
+    private var waypoints: [BallWaypoint] = []
     private var waypointIndex = 0
     private var pendingImpact: (index: Int, kind: BallImpact.Kind, runnerName: String?, finisherName: String?, markerName: String?)?
 
@@ -244,31 +241,47 @@ final class LegendsMatchSimulation {
     /// rather than being dropped.
     private(set) var testAttackStartCount = 0
 
+    /// Scripted chances alternate flanks from a stable starting side. The
+    /// 2D layer is explanatory rather than authoritative, so an unseeded
+    /// coin toss here only made identical match inputs render differently
+    /// and made snapshot tests order-dependent.
+    private var nextAttackUsesLeftFlank = true
+    private(set) var testLastAttackUsedLeftFlank: Bool?
+
     // MARK: - Possession
 
-    /// Which team currently has the ball — set by `startAttack` (the
-    /// attacking team) and flipped to the defending team the instant
-    /// the sequence resolves (goal kick / kick-off), then recovered
-    /// back to `.home` after a few idle ticks. Drives the pitch
-    /// possession ring so it tracks the real possessor rather than just
-    /// the player nearest the ball.
+    /// Which team currently has the ball — set by open play and by real
+    /// attack events, then handed to the side entitled to the restart.
     private(set) var possessionTeam: Side = .home
-    /// Idle ticks elapsed since the last sequence resolved — once this
-    /// reaches `idleTicksToRecover`, possession resets to the home
-    /// team (the user side recovers the ball during ambient play).
-    private var idleTicksSinceSequenceEnd = 0
-    /// How many idle ticks (at 10 Hz) before possession returns to the
-    /// home team — 5 ticks ≈ 0.5s, long enough for a save/goal-kick
-    /// visual to register but short enough that the ring snaps back
-    /// quickly.
-    static let idleTicksToRecover = 5
+    /// The player visibly controlling the ball in settled open play. `nil`
+    /// while a pass or scripted attack is in flight, so proximity alone
+    /// cannot award the possession halo to an unrelated player.
+    var possessionPlayerID: String? {
+        guard activeAttack == nil, ambientPassTargetID == nil else { return nil }
+        return ambientPossessorID
+    }
+    /// Continuous open-play state. The ball belongs to a real player,
+    /// travels toward a real receiving teammate, and occasionally changes
+    /// sides through a visible interception instead of teleporting or
+    /// automatically returning to the user team.
+    private var ambientPossessorID: String?
+    private var ambientPreviousPossessorID: String?
+    private var ambientPassTargetID: String?
+    private var ambientPresserID: String?
+    private var pendingAmbientTurnoverTeam: Side?
+    private var ambientHoldElapsed = 0.0
+    private var ambientCompletedPasses = 0
+    private var ambientSequencePasses = 0
+
+    private let ambientHoldDuration = 0.55
+    private let ambientTurnoverInterval = 6
 
     /// The two attacking runners, the defending goalkeeper, and the
     /// marking defender from an active attack sequence, each mapped to a
     /// point — fixed (the ball's own waypoints, for the runners; the
     /// near-post dive target, for the keeper) for everyone except the
     /// marker, whose entry `tick()` overwrites every step to the ball's
-    /// live position — read instead of the normal `teamShapeShift`
+    /// live position — read instead of the normal open-play shape
     /// formula in `tick()` for exactly these players, so the ball, its
     /// runners, the keeper's reaction, and the marker's chase all
     /// genuinely converge on the same moment. Cleared the instant the
@@ -298,24 +311,6 @@ final class LegendsMatchSimulation {
     /// 1 when the home team is defending. Used to bias the marker's
     /// chase target goal-side of the ball rather than straight at it.
     private var defendingGoalY: Double = 1
-
-    /// A fixed loop of pitch positions the ball cycles through when no
-    /// real event is driving it — kickoff, out to each attacking third
-    /// and back — enough to keep the pitch visibly alive between chances.
-    private static let idleWaypoints: [BallWaypoint] = [
-        .fixed(CGPoint(x: 0.5, y: 0.5)),
-        .fixed(CGPoint(x: 0.5, y: 0.22)),
-        .fixed(CGPoint(x: 0.22, y: 0.14)),
-        .fixed(CGPoint(x: 0.5, y: 0.5)),
-        .fixed(CGPoint(x: 0.78, y: 0.14)),
-        .fixed(CGPoint(x: 0.5, y: 0.22)),
-        .fixed(CGPoint(x: 0.5, y: 0.5)),
-        .fixed(CGPoint(x: 0.5, y: 0.78)),
-        .fixed(CGPoint(x: 0.78, y: 0.86)),
-        .fixed(CGPoint(x: 0.5, y: 0.5)),
-        .fixed(CGPoint(x: 0.22, y: 0.86)),
-        .fixed(CGPoint(x: 0.5, y: 0.78)),
-    ]
 
     /// Preference order for who makes the wide crossing run and who
     /// finishes it — wingers/wide midfielders before wing-backs for the
@@ -362,6 +357,9 @@ final class LegendsMatchSimulation {
                                          detailed: player.detailed))
         }
         players = built
+        ambientPossessorID = Self.closestOutfieldPlayer(
+            in: built, team: .home, to: CGPoint(x: 0.5, y: 0.5)
+        )?.id
     }
 
     func start() {
@@ -413,7 +411,7 @@ final class LegendsMatchSimulation {
 
     /// Loads a scripted buildup → wide flank → cross → shot sequence for
     /// whichever team just had a real goal or big chance in the actual
-    /// match, interrupting the ambient idle loop, and hands the wide-run
+    /// match, interrupting continuous open play, and hands the wide-run
     /// and finishing-run legs to two real players from that team so they
     /// physically make the runs the ball is following. `forUser: true`
     /// means the home/user side is attacking; `scored: true` means the
@@ -448,7 +446,10 @@ final class LegendsMatchSimulation {
         activeAttack = PendingAttack(forUser: forUser, scored: scored)
         testAttackStartCount += 1
         possessionTeam = forUser ? .home : .away
-        idleTicksSinceSequenceEnd = 0
+        ambientPassTargetID = nil
+        ambientPresserID = nil
+        pendingAmbientTurnoverTeam = nil
+        ambientHoldElapsed = 0
 
         let attackingTeam: Side = forUser ? .home : .away
         let defendingTeam: Side = forUser ? .away : .home
@@ -460,7 +461,7 @@ final class LegendsMatchSimulation {
         // (falling back through the preference list, then any teammate);
         // the finisher is the best shooting/positioning candidate among
         // the finishing roles. Deterministic on the roster — no extra
-        // randomness beyond the flank coin below.
+        // randomness beyond the deterministic flank rotation below.
         let wideRunner = Self.pickRunner(
             from: attackers, preferring: Self.wideRunnerPreference,
             score: { LegendsMatchSelectors.passing($0.detailed) + $0.detailed.sprintSpeed }
@@ -470,7 +471,9 @@ final class LegendsMatchSimulation {
             score: { LegendsMatchSelectors.shooting($0.detailed) + $0.detailed.positioning }
         )
 
-        let wideLeft = Bool.random()
+        let wideLeft = nextAttackUsesLeftFlank
+        nextAttackUsesLeftFlank.toggle()
+        testLastAttackUsedLeftFlank = wideLeft
         let wideX = wideLeft ? 0.14 : 0.86
         let farPostX = wideLeft ? 0.62 : 0.38
         let nearPostX = wideLeft ? 0.38 : 0.62
@@ -618,6 +621,15 @@ final class LegendsMatchSimulation {
         return nil
     }
 
+    /// Open-play test hooks. These expose identities, not mutable state,
+    /// so deterministic possession behaviour can be verified without
+    /// coupling tests to private implementation collections.
+    func testAmbientPossessorID() -> String? { ambientPossessorID }
+    func testAmbientPassTargetID() -> String? { ambientPassTargetID }
+    func testAmbientPresserID() -> String? { ambientPresserID }
+    func testAmbientCompletedPasses() -> Int { ambientCompletedPasses }
+    func testHasActiveAttack() -> Bool { activeAttack != nil }
+
     private func loop() async {
         var lastTick = Date()
         while !Task.isCancelled {
@@ -634,23 +646,29 @@ final class LegendsMatchSimulation {
 
     private func tick(dt: Double) {
         let scaledDt = dt * speedMultiplier
-        advanceBall(dt: scaledDt)
-        if let markerID {
+        if activeAttack == nil {
+            advanceAmbientPlay(dt: scaledDt)
+        } else {
+            advanceBall(dt: scaledDt)
+        }
+        if let markerID, activeAttack != nil {
             let goalSideY = ball.position.y + (defendingGoalY - ball.position.y) * 0.15
             runTargetOverrides[markerID] = CGPoint(x: ball.position.x, y: goalSideY)
         }
-        let shift = teamShapeShift(ballPosition: ball.position)
         for index in players.indices {
             let anchor: CGPoint
             if let override = runTargetOverrides[players[index].id] {
                 anchor = override
             } else if let walkTarget = subWalkIns[players[index].id] {
                 anchor = walkTarget
+            } else if activeAttack == nil,
+                      players[index].id == ambientPossessorID,
+                      ambientPassTargetID == nil {
+                anchor = dribbleTarget(for: players[index])
+            } else if activeAttack == nil, players[index].id == ambientPresserID {
+                anchor = pressingTarget(for: players[index])
             } else {
-                anchor = clampedToPitch(CGPoint(
-                    x: players[index].baseAnchor.x + (ball.position.x - players[index].baseAnchor.x) * sidewaysPull,
-                    y: players[index].baseAnchor.y + shift
-                ))
+                anchor = openPlayAnchor(for: players[index])
             }
             players[index].homeAnchor = anchor
             steer(&players[index], dt: scaledDt)
@@ -664,15 +682,203 @@ final class LegendsMatchSimulation {
         }
         for id in arrived { subWalkIns.removeValue(forKey: id) }
         departingGhosts.removeAll { Date().timeIntervalSince($0.time) >= SubstitutionGhost.duration }
-        // After a sequence ends, the defending team briefly has the ball
-        // (goal kick / kick-off) before the home team recovers during
-        // ambient play.
-        if activeAttack == nil {
-            idleTicksSinceSequenceEnd += 1
-            if idleTicksSinceSequenceEnd >= Self.idleTicksToRecover {
-                possessionTeam = .home
-            }
+    }
+
+    // MARK: - Continuous open play
+
+    /// Advances ordinary possession independently of the sparse scoring
+    /// events produced by `LegendsLiveMatch`. The authoritative engine still
+    /// owns the result; this layer makes the time between those events read
+    /// as football rather than as a decorative ball loop.
+    private func advanceAmbientPlay(dt: Double) {
+        guard dt > 0 else { return }
+        guard let possessorIndex = players.firstIndex(where: {
+            $0.id == ambientPossessorID && $0.team == possessionTeam
+        }) else {
+            beginAmbientPossession(for: possessionTeam, near: ball.position)
+            return
         }
+
+        let possessor = players[possessorIndex]
+        ambientPresserID = bestPresser(for: possessionTeam.opposite, near: ball.position)?.id
+
+        if let targetID = ambientPassTargetID,
+           let target = players.first(where: { $0.id == targetID }) {
+            let passing = LegendsMatchSelectors.passing(possessor.detailed)
+            let passSpeed = 0.26 + Double(passing) / 500.0
+            let arrived = moveBall(toward: target.position, speed: passSpeed, dt: dt)
+            if arrived {
+                let previousID = ambientPossessorID
+                ambientPreviousPossessorID = previousID
+                ambientPossessorID = target.id
+                ambientPassTargetID = nil
+                ambientHoldElapsed = 0
+
+                if let turnoverTeam = pendingAmbientTurnoverTeam {
+                    possessionTeam = turnoverTeam
+                    pendingAmbientTurnoverTeam = nil
+                    ambientSequencePasses = 0
+                } else {
+                    ambientCompletedPasses += 1
+                    ambientSequencePasses += 1
+                }
+            }
+            return
+        }
+
+        // During a carry the ball stays attached to the real possessor while
+        // that player advances into space. This deliberately follows their
+        // live position rather than their static formation coordinate.
+        _ = moveBall(toward: possessor.position, speed: 0.42, dt: dt)
+        ambientHoldElapsed += dt
+        guard ambientHoldElapsed >= ambientHoldDuration else { return }
+
+        if ambientSequencePasses >= ambientTurnoverInterval,
+           let interceptor = Self.closestOutfieldPlayer(
+               in: players, team: possessionTeam.opposite, to: ball.position
+           ) {
+            ambientPassTargetID = interceptor.id
+            pendingAmbientTurnoverTeam = possessionTeam.opposite
+            ambientHoldElapsed = 0
+            return
+        }
+
+        if let receiver = choosePassRecipient(from: possessor) {
+            ambientPassTargetID = receiver.id
+            ambientHoldElapsed = 0
+        }
+    }
+
+    /// Begins a restart/open-play phase with the nearest sensible outfield
+    /// player. The ball travels to them on subsequent ticks; it never jumps.
+    private func beginAmbientPossession(for team: Side, near point: CGPoint) {
+        possessionTeam = team
+        ambientPreviousPossessorID = nil
+        ambientPassTargetID = nil
+        pendingAmbientTurnoverTeam = nil
+        ambientHoldElapsed = 0
+        ambientSequencePasses = 0
+        ambientPossessorID = Self.closestOutfieldPlayer(in: players, team: team, to: point)?.id
+        ambientPresserID = bestPresser(for: team.opposite, near: point)?.id
+    }
+
+    private static func closestOutfieldPlayer(
+        in players: [PlayerSimState], team: Side, to point: CGPoint
+    ) -> PlayerSimState? {
+        players
+            .filter { $0.team == team && $0.role != .goalkeeper }
+            .min { lhs, rhs in
+                let lhsDistance = hypot(lhs.position.x - point.x, lhs.position.y - point.y)
+                let rhsDistance = hypot(rhs.position.x - point.x, rhs.position.y - point.y)
+                if abs(lhsDistance - rhsDistance) > 0.0001 { return lhsDistance < rhsDistance }
+                return lhs.id < rhs.id
+            }
+    }
+
+    /// Pick among the three closest defenders using the Point 2 defending
+    /// selector, so anticipation/positioning influence who steps out rather
+    /// than every player swarming the ball.
+    private func bestPresser(for team: Side, near point: CGPoint) -> PlayerSimState? {
+        let nearest = players
+            .filter { $0.team == team && $0.role != .goalkeeper }
+            .sorted {
+                let lhs = distance($0.position, point)
+                let rhs = distance($1.position, point)
+                if abs(lhs - rhs) > 0.0001 { return lhs < rhs }
+                return $0.id < $1.id
+            }
+            .prefix(3)
+
+        return nearest.sorted {
+            let lhs = LegendsMatchSelectors.defending($0.detailed)
+            let rhs = LegendsMatchSelectors.defending($1.detailed)
+            if lhs != rhs { return lhs > rhs }
+            return $0.id < $1.id
+        }.first
+    }
+
+    /// Selects a plausible nearby option. Most passes progress toward goal;
+    /// every third completed pass favours recycling possession, preventing a
+    /// repetitive straight-line march. First-touch quality helps a receiver
+    /// without overpowering spacing and direction.
+    private func choosePassRecipient(from possessor: PlayerSimState) -> PlayerSimState? {
+        var candidates = players.filter {
+            $0.team == possessor.team && $0.id != possessor.id && $0.role != .goalkeeper
+        }
+        if candidates.count > 1, let previousID = ambientPreviousPossessorID {
+            candidates.removeAll { $0.id == previousID }
+        }
+        let recycle = ambientSequencePasses % 3 == 2
+        let attackDirection = possessor.team == .home ? -1.0 : 1.0
+
+        func score(_ candidate: PlayerSimState) -> Double {
+            let separation = distance(possessor.position, candidate.position)
+            let forwardProgress = (candidate.position.y - possessor.position.y) * attackDirection
+            let idealDistance = 1.0 - min(1.0, abs(separation - 0.24) / 0.24)
+            let directionScore = recycle ? -forwardProgress : forwardProgress
+            let control = Double(LegendsMatchSelectors.firstTouch(candidate.detailed)) / 99.0
+            return idealDistance * 1.8 + directionScore * 1.4 + control * 0.25
+        }
+
+        return candidates.sorted {
+            let lhs = score($0)
+            let rhs = score($1)
+            if abs(lhs - rhs) > 0.0001 { return lhs > rhs }
+            return $0.id < $1.id
+        }.first
+    }
+
+    private func moveBall(toward target: CGPoint, speed: Double, dt: Double) -> Bool {
+        let dx = target.x - ball.position.x
+        let dy = target.y - ball.position.y
+        let remaining = hypot(dx, dy)
+        let step = speed * dt
+        guard remaining > step, remaining > 0.0001 else {
+            ball.position = target
+            return true
+        }
+        ball.position.x += dx / remaining * step
+        ball.position.y += dy / remaining * step
+        return false
+    }
+
+    private func dribbleTarget(for player: PlayerSimState) -> CGPoint {
+        let direction = player.team == .home ? -1.0 : 1.0
+        return clampedToPitch(CGPoint(
+            x: player.position.x + (0.5 - player.position.x) * 0.08,
+            y: player.position.y + direction * 0.055
+        ))
+    }
+
+    private func pressingTarget(for player: PlayerSimState) -> CGPoint {
+        let ownGoalY = player.team == .home ? 1.0 : 0.0
+        return clampedToPitch(CGPoint(
+            x: ball.position.x,
+            y: ball.position.y + (ownGoalY - ball.position.y) * 0.10
+        ))
+    }
+
+    /// Attacking sides advance and retain some width; defending sides
+    /// compress toward the ball. Only the possessor and nearest presser break
+    /// the shape, which keeps the pitch readable and avoids twenty-player
+    /// ball chasing.
+    private func openPlayAnchor(for player: PlayerSimState) -> CGPoint {
+        let attacking = player.team == possessionTeam
+        let xPull = attacking ? sidewaysPull * 0.65 : sidewaysPull * 1.15
+        let yPull = attacking ? depthPull * 1.15 : depthPull * 0.75
+        let direction = player.team == .home ? -1.0 : 1.0
+        let roleAdvance: Double
+        switch player.role.broad {
+        case .goalkeeper: roleAdvance = 0
+        case .defender: roleAdvance = attacking ? 0.012 : 0
+        case .midfielder: roleAdvance = attacking ? 0.032 : 0
+        case .forward: roleAdvance = attacking ? 0.05 : 0
+        }
+
+        return clampedToPitch(CGPoint(
+            x: player.baseAnchor.x + (ball.position.x - player.baseAnchor.x) * xPull,
+            y: player.baseAnchor.y + (ball.position.y - 0.5) * yPull + direction * roleAdvance
+        ))
     }
 
     /// The pitch position a leg is currently aiming for — the leg's own
@@ -714,7 +920,7 @@ final class LegendsMatchSimulation {
             if waypointIndex >= waypoints.count {
                 // An attack sequence finished — play any follow-up attack
                 // that was queued behind it before handing back to the
-                // ambient idle loop (Phase 9).
+                // continuous open-play phase (Phase 9).
                 if let currentAttack = activeAttack {
                     activeAttack = nil
                     if !attackQueue.isEmpty {
@@ -725,31 +931,20 @@ final class LegendsMatchSimulation {
                     // No queued attack — the defending team gains the ball
                     // (goal kick after a save, or kick-off after conceding).
                     possessionTeam = currentAttack.forUser ? .away : .home
-                    idleTicksSinceSequenceEnd = 0
                 }
-                // Sequence finished (or the idle loop lapped) — resume/
-                // restart the ambient loop from wherever the ball ended
-                // up, and release this sequence's two runners back to
-                // the normal ball-relative formation shape.
-                waypoints = LegendsMatchSimulation.idleWaypoints
+                // The event presentation is complete. Hand the ball to a
+                // real player on the side entitled to the restart and
+                // return to continuous open play.
+                waypoints.removeAll()
                 waypointIndex = 0
                 runTargetOverrides.removeAll()
                 markerID = nil
+                beginAmbientPossession(for: possessionTeam, near: ball.position)
             }
         } else {
             ball.position.x += dx / distance * step
             ball.position.y += dy / distance * step
         }
-    }
-
-    /// The shared, direction-consistent "how deep is this team sitting"
-    /// signal both teams' anchors shift by (see the file's header note —
-    /// working out the sign for each team separately turns out to reduce
-    /// to the exact same formula, since y=1 is uniformly "toward the
-    /// home team's own goal / the away team's attacking third" in this
-    /// shared coordinate frame).
-    private func teamShapeShift(ballPosition: CGPoint) -> Double {
-        (ballPosition.y - 0.5) * depthPull
     }
 
     private func steer(_ player: inout PlayerSimState, dt: Double) {

@@ -112,16 +112,10 @@ struct LegendsPitchCanvas: View {
 
     private func draw(into context: GraphicsContext, size: CGSize) {
         let ballPosition = simulation.ball.position
-        // The ring sits on whichever player of the *possessing* team is
-        // nearest the ball — not the globally nearest player — so the
-        // ring tracks which side actually has the ball: during a user
-        // attack it's on a home midfielder; after a save it briefly
-        // follows an opponent player during their goal-kick phase.
-        let nearestID = (
-            simulation.players
-                .filter { $0.team == simulation.possessionTeam }
-                .min { distance($0.position, ballPosition) < distance($1.position, ballPosition) }
-        )?.id
+        // Show the ring only when a real player controls the ball. Passes,
+        // crosses and shots are unowned while in flight; being nearest to a
+        // loose ball is not the same thing as having possession.
+        let possessionPlayerID = simulation.possessionPlayerID
 
         // Departed players' dots fading out at their last position — the
         // "leaving the pitch" half of a substitution, drawn while the
@@ -150,7 +144,7 @@ struct LegendsPitchCanvas: View {
             let color = player.team == .home ? userColor : opponentColor
             let radius: CGFloat = 10
 
-            if player.id == nearestID {
+            if player.id == possessionPlayerID {
                 let ringRadius = radius + 4
                 let ringRect = CGRect(x: pos.x - ringRadius, y: pos.y - ringRadius, width: ringRadius * 2, height: ringRadius * 2)
                 context.stroke(Path(ellipseIn: ringRect), with: .color(.white.opacity(0.8)), lineWidth: 1.5)
@@ -181,10 +175,6 @@ struct LegendsPitchCanvas: View {
         context.stroke(Path(ellipseIn: ballRect), with: .color(.black.opacity(0.3)), lineWidth: 0.5)
 
         drawImpactFlash(into: context, size: size)
-    }
-
-    private func distance(_ a: CGPoint, _ b: CGPoint) -> Double {
-        hypot(a.x - b.x, a.y - b.y)
     }
 
     /// An expanding, fading ring at the goal mouth when a shot resolves —
