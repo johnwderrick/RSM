@@ -258,11 +258,18 @@ final class LegendsMatchSimulationTests: XCTestCase {
         }
 
         guard let targetID = simulation.testAmbientPassTargetID(),
-              let target = simulation.players.first(where: { $0.id == targetID }) else {
-            return XCTFail("The possessor should select a live teammate as a passing option.")
+              let target = simulation.players.first(where: { $0.id == targetID }),
+              let action = simulation.testLastAmbientAction else {
+            return XCTFail("Open play should select a real player for the first pass.")
         }
         XCTAssertNotEqual(targetID, startingPossessorID)
-        XCTAssertEqual(target.team, .home)
+        if action == .interceptedPass {
+            XCTAssertEqual(target.team, .away,
+                           "An intercepted pass should travel to the real opposing interceptor.")
+        } else {
+            XCTAssertEqual(target.team, .home,
+                           "A completed pass should travel to a real teammate.")
+        }
         XCTAssertNotEqual(target.role, .goalkeeper)
         XCTAssertNil(simulation.possessionPlayerID,
                      "A pass in flight should not display a possession ring on the nearest player.")
