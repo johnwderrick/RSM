@@ -365,7 +365,7 @@ final class LegendsMatchSimulationTests: XCTestCase {
         XCTAssertEqual(impact.runnerName, creator.name)
         XCTAssertEqual(impact.finisherName, shooter.name)
         XCTAssertEqual(impact.markerName, marker.name)
-        XCTAssertFalse(simulation.testLastAttackUsedLeftFlank,
+        XCTAssertEqual(simulation.testLastAttackUsedLeftFlank, false,
                        "The renderer must honor the event's right channel")
     }
 
