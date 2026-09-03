@@ -1589,7 +1589,6 @@ final class LegendsMatchSimulationTests: XCTestCase {
         // target rather than the just-cleared walk-in target.
         simulation.testAdvance(dt: 0.01)
         let start = simulation.players[slotIndex].position
-        let rejoinTarget = simulation.players[slotIndex].homeAnchor
 
         let beforeRenderer = ImageRenderer(content: view)
         beforeRenderer.scale = 1
@@ -1599,16 +1598,22 @@ final class LegendsMatchSimulationTests: XCTestCase {
         for _ in 0..<12 {
             simulation.testAdvance(dt: 0.1)
         }
-        let end = simulation.players[slotIndex].position
+        let endState = simulation.players[slotIndex]
+        let end = endState.position
 
-        // Sim-level: it left the departed spot and got closer to the
-        // possession-aware target assigned when normal steering resumed.
+        // Sim-level: it left the departed spot and its current velocity is
+        // aimed into the possession-aware team shape. The anchor moves with
+        // the ball during these ticks, so comparing the end position with a
+        // stale copy of the earlier anchor would test the wrong destination.
         let moved = hypot(end.x - start.x, end.y - start.y)
         XCTAssertGreaterThan(moved, 0.02, "The incoming card should physically leave the departed spot")
-        let startGap = hypot(start.x - rejoinTarget.x, start.y - rejoinTarget.y)
-        let endGap = hypot(end.x - rejoinTarget.x, end.y - rejoinTarget.y)
-        XCTAssertLessThan(endGap, startGap,
-                          "The incoming card should steer toward the current team-shape target")
+        let targetVector = CGVector(
+            dx: endState.homeAnchor.x - end.x,
+            dy: endState.homeAnchor.y - end.y
+        )
+        let steeringDotProduct = (endState.velocity.dx * targetVector.dx) + (endState.velocity.dy * targetVector.dy)
+        XCTAssertGreaterThan(steeringDotProduct, 0,
+                             "The incoming card should be steering toward its current team-shape target")
 
         let afterRenderer = ImageRenderer(content: view)
         afterRenderer.scale = 1
