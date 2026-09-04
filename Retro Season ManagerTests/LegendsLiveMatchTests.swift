@@ -175,6 +175,32 @@ final class LegendsLiveMatchTests: XCTestCase {
         XCTAssertFalse(live.isAwaiting2DPresentation)
     }
 
+    func testScheduledIncidentsAddDetailedCommentaryWithoutChangingTheScore() async {
+        let store = await freshStore()
+        strongestXI(store)
+        let live = LegendsLiveMatch(
+            store: store,
+            opponent: LegendsOpponent(name: "Incident Rivals", rating: 60),
+            rng: NoChanceRNG()
+        )
+
+        while !live.isFinished { live.testAdvanceMinute() }
+
+        XCTAssertEqual(live.teamGoals, 0)
+        XCTAssertEqual(live.opponentGoals, 0)
+        XCTAssertTrue(live.events.contains { $0.outcome == .throwIn })
+        XCTAssertTrue(live.events.contains { $0.outcome == .foul })
+        XCTAssertTrue(live.events.contains { $0.outcome == .offside })
+        XCTAssertTrue(live.events.contains { $0.outcome == .tackled })
+        XCTAssertTrue(live.events.contains { $0.outcome == .cleared })
+        XCTAssertTrue(live.commentary.contains { $0.text.contains("takes the throw-in") })
+        XCTAssertTrue(live.commentary.contains { $0.text.contains("brings down") })
+        XCTAssertTrue(live.commentary.contains { $0.text.contains("caught offside") })
+        XCTAssertTrue(live.commentary.contains { $0.text.contains("wins possession") })
+        XCTAssertTrue(live.commentary.contains { $0.text.contains("clears towards") })
+        XCTAssertTrue(live.events.allSatisfy { !$0.isShotEvent && $0.expectedGoals == 0 })
+    }
+
     func testGoalRateIncreasesWithStrongerAttackRating() async {
         let strongAvg = await averageGoals(trials: statisticalTrialCount) { self.strongestXI($0) }
         let weakAvg = await averageGoals(trials: statisticalTrialCount) { self.weakestXI($0) }
@@ -584,4 +610,8 @@ final class LegendsLiveMatchTests: XCTestCase {
         XCTAssertEqual(live.minute, 5)
     }
 
+}
+
+private struct NoChanceRNG: RandomNumberGenerator {
+    mutating func next() -> UInt64 { UInt64.max / 2 }
 }

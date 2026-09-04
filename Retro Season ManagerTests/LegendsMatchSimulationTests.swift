@@ -165,7 +165,8 @@ final class LegendsMatchSimulationTests: XCTestCase {
     private func forwardNewEvents(from live: LegendsLiveMatch,
                                   into simulation: LegendsMatchSimulation,
                                   lastHandled: inout String?,
-                                  expected: inout [(id: String, side: Side, kind: BallImpact.Kind)]) {
+                                  expected: inout [(id: String, side: Side, kind: BallImpact.Kind,
+                                                    outcome: LegendsMatchEvent.Outcome)]) {
         let events = live.events
         let startIndex: Int
         if let anchor = lastHandled, let index = events.firstIndex(where: { $0.id == anchor }) {
@@ -175,7 +176,9 @@ final class LegendsMatchSimulationTests: XCTestCase {
         }
         guard startIndex < events.count else { return }
         for event in events[startIndex...] {
-            expected.append((event.id, event.side, event.scored ? .goal : .chance))
+            if event.isShotEvent {
+                expected.append((event.id, event.side, event.scored ? .goal : .chance, event.outcome))
+            }
             simulation.trigger(event)
         }
         lastHandled = events.last?.id
@@ -705,6 +708,131 @@ final class LegendsMatchSimulationTests: XCTestCase {
         XCTAssertEqual(simulation.lastImpact?.finisherID, script.shooterID)
         XCTAssertEqual(simulation.lastImpact?.markerID, script.markerID)
         XCTAssertEqual(simulation.lastImpact?.goalkeeperID, script.goalkeeperID)
+    }
+
+    func testEveryCommentaryIncidentProducesItsScripted2DRestart() async {
+        struct Scenario {
+            let outcome: LegendsMatchEvent.Outcome
+            let expectedTeam: Side
+            let expectedPoint: CGPoint
+            let preferredActor: (LegendsMatchPresentationScript) -> String?
+            let expectsShotImpact: Bool
+        }
+        let scenarios: [Scenario] = [
+            .init(outcome: .saved, expectedTeam: .away, expectedPoint: CGPoint(x: 0.5, y: 0.06),
+                  preferredActor: { $0.goalkeeperID }, expectsShotImpact: true),
+            .init(outcome: .blocked, expectedTeam: .home, expectedPoint: CGPoint(x: 0.02, y: 0.02),
+                  preferredActor: { $0.creatorID }, expectsShotImpact: true),
+            .init(outcome: .missed, expectedTeam: .away, expectedPoint: CGPoint(x: 0.5, y: 0.06),
+                  preferredActor: { $0.goalkeeperID }, expectsShotImpact: true),
+            .init(outcome: .woodwork, expectedTeam: .away, expectedPoint: CGPoint(x: 0.5, y: 0.06),
+                  preferredActor: { $0.goalkeeperID }, expectsShotImpact: true),
+            .init(outcome: .foul, expectedTeam: .home, expectedPoint: CGPoint(x: 0.30, y: 0.30),
+                  preferredActor: { $0.shooterID }, expectsShotImpact: false),
+            .init(outcome: .offside, expectedTeam: .away, expectedPoint: CGPoint(x: 0.30, y: 0.70),
+                  preferredActor: { $0.markerID }, expectsShotImpact: false),
+            .init(outcome: .throwIn, expectedTeam: .home, expectedPoint: CGPoint(x: 0.02, y: 0.50),
+                  preferredActor: { $0.creatorID }, expectsShotImpact: false),
+            .init(outcome: .tackled, expectedTeam: .away, expectedPoint: CGPoint(x: 0.30, y: 0.42),
+                  preferredActor: { $0.markerID }, expectsShotImpact: false),
+            .init(outcome: .cleared, expectedTeam: .home, expectedPoint: CGPoint(x: 0.02, y: 0.50),
+                  preferredActor: { $0.creatorID }, expectsShotImpact: false),
+        ]
+
+        for (index, scenario) in scenarios.enumerated() {
+            let simulation = await freshSimulation()
+            let home = simulation.players.filter { $0.team == .home && $0.role != .goalkeeper }
+            let away = simulation.players.filter { $0.team == .away }
+            guard home.count >= 2,
+                  let marker = away.first(where: { $0.role != .goalkeeper }),
+                  let keeper = away.first(where: { $0.role == .goalkeeper }) else {
+                return XCTFail("Expected complete teams for incident scenario \(index)")
+            }
+            let event = LegendsMatchEvent(
+                id: "restart-\(index)", minute: 50 + index, side: .home,
+                outcome: scenario.outcome, channel: .left, attackPattern: .wideCross,
+                creatorID: home[0].id, creatorName: home[0].name,
+                shooterID: home[1].id, shooterName: home[1].name,
+                markerID: marker.id, markerName: marker.name,
+                goalkeeperID: keeper.id, goalkeeperName: keeper.name,
+                expectedGoals: scenario.expectsShotImpact ? 0.32 : 0
+            )
+            let script = event.presentationScript
+
+            simulation.trigger(event)
+            for _ in 0..<ticksToCompleteAnAttack where simulation.testHasActiveAttack() {
+                simulation.testAdvance(dt: 0.1)
+            }
+
+            XCTAssertFalse(simulation.testHasActiveAttack(), "Scenario \(scenario.outcome) did not finish")
+            XCTAssertEqual(simulation.possessionTeam, scenario.expectedTeam)
+            XCTAssertEqual(simulation.ball.position.x, scenario.expectedPoint.x, accuracy: 0.0001)
+            XCTAssertEqual(simulation.ball.position.y, scenario.expectedPoint.y, accuracy: 0.0001)
+            XCTAssertEqual(simulation.testAmbientPossessorID(), scenario.preferredActor(script),
+                           "The scripted restart must choose the same named participant")
+            if scenario.expectsShotImpact {
+                XCTAssertEqual(simulation.lastImpact?.eventID, event.id)
+            } else {
+                XCTAssertNil(simulation.lastImpact,
+                             "Fouls, offsides and throw-ins must not masquerade as shot flashes")
+            }
+        }
+    }
+
+    func testPresentationBeatActionsMatchTheirDetailedCommentary() {
+        let event = LegendsMatchEvent(
+            id: "beat-contract", minute: 21, side: .home,
+            outcome: .blocked, channel: .right, attackPattern: .cutback,
+            creatorID: "creator", creatorName: "Vale",
+            shooterID: "shooter", shooterName: "Cole",
+            markerID: "marker", markerName: "Shaw",
+            goalkeeperID: "keeper", goalkeeperName: "Reed",
+            expectedGoals: 0.28
+        )
+        let script = event.presentationScript
+
+        XCTAssertEqual(script.beats.map(\.action), [.carry, .cutback, .shoot, .block])
+        XCTAssertEqual(script.beats.map(\.actorID), ["creator", "creator", "shooter", "shooter"])
+        XCTAssertEqual(script.beats[1].receiverID, "shooter")
+        XCTAssertEqual(script.beats[3].receiverID, "marker")
+        XCTAssertTrue(script.detailedText.contains("Vale reaches the byline on the right"))
+        XCTAssertTrue(script.detailedText.contains("cuts the ball back to Cole"))
+        XCTAssertTrue(script.detailedText.contains("makes the block"))
+        XCTAssertEqual(script.restart, .corner(team: .home, channel: .right))
+    }
+
+    func test2DPathIsBuiltBeatForBeatFromTheCommentaryScript() async {
+        let simulation = await freshSimulation()
+        let home = simulation.players.filter { $0.team == .home && $0.role != .goalkeeper }
+        let away = simulation.players.filter { $0.team == .away }
+        guard home.count >= 2,
+              let marker = away.first(where: { $0.role != .goalkeeper }),
+              let keeper = away.first(where: { $0.role == .goalkeeper }) else {
+            return XCTFail("Expected complete teams")
+        }
+        let event = LegendsMatchEvent(
+            id: "beat-for-beat", minute: 28, side: .home,
+            outcome: .blocked, channel: .right, attackPattern: .cutback,
+            creatorID: home[0].id, creatorName: home[0].name,
+            shooterID: home[1].id, shooterName: home[1].name,
+            markerID: marker.id, markerName: marker.name,
+            goalkeeperID: keeper.id, goalkeeperName: keeper.name,
+            expectedGoals: 0.31
+        )
+        let script = event.presentationScript
+
+        simulation.trigger(event)
+
+        XCTAssertEqual(script.beats.map(\.action), [.carry, .cutback, .shoot, .block])
+        XCTAssertEqual(simulation.testWaypointCount(), script.beats.count + 1,
+                       "Each text beat must produce exactly one 2D leg; the only extra leg is the scripted corner restart")
+        XCTAssertEqual(simulation.testFollowedPlayerID(atLegIndex: 0), script.creatorID)
+        XCTAssertEqual(simulation.testFollowedPlayerID(atLegIndex: 1), script.shooterID)
+        XCTAssertNil(simulation.testFollowedPlayerID(atLegIndex: 2),
+                     "The shot must leave the player's feet toward the scripted outcome zone")
+        XCTAssertNil(simulation.testFollowedPlayerID(atLegIndex: 3))
+        XCTAssertNil(simulation.testFollowedPlayerID(atLegIndex: 4),
+                     "The restart is a fixed corner position, not an invented player action")
     }
 
     func testAuthoritativeAttackPatternsProduceDistinctPlayerRoutes() async {
@@ -1337,7 +1465,8 @@ final class LegendsMatchSimulationTests: XCTestCase {
         // after every minute — a faithful mirror of the view's
         // `reactToLatestCommentary` id-diff — and recording each
         // goal/big-chance event we expect to flash.
-        var expectedEvents: [(id: String, side: Side, kind: BallImpact.Kind)] = []
+        var expectedEvents: [(id: String, side: Side, kind: BallImpact.Kind,
+                             outcome: LegendsMatchEvent.Outcome)] = []
         var lastHandledEventID: String?
         while !live.isFinished {
             live.testAdvanceMinute()
@@ -1356,27 +1485,29 @@ final class LegendsMatchSimulationTests: XCTestCase {
         // deduping by its timestamp catches every one.
         var captured: [BallImpact] = []
         var lastCapturedTime: Date?
-        for _ in 0..<(expectedEvents.count + 1) * ticksToCompleteAnAttack {
+        for _ in 0..<(live.events.count + 1) * ticksToCompleteAnAttack {
             simulation.testAdvance(dt: 0.1)
             captureNewImpact(from: simulation, into: &captured, lastCapturedTime: &lastCapturedTime)
             if captured.count == expectedEvents.count { break }
         }
 
-        XCTAssertEqual(simulation.testAttackStartCount, expectedEvents.count,
-                       "Every goal/big-chance line must start an attack sequence — none may be dropped")
+        XCTAssertGreaterThanOrEqual(simulation.testAttackStartCount, expectedEvents.count,
+                                    "Every shot event must start an attack sequence — none may be dropped")
         XCTAssertEqual(captured.count, expectedEvents.count,
                        "Every triggered attack — immediate or queued — must resolve to an impact")
         for (impact, event) in zip(captured, expectedEvents) {
             XCTAssertEqual(impact.eventID, event.id)
             XCTAssertEqual(impact.kind, event.kind,
                            "Impacts must match their commentary events in FIFO order")
-            let expectedY: Double
-            switch (event.side, event.kind) {
-            case (.home, .goal):   expectedY = 0.015
-            case (.home, .chance): expectedY = 0.03
-            case (.away, .goal):   expectedY = 0.985
-            case (.away, .chance): expectedY = 0.97
+            let homeY: Double
+            switch event.outcome {
+            case .goal, .missed, .woodwork: homeY = 0.015
+            case .saved: homeY = 0.03
+            case .blocked: homeY = 0.06
+            case .foul, .offside, .throwIn, .tackled, .cleared:
+                return XCTFail("Non-shot incidents must not enter the impact expectation list")
             }
+            let expectedY = event.side == .home ? homeY : 1 - homeY
             XCTAssertEqual(impact.position.y, expectedY, accuracy: 0.02,
                            "A \(event.side) \(event.kind) must flash at that side's own goal mouth")
         }
@@ -1429,7 +1560,8 @@ final class LegendsMatchSimulationTests: XCTestCase {
 
         // State shared between this test and the watcher task — all
         // MainActor, interleaved via sleeps, so the mutations serialize.
-        var expectedEvents: [(id: String, side: Side, kind: BallImpact.Kind)] = []
+        var expectedEvents: [(id: String, side: Side, kind: BallImpact.Kind,
+                             outcome: LegendsMatchEvent.Outcome)] = []
         var lastHandledEventID: String?
         var captured: [BallImpact] = []
         var lastCapturedTime: Date?
@@ -1494,15 +1626,15 @@ final class LegendsMatchSimulationTests: XCTestCase {
         // Drain anything still queued or mid-flight, continuing the capture
         // from where the watcher left off.
         var drainTicks = 0
-        for _ in 0..<(expectedEvents.count + 1) * ticksToCompleteAnAttack {
+        for _ in 0..<(live.events.count + 1) * ticksToCompleteAnAttack {
             simulation.testAdvance(dt: 0.1)
             drainTicks += 1
             captureNewImpact(from: simulation, into: &captured, lastCapturedTime: &lastCapturedTime)
             if captured.count == expectedEvents.count { break }
         }
 
-        XCTAssertEqual(simulation.testAttackStartCount, expectedEvents.count,
-                       "Every goal/big-chance line must start an attack sequence — none may be dropped")
+        XCTAssertGreaterThanOrEqual(simulation.testAttackStartCount, expectedEvents.count,
+                                    "Every shot event must start an attack sequence — none may be dropped")
         XCTAssertEqual(captured.count, expectedEvents.count,
                        "Every triggered attack — immediate or queued — must resolve to an impact")
         XCTAssertLessThanOrEqual(drainTicks, 3 * ticksToCompleteAnAttack,
@@ -1511,13 +1643,15 @@ final class LegendsMatchSimulationTests: XCTestCase {
             XCTAssertEqual(impact.eventID, event.id)
             XCTAssertEqual(impact.kind, event.kind,
                            "Impacts must match their commentary events in FIFO order")
-            let expectedY: Double
-            switch (event.side, event.kind) {
-            case (.home, .goal):   expectedY = 0.015
-            case (.home, .chance): expectedY = 0.03
-            case (.away, .goal):   expectedY = 0.985
-            case (.away, .chance): expectedY = 0.97
+            let homeY: Double
+            switch event.outcome {
+            case .goal, .missed, .woodwork: homeY = 0.015
+            case .saved: homeY = 0.03
+            case .blocked: homeY = 0.06
+            case .foul, .offside, .throwIn, .tackled, .cleared:
+                return XCTFail("Non-shot incidents must not enter the impact expectation list")
             }
+            let expectedY = event.side == .home ? homeY : 1 - homeY
             XCTAssertEqual(impact.position.y, expectedY, accuracy: 0.02,
                            "A \(event.side) \(event.kind) must flash at that side's own goal mouth")
         }
