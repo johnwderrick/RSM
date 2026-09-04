@@ -571,9 +571,16 @@ final class LegendsMatchSimulationTests: XCTestCase {
         let second = await freshSimulation()
         var sawAwayPossession = false
 
-        for _ in 0..<350 {
+        // Advance until the deterministic open-play sequence has actually
+        // exercised its required actions. A fixed 35-second window became
+        // invalid once action phases gained realistic preparation and travel
+        // time: it could stop just before the first progressive pass even
+        // though the deterministic sequence was behaving correctly.
+        var tickCount = 0
+        while tickCount < 1_200 {
             first.testAdvance(dt: 0.1)
             second.testAdvance(dt: 0.1)
+            tickCount += 1
             sawAwayPossession = sawAwayPossession || first.possessionTeam == .away
 
             XCTAssertEqual(first.possessionTeam, second.possessionTeam)
@@ -581,8 +588,19 @@ final class LegendsMatchSimulationTests: XCTestCase {
             XCTAssertEqual(first.testAmbientPassTargetID(), second.testAmbientPassTargetID())
             XCTAssertEqual(first.ball.position.x, second.ball.position.x, accuracy: 0.0001)
             XCTAssertEqual(first.ball.position.y, second.ball.position.y, accuracy: 0.0001)
+
+            let actions = Set(first.testAmbientActionHistory.map(\.rawValue))
+            if first.testAmbientCompletedPasses() > 0,
+               sawAwayPossession,
+               actions.count >= 3,
+               first.testAmbientActionHistory.contains(.progressivePass),
+               first.testAmbientActionHistory.contains(.interceptedPass) {
+                break
+            }
         }
 
+        XCTAssertLessThan(tickCount, 1_200,
+                          "Open play should exercise its deterministic action mix before the safety cap.")
         XCTAssertGreaterThan(first.testAmbientCompletedPasses(), 0)
         XCTAssertTrue(sawAwayPossession,
                       "Open play should change hands through a visible interception instead of resetting to home possession.")
@@ -836,6 +854,68 @@ final class LegendsMatchSimulationTests: XCTestCase {
         XCTAssertNil(simulation.testFollowedPlayerID(atLegIndex: 3))
         XCTAssertNil(simulation.testFollowedPlayerID(atLegIndex: 4),
                      "The restart is a fixed corner position, not an invented player action")
+    }
+
+    func testActionTimelineKeepsControlUntilReleaseAndMatchesEveryCommentaryBeat() async {
+        let simulation = await freshSimulation()
+        let home = simulation.players.filter { $0.team == .home && $0.role != .goalkeeper }
+        let away = simulation.players.filter { $0.team == .away }
+        guard home.count >= 2,
+              let marker = away.first(where: { $0.role != .goalkeeper }),
+              let keeper = away.first(where: { $0.role == .goalkeeper }) else {
+            return XCTFail("Expected complete teams")
+        }
+        let creator = home[0]
+        let shooter = home[1]
+        let event = LegendsMatchEvent(
+            id: "timed-actions", minute: 38, side: .home,
+            outcome: .goal, channel: .right, attackPattern: .centralCombination,
+            creatorID: creator.id, creatorName: creator.name,
+            shooterID: shooter.id, shooterName: shooter.name,
+            markerID: marker.id, markerName: marker.name,
+            goalkeeperID: keeper.id, goalkeeperName: keeper.name,
+            expectedGoals: 0.37
+        )
+        let script = event.presentationScript
+        simulation.trigger(event)
+
+        XCTAssertEqual(simulation.currentPresentationAction, .carry)
+        XCTAssertEqual(simulation.possessionPlayerID, creator.id)
+
+        var sawPassPreparation = false
+        var sawReleasedPass = false
+        var sawReceiverControl = false
+        var ticks = 0
+        while simulation.testHasActiveAttack() && ticks < ticksToCompleteAnAttack {
+            simulation.testAdvance(dt: 0.1)
+            ticks += 1
+
+            if let action = simulation.currentPresentationAction,
+               let beat = script.beats.first(where: { $0.action == action }) {
+                XCTAssertEqual(simulation.currentPresentationText, beat.text,
+                               "The visible sentence must be the action currently being performed")
+            }
+
+            if simulation.currentPresentationAction == .carry,
+               let actor = simulation.players.first(where: { $0.id == creator.id }) {
+                XCTAssertEqual(simulation.ball.position.x, actor.position.x, accuracy: 0.0001)
+                XCTAssertEqual(simulation.ball.position.y, actor.position.y, accuracy: 0.0001)
+            }
+            if simulation.currentPresentationAction == .pass {
+                if simulation.possessionPlayerID == creator.id { sawPassPreparation = true }
+                if simulation.possessionPlayerID == nil { sawReleasedPass = true }
+            }
+            if simulation.currentPresentationAction == .shoot,
+               simulation.possessionPlayerID == shooter.id {
+                sawReceiverControl = true
+            }
+        }
+
+        XCTAssertTrue(sawPassPreparation, "The passer must control the ball before releasing it")
+        XCTAssertTrue(sawReleasedPass, "The possession halo must clear while the pass is travelling")
+        XCTAssertTrue(sawReceiverControl, "The receiver must take control before preparing the shot")
+        XCTAssertEqual(simulation.completedPresentationActions, script.beats.map(\.action),
+                       "Actions must complete in the exact order authored by commentary")
     }
 
     func testGoalPresentationFiresAtTheNetThenShowsAVisibleKickoffPhase() async {
