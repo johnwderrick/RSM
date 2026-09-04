@@ -89,6 +89,73 @@ struct LegendsMatchEvent: Identifiable, Equatable {
 
     var scored: Bool { outcome == .goal }
     var isUserEvent: Bool { side == .home }
+    var presentationScript: LegendsMatchPresentationScript {
+        LegendsMatchPresentationScript(event: self)
+    }
+}
+
+/// One immutable description of what happened in an authoritative chance.
+/// Both the text commentary and the 2D pitch consume this object, so names,
+/// actions, flank, outcome and participants cannot drift apart.
+struct LegendsMatchPresentationScript: Equatable {
+    let eventID: String
+    let side: Side
+    let outcome: LegendsMatchEvent.Outcome
+    let channel: LegendsMatchEvent.Channel
+    let attackPattern: LegendsMatchEvent.AttackPattern
+    let creatorID: String?
+    let shooterID: String
+    let markerID: String?
+    let goalkeeperID: String?
+    let buildup: String
+    let delivery: String
+    let finish: String
+
+    init(event: LegendsMatchEvent) {
+        eventID = event.id
+        side = event.side
+        outcome = event.outcome
+        channel = event.channel
+        attackPattern = event.attackPattern
+        creatorID = event.creatorID
+        shooterID = event.shooterID
+        markerID = event.markerID
+        goalkeeperID = event.goalkeeperID
+
+        let creator = event.creatorName ?? event.shooterName
+        let flank = event.channel == .left ? "left" : "right"
+        switch event.attackPattern {
+        case .wideCross:
+            buildup = "\(creator) carries down the \(flank) flank."
+            delivery = "\(creator) crosses towards \(event.shooterName)."
+        case .cutback:
+            buildup = "\(creator) reaches the byline on the \(flank)."
+            delivery = "\(creator) cuts the ball back to \(event.shooterName)."
+        case .centralCombination:
+            buildup = "\(creator) drives through the centre."
+            delivery = "\(creator) combines with \(event.shooterName) at the edge of the box."
+        case .counterAttack:
+            buildup = "\(creator) leads a quick counter through the \(flank) channel."
+            delivery = "\(creator) releases \(event.shooterName) into space."
+        case .longShot:
+            buildup = "\(creator) works the ball into central space."
+            delivery = "\(event.shooterName) takes aim from distance."
+        }
+
+        let pressure = event.markerName.map { " under pressure from \($0)" } ?? ""
+        switch event.outcome {
+        case .goal:
+            let keeper = event.goalkeeperName.map { " beyond \($0)" } ?? ""
+            finish = "\(event.shooterName) shoots\(pressure) and scores\(keeper)."
+        case .saved:
+            let keeper = event.goalkeeperName ?? "The goalkeeper"
+            finish = "\(event.shooterName) shoots\(pressure), but \(keeper) saves."
+        }
+    }
+
+    var detailedText: String {
+        [buildup, delivery, finish].joined(separator: " ")
+    }
 }
 
 @MainActor
@@ -141,6 +208,11 @@ final class LegendsLiveMatch {
     private(set) var lastSubOnName = ""
 
     private var loopTask: Task<Void, Never>?
+    /// Engine events currently being presented by the 2D pitch. The match
+    /// clock waits while this set is non-empty, keeping commentary, actors
+    /// and the visible ball sequence on the same authoritative event.
+    private var presentationEventIDs: Set<String> = []
+    var isAwaiting2DPresentation: Bool { !presentationEventIDs.isEmpty }
     /// Goals/subs after minute 45 — drives stoppage time, a cheap echo
     /// of Career's event-counted approach without needing cards/injuries.
     private var secondHalfEventCount = 0
@@ -257,10 +329,12 @@ final class LegendsLiveMatch {
     func stop() {
         loopTask?.cancel()
         loopTask = nil
+        presentationEventIDs.removeAll()
         isPaused = true
     }
 
     func skipToEnd() {
+        presentationEventIDs.removeAll()
         isHalfTime = false
         isPaused = false
         while !isFinished { tick() }
@@ -269,8 +343,17 @@ final class LegendsLiveMatch {
     /// Synchronous single-minute advance, no delay — the async-free path
     /// unit tests drive instead of the real `Task`-based loop in `start()`.
     func testAdvanceMinute() {
+        guard !isAwaiting2DPresentation else { return }
         isHalfTime = false
         tick()
+    }
+
+    func begin2DPresentation(for eventID: String) {
+        presentationEventIDs.insert(eventID)
+    }
+
+    func complete2DPresentation(for eventID: String) {
+        presentationEventIDs.remove(eventID)
     }
 
     private func loop() async {
@@ -279,7 +362,7 @@ final class LegendsLiveMatch {
         // here the loop would keep sleeping forever in the paused branch
         // — `try?` swallows the cancellation error — leaking the engine.
         while !isFinished && !Task.isCancelled {
-            if isPaused || isHalfTime {
+            if isPaused || isHalfTime || isAwaiting2DPresentation {
                 try? await Task.sleep(for: .milliseconds(80))
                 continue
             }
@@ -466,8 +549,7 @@ final class LegendsLiveMatch {
         if scored {
             scoreGoal(event)
         } else {
-            let keeper = event.goalkeeperName.map { " — \($0) saves!" } ?? " — the keeper stands tall!"
-            say("Big chance for \(forUser ? store.profile.clubName : opponent.name): \(attacker.name) shoots\(keeper)", side: event.side)
+            say("Big chance for \(forUser ? store.profile.clubName : opponent.name). \(event.presentationScript.detailedText)", side: event.side)
             bumpMomentum(towardUser: forUser, by: 0.05)
         }
     }
@@ -657,13 +739,13 @@ final class LegendsLiveMatch {
             teamGoals += 1
             scorerCardIDs.append(event.shooterID)
             let assist = event.creatorName.map { " (assist: \($0))" } ?? ""
-            say("⚽︎ GOAL! \(event.shooterName)!\(assist) \(store.profile.clubName) \(teamGoals)-\(opponentGoals) \(opponent.name)", side: .home)
+            say("⚽︎ GOAL! \(event.shooterName)!\(assist) \(event.presentationScript.detailedText) \(store.profile.clubName) \(teamGoals)-\(opponentGoals) \(opponent.name)", side: .home)
             bumpMomentum(towardUser: true, by: 0.22)
             SoundManager.shared.play(.goalCrowd)
         } else {
             opponentGoals += 1
             let assist = event.creatorName.map { " (assist: \($0))" } ?? ""
-            say("⚽︎ GOAL! \(event.shooterName)!\(assist) \(opponent.name) \(opponentGoals)-\(teamGoals) \(store.profile.clubName)", side: .away)
+            say("⚽︎ GOAL! \(event.shooterName)!\(assist) \(event.presentationScript.detailedText) \(opponent.name) \(opponentGoals)-\(teamGoals) \(store.profile.clubName)", side: .away)
             bumpMomentum(towardUser: false, by: 0.22)
         }
         if minute > 45 { secondHalfEventCount += 1 }

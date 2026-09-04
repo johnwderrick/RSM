@@ -241,6 +241,16 @@ final class LegendsMatchSimulation {
     private(set) var players: [PlayerSimState]
     private(set) var ball = BallState(position: CGPoint(x: 0.5, y: 0.5))
     private(set) var lastImpact: BallImpact?
+    /// Called only after the final visual waypoint for an authoritative
+    /// event resolves. The live engine uses this acknowledgement to release
+    /// its presentation hold and advance to the next minute/commentary line.
+    var onEventPresentationCompleted: ((String) -> Void)?
+
+    /// Kept live with the match controls. Tactics change only the visual
+    /// decisions and team shape here; the authoritative live engine remains
+    /// solely responsible for chances, goals and the final score.
+    var userMentality: Mentality
+    var userInstruction: MatchInstruction
 
     /// Scales every tick's `dt` before it touches the ball or any player's
     /// steering — the view keeps this in lockstep with the real match's
@@ -386,7 +396,11 @@ final class LegendsMatchSimulation {
          userFormation: Formation,
          opponentFormation: Formation,
          opponentPlayers: [SyntheticOpponentPlayer],
-         userDetailedAttributes: [String: LegendsDetailedAttributes] = [:]) {
+         userDetailedAttributes: [String: LegendsDetailedAttributes] = [:],
+         userMentality: Mentality = .balanced,
+         userInstruction: MatchInstruction = .balanced) {
+        self.userMentality = userMentality
+        self.userInstruction = userInstruction
         let userAnchors = PitchCoordinateSystem.anchors(for: userFormation, team: .home)
         let opponentAnchors = PitchCoordinateSystem.anchors(for: opponentFormation, team: .away)
 
@@ -501,6 +515,7 @@ final class LegendsMatchSimulation {
         let forUser = attack.forUser
         let scored = attack.scored
         let authoritative = attack.event
+        let presentation = authoritative?.presentationScript
         activeAttack = attack
         testAttackStartCount += 1
         possessionTeam = forUser ? .home : .away
@@ -521,29 +536,29 @@ final class LegendsMatchSimulation {
         // the finisher is the best shooting/positioning candidate among
         // the finishing roles. Deterministic on the roster — no extra
         // randomness beyond the deterministic flank rotation below.
-        let authoritativeRunner = authoritative.flatMap { event -> PlayerSimState? in
-            guard let creatorID = event.creatorID else { return nil }
+        let authoritativeRunner = presentation.flatMap { script -> PlayerSimState? in
+            guard let creatorID = script.creatorID else { return nil }
             return attackers.first { $0.id == creatorID }
         }
         let wideRunner = authoritativeRunner
             ?? Self.pickRunner(from: attackers, preferring: Self.wideRunnerPreference,
                                score: { LegendsMatchSelectors.passing($0.detailed) + $0.detailed.sprintSpeed })
-        let authoritativeFinisher = authoritative.flatMap { event in
-            attackers.first { $0.id == event.shooterID }
+        let authoritativeFinisher = presentation.flatMap { script in
+            attackers.first { $0.id == script.shooterID }
         }
         let finisher = authoritativeFinisher
             ?? Self.pickRunner(from: attackers.filter { $0.id != wideRunner?.id }, preferring: Self.finisherPreference,
                                score: { LegendsMatchSelectors.shooting($0.detailed) + $0.detailed.positioning })
 
         let wideLeft: Bool
-        if let authoritative {
-            wideLeft = authoritative.channel == .left
+        if let presentation {
+            wideLeft = presentation.channel == .left
         } else {
             wideLeft = nextAttackUsesLeftFlank
             nextAttackUsesLeftFlank.toggle()
         }
         testLastAttackUsedLeftFlank = wideLeft
-        let pattern = authoritative?.attackPattern ?? .wideCross
+        let pattern = presentation?.attackPattern ?? .wideCross
         testLastAttackPattern = pattern
         let channelX = wideLeft ? 0.14 : 0.86
         let farPostX = wideLeft ? 0.62 : 0.38
@@ -616,8 +631,8 @@ final class LegendsMatchSimulation {
         if let finisher {
             runTargetOverrides[finisher.id] = finisherPoint
         }
-        let authoritativeKeeper = authoritative.flatMap { event -> PlayerSimState? in
-            guard let goalkeeperID = event.goalkeeperID else { return nil }
+        let authoritativeKeeper = presentation.flatMap { script -> PlayerSimState? in
+            guard let goalkeeperID = script.goalkeeperID else { return nil }
             return defenders.first { $0.id == goalkeeperID }
         }
         let keeper = authoritativeKeeper
@@ -632,7 +647,7 @@ final class LegendsMatchSimulation {
         // selector score (positioning/anticipation/tackling) among the
         // three closest to the wide run — closing-down duty goes to the
         // defender best equipped for it, not merely the nearest body.
-        if let authoritativeMarkerID = authoritative?.markerID,
+        if let authoritativeMarkerID = presentation?.markerID,
            outfieldDefenders.contains(where: { $0.id == authoritativeMarkerID }) {
             markerID = authoritativeMarkerID
         } else if outfieldDefenders.count > 3 {
@@ -742,6 +757,9 @@ final class LegendsMatchSimulation {
     func testSupportPlayerIDs() -> [String] { supportPlayerIDs }
     func testCoverDefenderID() -> String? { coverDefenderID }
     func testMarkingAssignments() -> [String: String] { markingAssignments }
+    func testBeginAmbientPossession(for team: Side) {
+        beginAmbientPossession(for: team, near: CGPoint(x: 0.5, y: 0.5))
+    }
 
     private func loop() async {
         var lastTick = Date()
@@ -845,7 +863,8 @@ final class LegendsMatchSimulation {
         // live position rather than their static formation coordinate.
         _ = moveBall(toward: possessor.position, speed: 0.42, dt: dt)
         ambientHoldElapsed += dt
-        guard ambientHoldElapsed >= ambientHoldDuration else { return }
+        let tactics = tacticalProfile(for: possessor.team)
+        guard ambientHoldElapsed >= tactics.holdDuration else { return }
 
         ambientDecisionIndex += 1
         let presser = players.first { $0.id == ambientPresserID }
@@ -856,6 +875,11 @@ final class LegendsMatchSimulation {
 
         let action: LegendsAmbientAction
         if pressured {
+            action = ambientDecisionIndex.isMultiple(of: 2) ? .recycle : .switchPlay
+        } else if tactics.bias > 0.15 && !ambientDecisionIndex.isMultiple(of: 4) {
+            action = dribbling > defending + 4 && ambientDecisionIndex.isMultiple(of: 3)
+                ? .carry : .progressivePass
+        } else if tactics.bias < -0.15 && !ambientDecisionIndex.isMultiple(of: 4) {
             action = ambientDecisionIndex.isMultiple(of: 2) ? .recycle : .switchPlay
         } else if dribbling > defending + 8 && ambientDecisionIndex.isMultiple(of: 4) {
             action = .carry
@@ -919,6 +943,30 @@ final class LegendsMatchSimulation {
         markingAssignments = [:]
     }
 
+    /// A compact visual interpretation of the existing match controls.
+    /// Positive bias means front-foot football; negative bias means risk
+    /// reduction and a deeper, more compact block. The away side stays
+    /// balanced until opponent tactical choices become an authoritative
+    /// engine concept.
+    private struct TacticalProfile {
+        let bias: Double
+        let holdDuration: Double
+    }
+
+    private func tacticalProfile(for team: Side) -> TacticalProfile {
+        guard team == .home else {
+            return TacticalProfile(bias: 0, holdDuration: ambientHoldDuration)
+        }
+        let rawBias = (userMentality.attack * userInstruction.attack)
+            - (userMentality.solidity * userInstruction.solidity)
+        let bias = min(0.42, max(-0.42, rawBias * 0.48))
+        let timeWasteDelay = userInstruction == .timeWaste ? 1.35 : 1.0
+        return TacticalProfile(
+            bias: bias,
+            holdDuration: ambientHoldDuration * timeWasteDelay * (1 - bias * 0.18)
+        )
+    }
+
     /// Builds coordinated responsibilities around the player in possession.
     /// The nearest useful teammates become a short outlet and a forward
     /// option instead of every attacker remaining glued to a formation dot.
@@ -926,6 +974,7 @@ final class LegendsMatchSimulation {
     /// behind them, and two others track the most advanced available threats.
     private func refreshOpenPlayAssignments(around possessor: PlayerSimState) {
         let attackDirection = possessor.team == .home ? -1.0 : 1.0
+        let tactics = tacticalProfile(for: possessor.team)
         let teammates = players.filter {
             $0.team == possessor.team && $0.id != possessor.id && $0.role != .goalkeeper
         }
@@ -934,7 +983,9 @@ final class LegendsMatchSimulation {
             let separation = distance(player.position, possessor.position)
             let ideal = 1 - min(1, abs(separation - 0.20) / 0.20)
             let progress = (player.position.y - possessor.position.y) * attackDirection
-            let vertical = forward ? progress : -abs(progress + 0.04)
+            let vertical = forward
+                ? progress * (1.4 + tactics.bias * 0.8)
+                : -abs(progress + 0.04)
             let control = Double(LegendsMatchSelectors.firstTouch(player.detailed)) / 99
             return ideal * 1.8 + vertical * 1.4 + control * 0.2
         }
@@ -1138,9 +1189,11 @@ final class LegendsMatchSimulation {
 
     private func pressingTarget(for player: PlayerSimState) -> CGPoint {
         let ownGoalY = player.team == .home ? 1.0 : 0.0
+        let tactics = tacticalProfile(for: player.team)
+        let goalSideDepth = 0.10 - tactics.bias * 0.10
         return clampedToPitch(CGPoint(
             x: ball.position.x,
-            y: ball.position.y + (ownGoalY - ball.position.y) * 0.10
+            y: ball.position.y + (ownGoalY - ball.position.y) * goalSideDepth
         ))
     }
 
@@ -1149,13 +1202,18 @@ final class LegendsMatchSimulation {
             return player.baseAnchor
         }
         let direction = player.team == .home ? -1.0 : 1.0
+        let tactics = tacticalProfile(for: player.team)
         let side: Double
         if index == 0 {
-            side = possessor.position.x <= 0.5 ? 0.13 : -0.13
+            let distance = 0.13 + tactics.bias * 0.035
+            side = possessor.position.x <= 0.5 ? distance : -distance
         } else {
-            side = possessor.position.x <= 0.5 ? -0.11 : 0.11
+            let distance = 0.11 + tactics.bias * 0.025
+            side = possessor.position.x <= 0.5 ? -distance : distance
         }
-        let vertical = index == 0 ? -direction * 0.075 : direction * 0.12
+        let vertical = index == 0
+            ? -direction * (0.075 - tactics.bias * 0.025)
+            : direction * (0.12 + tactics.bias * 0.09)
         return clampedToPitch(CGPoint(
             x: possessor.position.x + side,
             y: possessor.position.y + vertical
@@ -1164,9 +1222,11 @@ final class LegendsMatchSimulation {
 
     private func coverTarget(for player: PlayerSimState) -> CGPoint {
         let ownGoalY = player.team == .home ? 1.0 : 0.0
+        let tactics = tacticalProfile(for: player.team)
+        let coverDepth = 0.18 - tactics.bias * 0.09
         return clampedToPitch(CGPoint(
             x: ball.position.x * 0.72 + player.baseAnchor.x * 0.28,
-            y: ball.position.y + (ownGoalY - ball.position.y) * 0.18
+            y: ball.position.y + (ownGoalY - ball.position.y) * coverDepth
         ))
     }
 
@@ -1182,11 +1242,13 @@ final class LegendsMatchSimulation {
     }
 
     private func defensiveBlockAnchor(for player: PlayerSimState) -> CGPoint {
+        let tactics = tacticalProfile(for: player.team)
         if player.role == .goalkeeper {
             let ownGoalY = player.team == .home ? 1.0 : 0.0
+            let sweep = 0.08 + tactics.bias * 0.09
             return clampedToPitch(CGPoint(
                 x: 0.5 + (ball.position.x - 0.5) * 0.18,
-                y: ownGoalY + (ball.position.y - ownGoalY) * 0.08
+                y: ownGoalY + (ball.position.y - ownGoalY) * sweep
             ))
         }
 
@@ -1201,14 +1263,17 @@ final class LegendsMatchSimulation {
         }
         let goalSideY = ball.position.y + (ownGoalY - ball.position.y) * goalSideOffset
         let ballInDefensiveHalf = player.team == .home ? ball.position.y > 0.5 : ball.position.y < 0.5
-        let y: Double
+        var y: Double
         if ballInDefensiveHalf && player.role.broad != .forward {
             y = player.team == .home ? max(shiftedY, goalSideY) : min(shiftedY, goalSideY)
         } else {
             y = shiftedY
         }
+        let attackDirection = player.team == .home ? -1.0 : 1.0
+        y += attackDirection * tactics.bias * 0.12
+        let compactness = 1.35 - tactics.bias * 0.42
         return clampedToPitch(CGPoint(
-            x: player.baseAnchor.x + (ball.position.x - player.baseAnchor.x) * sidewaysPull * 1.35,
+            x: player.baseAnchor.x + (ball.position.x - player.baseAnchor.x) * sidewaysPull * compactness,
             y: y
         ))
     }
@@ -1234,14 +1299,17 @@ final class LegendsMatchSimulation {
         }
         if player.role == .goalkeeper {
             let ownGoalY = player.team == .home ? 1.0 : 0.0
+            let tactics = tacticalProfile(for: player.team)
+            let sweep = 0.12 + tactics.bias * 0.10
             return clampedToPitch(CGPoint(
                 x: 0.5 + (ball.position.x - 0.5) * 0.14,
-                y: ownGoalY + (ball.position.y - ownGoalY) * 0.12
+                y: ownGoalY + (ball.position.y - ownGoalY) * sweep
             ))
         }
 
         let xPull = sidewaysPull * 0.62
         let yPull = depthPull * 1.05
+        let tactics = tacticalProfile(for: player.team)
         let direction = player.team == .home ? -1.0 : 1.0
         let roleAdvance: Double
         switch player.role.broad {
@@ -1251,7 +1319,8 @@ final class LegendsMatchSimulation {
         case .forward: roleAdvance = attacking ? 0.05 : 0
         }
         let wideRole = [.leftBack, .rightBack, .leftMid, .rightMid, .leftWing, .rightWing].contains(player.role)
-        let width = wideRole ? (player.baseAnchor.x < 0.5 ? -0.025 : 0.025) : 0
+        let widthAmount = 0.025 + tactics.bias * 0.045
+        let width = wideRole ? (player.baseAnchor.x < 0.5 ? -widthAmount : widthAmount) : 0
 
         return clampedToPitch(CGPoint(
             x: player.baseAnchor.x + (ball.position.x - player.baseAnchor.x) * xPull + width,
@@ -1306,6 +1375,17 @@ final class LegendsMatchSimulation {
                 // continuous open-play phase (Phase 9).
                 if let currentAttack = activeAttack {
                     activeAttack = nil
+                    if let eventID = currentAttack.event?.id {
+                        onEventPresentationCompleted?(eventID)
+                    }
+                    possessionTeam = currentAttack.forUser ? .away : .home
+                    if currentAttack.scored {
+                        // A goal always restarts from a real centre-circle
+                        // kickoff by the side that conceded. The impact stays
+                        // archived at the goal mouth, while the live ball and
+                        // team shape reset for the restart.
+                        ball.position = CGPoint(x: 0.5, y: 0.5)
+                    }
                     if !attackQueue.isEmpty {
                         let next = attackQueue.removeFirst()
                         startAttack(next)
@@ -1313,7 +1393,6 @@ final class LegendsMatchSimulation {
                     }
                     // No queued attack — the defending team gains the ball
                     // (goal kick after a save, or kick-off after conceding).
-                    possessionTeam = currentAttack.forUser ? .away : .home
                 }
                 // The event presentation is complete. Hand the ball to a
                 // real player on the side entitled to the restart and

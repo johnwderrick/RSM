@@ -89,13 +89,19 @@ struct LegendsLiveMatchView: View {
             result[slot.id] = store.effectiveDetailedAttributes(for: card)
         }
         let opponentRoster = LegendsOpponentRoster.generateRoster(for: live.opponent)
-        _simulation = State(initialValue: LegendsMatchSimulation(
+        let matchSimulation = LegendsMatchSimulation(
             userSlots: userSlots,
             userFormation: store.formation,
             opponentFormation: opponentRoster.formation,
             opponentPlayers: opponentRoster.players,
-            userDetailedAttributes: userDetailedAttributes
-        ))
+            userDetailedAttributes: userDetailedAttributes,
+            userMentality: live.userMentality,
+            userInstruction: live.userInstruction
+        )
+        matchSimulation.onEventPresentationCompleted = { eventID in
+            live.complete2DPresentation(for: eventID)
+        }
+        _simulation = State(initialValue: matchSimulation)
     }
 
     var body: some View {
@@ -143,6 +149,8 @@ struct LegendsLiveMatchView: View {
         .onChange(of: live.isFinished) { _, finished in if finished { triggerFullTimeConfettiIfWon() } }
         .onChange(of: live.speed) { _, newSpeed in simulation.speedMultiplier = live.isPaused ? 0 : newSpeed }
         .onChange(of: live.isPaused) { _, isPaused in simulation.speedMultiplier = isPaused ? 0 : live.speed }
+        .onChange(of: live.userMentality) { _, mentality in simulation.userMentality = mentality }
+        .onChange(of: live.userInstruction) { _, instruction in simulation.userInstruction = instruction }
         .onChange(of: live.events.count) { _, _ in reactToLatestEvents() }
         .onChange(of: live.onPitchCardIDs) { oldIDs, newIDs in
             applyPitchSubstitutions(from: oldIDs, to: newIDs)
@@ -193,6 +201,7 @@ struct LegendsLiveMatchView: View {
         }
         guard startIndex < events.count else { return }
         for event in events[startIndex...] {
+            live.begin2DPresentation(for: event.id)
             simulation.trigger(event)
         }
         lastHandledEventID = events.last?.id
