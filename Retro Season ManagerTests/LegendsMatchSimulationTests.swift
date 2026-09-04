@@ -835,6 +835,59 @@ final class LegendsMatchSimulationTests: XCTestCase {
                      "The restart is a fixed corner position, not an invented player action")
     }
 
+    func testGoalPresentationFiresAtTheNetThenShowsAVisibleKickoffPhase() async {
+        let simulation = await freshSimulation()
+        let home = simulation.players.filter { $0.team == .home && $0.role != .goalkeeper }
+        let away = simulation.players.filter { $0.team == .away }
+        guard home.count >= 2,
+              let marker = away.first(where: { $0.role != .goalkeeper }),
+              let keeper = away.first(where: { $0.role == .goalkeeper }) else {
+            return XCTFail("Expected complete teams")
+        }
+        let event = LegendsMatchEvent(
+            id: "visible-goal-restart", minute: 64, side: .home,
+            outcome: .goal, channel: .left, attackPattern: .wideCross,
+            creatorID: home[0].id, creatorName: home[0].name,
+            shooterID: home[1].id, shooterName: home[1].name,
+            markerID: marker.id, markerName: marker.name,
+            goalkeeperID: keeper.id, goalkeeperName: keeper.name,
+            expectedGoals: 0.42
+        )
+        let script = event.presentationScript
+        var presentedGoalIDs: [String] = []
+        simulation.onGoalPresented = { presentedGoalIDs.append($0.id) }
+
+        simulation.trigger(event)
+
+        XCTAssertEqual(simulation.currentPresentationText, script.beats.first?.text)
+        XCTAssertEqual(simulation.currentPresentationEventID, event.id)
+        XCTAssertEqual(simulation.testWaypointCount(), script.beats.count + 1,
+                       "A goal requires a final visible centre-spot restart leg")
+        XCTAssertTrue(presentedGoalIDs.isEmpty,
+                      "The scorer card must not appear when the engine merely queues the goal")
+
+        var sawKickoffPhase = false
+        for _ in 0..<ticksToCompleteAnAttack where simulation.testHasActiveAttack() {
+            simulation.testAdvance(dt: 0.1)
+            if simulation.isPresentingRestart {
+                sawKickoffPhase = true
+                XCTAssertEqual(simulation.currentPresentationText,
+                               "The conceding team restart from the centre spot.")
+                XCTAssertEqual(presentedGoalIDs, [event.id],
+                               "The scorer card must fire exactly when the shot reaches the net")
+            }
+        }
+
+        XCTAssertTrue(sawKickoffPhase, "The centre-spot restart must be visible before open play resumes")
+        XCTAssertFalse(simulation.testHasActiveAttack())
+        XCTAssertEqual(simulation.ball.position.x, 0.5, accuracy: 0.0001)
+        XCTAssertEqual(simulation.ball.position.y, 0.5, accuracy: 0.0001)
+        XCTAssertEqual(simulation.possessionTeam, .away)
+        XCTAssertEqual(presentedGoalIDs, [event.id])
+        XCTAssertNil(simulation.currentPresentationText)
+        XCTAssertNil(simulation.currentPresentationEventID)
+    }
+
     func testAuthoritativeAttackPatternsProduceDistinctPlayerRoutes() async {
         var creatorTargets = Set<String>()
         for pattern in LegendsMatchEvent.AttackPattern.allCases {
