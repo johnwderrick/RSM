@@ -248,6 +248,16 @@ final class LegendsMatchSimulation {
     private(set) var currentPresentationSide: Side?
     private(set) var currentPresentationEventID: String?
     private(set) var isPresentingRestart = false
+    /// The football action currently being performed, plus the ordered
+    /// history completed for this event. These are presentation facts only:
+    /// they cannot alter the authoritative result.
+    private(set) var currentPresentationAction: LegendsPresentationAction?
+    private(set) var completedPresentationActions: [LegendsPresentationAction] = []
+    /// During control, preparation and carries the possession halo belongs
+    /// to the actual scripted actor. It becomes nil the instant a pass,
+    /// cross or shot is released and transfers to the receiver on arrival.
+    private var scriptedPossessorID: String?
+    private var currentLegElapsed = 0.0
     /// Fired when a scripted goal actually reaches its goal-mouth waypoint,
     /// not when the match engine changes the score several seconds earlier.
     var onGoalPresented: ((LegendsMatchEvent) -> Void)?
@@ -312,7 +322,8 @@ final class LegendsMatchSimulation {
     /// while a pass or scripted attack is in flight, so proximity alone
     /// cannot award the possession halo to an unrelated player.
     var possessionPlayerID: String? {
-        guard activeAttack == nil, ambientPassTargetID == nil else { return nil }
+        if activeAttack != nil { return scriptedPossessorID }
+        guard ambientPassTargetID == nil else { return nil }
         return ambientPossessorID
     }
     /// Continuous open-play state. The ball belongs to a real player,
@@ -531,6 +542,10 @@ final class LegendsMatchSimulation {
         currentPresentationSide = authoritative?.side
         currentPresentationEventID = authoritative?.id
         isPresentingRestart = false
+        currentPresentationAction = presentation?.beats.first?.action
+        completedPresentationActions = []
+        scriptedPossessorID = presentation?.beats.first.flatMap(possessorID(for:))
+        currentLegElapsed = 0
         testAttackStartCount += 1
         possessionTeam = forUser ? .home : .away
         ambientPassTargetID = nil
@@ -864,23 +879,80 @@ final class LegendsMatchSimulation {
         }
     }
 
-    /// Moves the visible caption onto the exact leg the ball has just
-    /// started. Once the event beats finish, the final leg is explicitly
-    /// labelled and staged as its restart.
+    private struct PresentationTiming {
+        let preparation: Double
+        let ballSpeed: Double
+        let controlledCarry: Bool
+    }
+
+    private func timing(for action: LegendsPresentationAction) -> PresentationTiming {
+        switch action {
+        case .carry:
+            return PresentationTiming(preparation: 0.10, ballSpeed: 0, controlledCarry: true)
+        case .pass:
+            return PresentationTiming(preparation: 0.22, ballSpeed: 0.40, controlledCarry: false)
+        case .cross:
+            return PresentationTiming(preparation: 0.34, ballSpeed: 0.48, controlledCarry: false)
+        case .cutback:
+            return PresentationTiming(preparation: 0.24, ballSpeed: 0.36, controlledCarry: false)
+        case .throughBall:
+            return PresentationTiming(preparation: 0.20, ballSpeed: 0.52, controlledCarry: false)
+        case .shoot:
+            return PresentationTiming(preparation: 0.30, ballSpeed: 0.24, controlledCarry: false)
+        case .goal, .miss, .woodwork:
+            return PresentationTiming(preparation: 0, ballSpeed: 0.66, controlledCarry: false)
+        case .save, .block:
+            return PresentationTiming(preparation: 0, ballSpeed: 0.58, controlledCarry: false)
+        case .foul, .offside, .tackle:
+            return PresentationTiming(preparation: 0.28, ballSpeed: 0.24, controlledCarry: false)
+        case .throwIn:
+            return PresentationTiming(preparation: 0.42, ballSpeed: 0.34, controlledCarry: false)
+        case .clearance:
+            return PresentationTiming(preparation: 0.20, ballSpeed: 0.56, controlledCarry: false)
+        }
+    }
+
+    private func possessorID(for beat: LegendsPresentationBeat) -> String? {
+        switch beat.action {
+        case .carry, .pass, .cross, .cutback, .throughBall, .shoot, .throwIn, .clearance:
+            return beat.actorID
+        case .tackle:
+            return beat.actorID
+        case .goal, .save, .block, .miss, .woodwork, .foul, .offside:
+            return nil
+        }
+    }
+
+    private func fixedDestination(for waypoint: BallWaypoint) -> CGPoint {
+        switch waypoint {
+        case .fixed(let point): return point
+        case .followPlayer(_, let fallback): return fallback
+        }
+    }
+
+    /// Moves every visible and testable timeline property together when a
+    /// new action begins. The caption, possessor halo and movement therefore
+    /// all read from the same beat index.
     private func updatePresentationForCurrentLeg() {
         guard let event = activeAttack?.event else { return }
         let script = event.presentationScript
         currentPresentationEventID = event.id
         currentPresentationSide = event.side
+        currentLegElapsed = 0
 
         if waypointIndex < script.beats.count {
-            currentPresentationText = script.beats[waypointIndex].text
+            let beat = script.beats[waypointIndex]
+            currentPresentationText = beat.text
+            currentPresentationAction = beat.action
+            scriptedPossessorID = possessorID(for: beat)
             isPresentingRestart = false
             return
         }
 
         guard waypointIndex < waypoints.count else { return }
         currentPresentationText = restartCommentary(for: script.restart)
+        currentPresentationAction = nil
+        scriptedPossessorID = nil
         isPresentingRestart = true
         runTargetOverrides.removeAll()
         markerID = nil
@@ -889,6 +961,7 @@ final class LegendsMatchSimulation {
             let centre = restartPosition(for: script.restart)
             possessionTeam = team
             if let taker = Self.closestOutfieldPlayer(in: players, team: team, to: centre) {
+                scriptedPossessorID = taker.id
                 runTargetOverrides[taker.id] = centre
             }
         }
@@ -1534,11 +1607,9 @@ final class LegendsMatchSimulation {
         ))
     }
 
-    /// The pitch position a leg is currently aiming for — the leg's own
-    /// fixed point, or (for `.followPlayer`) wherever that player's
-    /// `position` actually is *right now*, re-read fresh every tick so a
-    /// still-moving runner visibly pulls the ball toward them rather than
-    /// the ball beelining for a point the runner merely ends up at.
+    /// The pitch position a released ball is currently aiming for. Receiver
+    /// legs follow that player's live position; outcome and restart legs use
+    /// fixed authoritative zones.
     private func resolvedPosition(for waypoint: BallWaypoint) -> CGPoint {
         switch waypoint {
         case .fixed(let point):
@@ -1549,104 +1620,146 @@ final class LegendsMatchSimulation {
     }
 
     private func advanceBall(dt: Double) {
-        guard waypointIndex < waypoints.count else { return }
-        let target = resolvedPosition(for: waypoints[waypointIndex])
+        guard dt > 0, waypointIndex < waypoints.count else { return }
+        let waypoint = waypoints[waypointIndex]
+        let script = activeAttack?.event?.presentationScript
+        let beat = script.flatMap { $0.beats.indices.contains(waypointIndex) ? $0.beats[waypointIndex] : nil }
+        currentLegElapsed += dt
+
+        var target = resolvedPosition(for: waypoint)
+        var speed = ballSpeed
+
+        if let beat {
+            let actionTiming = timing(for: beat.action)
+            if currentLegElapsed < actionTiming.preparation {
+                if let actorID = possessorID(for: beat),
+                   let actor = players.first(where: { $0.id == actorID }) {
+                    scriptedPossessorID = actorID
+                    ball.position = actor.position
+                }
+                return
+            }
+
+            if actionTiming.controlledCarry,
+               let actorID = beat.actorID,
+               let actor = players.first(where: { $0.id == actorID }) {
+                scriptedPossessorID = actorID
+                ball.position = actor.position
+                target = fixedDestination(for: waypoint)
+                if distance(actor.position, target) > 0.025 { return }
+            } else {
+                // The preparation/first-touch phase has ended: the ball is
+                // now visibly in flight until this action reaches its target.
+                scriptedPossessorID = nil
+                speed = actionTiming.ballSpeed
+            }
+        } else if isPresentingRestart {
+            speed = 0.34
+        }
+
         let dx = target.x - ball.position.x
         let dy = target.y - ball.position.y
-        let distance = (dx * dx + dy * dy).squareRoot()
-        let step = ballSpeed * dt
-
-        if distance <= step {
-            ball.position = target
-            if let pending = pendingImpact, pending.index == waypointIndex {
-                lastImpact = BallImpact(
-                    position: target,
-                    kind: pending.kind,
-                    time: Date(),
-                    runnerName: pending.runnerName,
-                    finisherName: pending.finisherName,
-                    markerName: pending.markerName,
-                    eventID: pending.eventID,
-                    runnerID: pending.runnerID,
-                    finisherID: pending.finisherID,
-                    markerID: pending.markerID,
-                    goalkeeperID: pending.goalkeeperID
-                )
-                if pending.kind == .goal, let event = activeAttack?.event {
-                    onGoalPresented?(event)
-                }
-                pendingImpact = nil
-            }
-            waypointIndex += 1
-            updatePresentationForCurrentLeg()
-            if waypointIndex >= waypoints.count {
-                // An attack sequence finished — play any follow-up attack
-                // that was queued behind it before handing back to the
-                // continuous open-play phase (Phase 9).
-                if let currentAttack = activeAttack {
-                    activeAttack = nil
-                    var preferredRestartPlayerID: String?
-                    if let event = currentAttack.event {
-                        let script = event.presentationScript
-                        ball.position = restartPosition(for: script.restart)
-                        switch script.restart {
-                        case .kickoff(let team):
-                            possessionTeam = team
-                        case .goalkeeperPossession(let team), .goalKick(let team):
-                            possessionTeam = team
-                            preferredRestartPlayerID = script.goalkeeperID
-                        case .corner(let team, _):
-                            possessionTeam = team
-                            preferredRestartPlayerID = script.creatorID
-                        case .freeKick(let team, _):
-                            possessionTeam = team
-                            preferredRestartPlayerID = team == event.side ? script.shooterID : script.markerID
-                        case .throwIn(let team, _):
-                            possessionTeam = team
-                            preferredRestartPlayerID = script.creatorID
-                        case .openPlay(let team, _):
-                            possessionTeam = team
-                            preferredRestartPlayerID = script.markerID
-                        }
-                    } else {
-                        possessionTeam = currentAttack.forUser ? .away : .home
-                        if currentAttack.scored {
-                            ball.position = CGPoint(x: 0.5, y: 0.5)
-                        }
-                    }
-                    if let eventID = currentAttack.event?.id {
-                        onEventPresentationCompleted?(eventID)
-                    }
-                    if !attackQueue.isEmpty {
-                        let next = attackQueue.removeFirst()
-                        startAttack(next)
-                        return // startAttack sets possession
-                    }
-                    waypoints.removeAll()
-                    waypointIndex = 0
-                    runTargetOverrides.removeAll()
-                    markerID = nil
-                    beginAmbientPossession(for: possessionTeam, near: ball.position,
-                                           preferredPlayerID: preferredRestartPlayerID)
-                    currentPresentationText = nil
-                    currentPresentationSide = nil
-                    currentPresentationEventID = nil
-                    isPresentingRestart = false
-                    return
-                }
-                // The event presentation is complete. Hand the ball to a
-                // real player on the side entitled to the restart and
-                // return to continuous open play.
-                waypoints.removeAll()
-                waypointIndex = 0
-                runTargetOverrides.removeAll()
-                markerID = nil
-                beginAmbientPossession(for: possessionTeam, near: ball.position)
-            }
-        } else {
-            ball.position.x += dx / distance * step
-            ball.position.y += dy / distance * step
+        let remaining = (dx * dx + dy * dy).squareRoot()
+        let step = speed * dt
+        guard remaining <= step else {
+            ball.position.x += dx / remaining * step
+            ball.position.y += dy / remaining * step
+            return
         }
+
+        ball.position = target
+        if let pending = pendingImpact, pending.index == waypointIndex {
+            lastImpact = BallImpact(
+                position: target,
+                kind: pending.kind,
+                time: Date(),
+                runnerName: pending.runnerName,
+                finisherName: pending.finisherName,
+                markerName: pending.markerName,
+                eventID: pending.eventID,
+                runnerID: pending.runnerID,
+                finisherID: pending.finisherID,
+                markerID: pending.markerID,
+                goalkeeperID: pending.goalkeeperID
+            )
+            if pending.kind == .goal, let event = activeAttack?.event {
+                onGoalPresented?(event)
+            }
+            pendingImpact = nil
+        }
+        if let action = beat?.action {
+            completedPresentationActions.append(action)
+        }
+        waypointIndex += 1
+        updatePresentationForCurrentLeg()
+
+        guard waypointIndex >= waypoints.count else { return }
+
+        // An attack sequence finished — play any follow-up attack that was
+        // queued behind it before handing back to continuous open play.
+        if let currentAttack = activeAttack {
+            activeAttack = nil
+            var preferredRestartPlayerID: String?
+            if let event = currentAttack.event {
+                let presentation = event.presentationScript
+                ball.position = restartPosition(for: presentation.restart)
+                switch presentation.restart {
+                case .kickoff(let team):
+                    possessionTeam = team
+                case .goalkeeperPossession(let team), .goalKick(let team):
+                    possessionTeam = team
+                    preferredRestartPlayerID = presentation.goalkeeperID
+                case .corner(let team, _):
+                    possessionTeam = team
+                    preferredRestartPlayerID = presentation.creatorID
+                case .freeKick(let team, _):
+                    possessionTeam = team
+                    preferredRestartPlayerID = team == event.side ? presentation.shooterID : presentation.markerID
+                case .throwIn(let team, _):
+                    possessionTeam = team
+                    preferredRestartPlayerID = presentation.creatorID
+                case .openPlay(let team, _):
+                    possessionTeam = team
+                    preferredRestartPlayerID = presentation.markerID
+                }
+            } else {
+                possessionTeam = currentAttack.forUser ? .away : .home
+                if currentAttack.scored {
+                    ball.position = CGPoint(x: 0.5, y: 0.5)
+                }
+            }
+            if let eventID = currentAttack.event?.id {
+                onEventPresentationCompleted?(eventID)
+            }
+            if !attackQueue.isEmpty {
+                let next = attackQueue.removeFirst()
+                startAttack(next)
+                return
+            }
+            waypoints.removeAll()
+            waypointIndex = 0
+            runTargetOverrides.removeAll()
+            markerID = nil
+            beginAmbientPossession(for: possessionTeam, near: ball.position,
+                                   preferredPlayerID: preferredRestartPlayerID)
+            currentPresentationText = nil
+            currentPresentationSide = nil
+            currentPresentationEventID = nil
+            currentPresentationAction = nil
+            scriptedPossessorID = nil
+            currentLegElapsed = 0
+            isPresentingRestart = false
+            return
+        }
+
+        waypoints.removeAll()
+        waypointIndex = 0
+        runTargetOverrides.removeAll()
+        markerID = nil
+        currentPresentationAction = nil
+        scriptedPossessorID = nil
+        currentLegElapsed = 0
+        beginAmbientPossession(for: possessionTeam, near: ball.position)
     }
 
     private func steer(_ player: inout PlayerSimState, dt: Double) {
