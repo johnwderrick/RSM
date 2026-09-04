@@ -216,15 +216,18 @@ final class LegendsMatchSimulationTests: XCTestCase {
         let fast = await freshSimulation()
         fast.speedMultiplier = 3
 
-        for _ in 0..<10 {
-            normal.testAdvance(dt: 0.1)
-            fast.testAdvance(dt: 0.1)
-        }
+        // Compare the first integration step while both simulations are
+        // travelling along the same leg. Measuring displacement after ten
+        // steps is invalid for a multi-leg route: the 3× ball can already
+        // have turned back toward the centre while the 1× ball is still on
+        // its outward leg.
+        normal.testAdvance(dt: 0.1)
+        fast.testAdvance(dt: 0.1)
 
         let normalMoved = hypot(normal.ball.position.x - 0.5, normal.ball.position.y - 0.5)
         let fastMoved = hypot(fast.ball.position.x - 0.5, fast.ball.position.y - 0.5)
         XCTAssertGreaterThan(fastMoved, normalMoved,
-                              "3× speed should carry the ball further than 1× over the same number of real-time ticks.")
+                              "3× speed should advance farther along the same initial leg than 1×.")
     }
 
     func testBallStartsAtKickoffCenter() async {
@@ -833,6 +836,59 @@ final class LegendsMatchSimulationTests: XCTestCase {
         XCTAssertNil(simulation.testFollowedPlayerID(atLegIndex: 3))
         XCTAssertNil(simulation.testFollowedPlayerID(atLegIndex: 4),
                      "The restart is a fixed corner position, not an invented player action")
+    }
+
+    func testGoalPresentationFiresAtTheNetThenShowsAVisibleKickoffPhase() async {
+        let simulation = await freshSimulation()
+        let home = simulation.players.filter { $0.team == .home && $0.role != .goalkeeper }
+        let away = simulation.players.filter { $0.team == .away }
+        guard home.count >= 2,
+              let marker = away.first(where: { $0.role != .goalkeeper }),
+              let keeper = away.first(where: { $0.role == .goalkeeper }) else {
+            return XCTFail("Expected complete teams")
+        }
+        let event = LegendsMatchEvent(
+            id: "visible-goal-restart", minute: 64, side: .home,
+            outcome: .goal, channel: .left, attackPattern: .wideCross,
+            creatorID: home[0].id, creatorName: home[0].name,
+            shooterID: home[1].id, shooterName: home[1].name,
+            markerID: marker.id, markerName: marker.name,
+            goalkeeperID: keeper.id, goalkeeperName: keeper.name,
+            expectedGoals: 0.42
+        )
+        let script = event.presentationScript
+        var presentedGoalIDs: [String] = []
+        simulation.onGoalPresented = { presentedGoalIDs.append($0.id) }
+
+        simulation.trigger(event)
+
+        XCTAssertEqual(simulation.currentPresentationText, script.beats.first?.text)
+        XCTAssertEqual(simulation.currentPresentationEventID, event.id)
+        XCTAssertEqual(simulation.testWaypointCount(), script.beats.count + 1,
+                       "A goal requires a final visible centre-spot restart leg")
+        XCTAssertTrue(presentedGoalIDs.isEmpty,
+                      "The scorer card must not appear when the engine merely queues the goal")
+
+        var sawKickoffPhase = false
+        for _ in 0..<ticksToCompleteAnAttack where simulation.testHasActiveAttack() {
+            simulation.testAdvance(dt: 0.1)
+            if simulation.isPresentingRestart {
+                sawKickoffPhase = true
+                XCTAssertEqual(simulation.currentPresentationText,
+                               "The conceding team restart from the centre spot.")
+                XCTAssertEqual(presentedGoalIDs, [event.id],
+                               "The scorer card must fire exactly when the shot reaches the net")
+            }
+        }
+
+        XCTAssertTrue(sawKickoffPhase, "The centre-spot restart must be visible before open play resumes")
+        XCTAssertFalse(simulation.testHasActiveAttack())
+        XCTAssertEqual(simulation.ball.position.x, 0.5, accuracy: 0.0001)
+        XCTAssertEqual(simulation.ball.position.y, 0.5, accuracy: 0.0001)
+        XCTAssertEqual(simulation.possessionTeam, .away)
+        XCTAssertEqual(presentedGoalIDs, [event.id])
+        XCTAssertNil(simulation.currentPresentationText)
+        XCTAssertNil(simulation.currentPresentationEventID)
     }
 
     func testAuthoritativeAttackPatternsProduceDistinctPlayerRoutes() async {

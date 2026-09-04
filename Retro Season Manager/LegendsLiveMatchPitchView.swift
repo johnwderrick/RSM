@@ -81,6 +81,32 @@ struct LegendsPitchCanvas: View {
                         _ = renderTick
                         draw(into: context, size: size)
                     }
+
+                    VStack {
+                        Spacer()
+                        if let text = simulation.currentPresentationText {
+                            Text(text)
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundStyle(.white)
+                                .multilineTextAlignment(.center)
+                                .lineLimit(2)
+                                .minimumScaleFactor(0.72)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .frame(maxWidth: 430)
+                                .background(
+                                    (simulation.currentPresentationSide == .home ? userColor : opponentColor)
+                                        .opacity(simulation.isPresentingRestart ? 0.92 : 0.82)
+                                )
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(.white.opacity(0.55), lineWidth: 1)
+                                )
+                                .padding(10)
+                                .accessibilityIdentifier("legends.match.currentBeat")
+                        }
+                    }
                 }
             }
             .aspectRatio(1.55, contentMode: .fit)

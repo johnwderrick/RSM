@@ -241,6 +241,16 @@ final class LegendsMatchSimulation {
     private(set) var players: [PlayerSimState]
     private(set) var ball = BallState(position: CGPoint(x: 0.5, y: 0.5))
     private(set) var lastImpact: BallImpact?
+    /// The exact authoritative commentary beat the ball is currently
+    /// performing. The pitch reads this value on every render tick so the
+    /// sentence shown to the player and the visible action cannot drift.
+    private(set) var currentPresentationText: String?
+    private(set) var currentPresentationSide: Side?
+    private(set) var currentPresentationEventID: String?
+    private(set) var isPresentingRestart = false
+    /// Fired when a scripted goal actually reaches its goal-mouth waypoint,
+    /// not when the match engine changes the score several seconds earlier.
+    var onGoalPresented: ((LegendsMatchEvent) -> Void)?
     /// Called only after the final visual waypoint for an authoritative
     /// event resolves. The live engine uses this acknowledgement to release
     /// its presentation hold and advance to the next minute/commentary line.
@@ -517,6 +527,10 @@ final class LegendsMatchSimulation {
         let authoritative = attack.event
         let presentation = authoritative?.presentationScript
         activeAttack = attack
+        currentPresentationText = presentation?.beats.first?.text
+        currentPresentationSide = authoritative?.side
+        currentPresentationEventID = authoritative?.id
+        isPresentingRestart = false
         testAttackStartCount += 1
         possessionTeam = forUser ? .home : .away
         ambientPassTargetID = nil
@@ -686,7 +700,10 @@ final class LegendsMatchSimulation {
             ]
         }
         let impactIndex = points.count - 1
-        if let presentation, outcome != .goal {
+        if let presentation {
+            // Every authoritative incident includes a visible restart leg.
+            // Goals therefore travel through a real centre-spot phase instead
+            // of snapping to kickoff only after the attack has disappeared.
             points.append(.fixed(restartPosition(for: presentation.restart)))
         }
 
@@ -825,6 +842,55 @@ final class LegendsMatchSimulation {
                 x: channel == .left ? 0.30 : 0.70,
                 y: team == .home ? 0.58 : 0.42
             )
+        }
+    }
+
+    private func restartCommentary(for restart: LegendsMatchRestart) -> String {
+        switch restart {
+        case .kickoff:
+            return "The conceding team restart from the centre spot."
+        case .goalkeeperPossession:
+            return "The goalkeeper gathers the ball and restarts play."
+        case .goalKick:
+            return "Play restarts with a goal kick."
+        case .corner:
+            return "The attacking side prepare to take the corner."
+        case .freeKick:
+            return "Play restarts with the free kick."
+        case .throwIn:
+            return "Play restarts with the throw-in."
+        case .openPlay:
+            return "The defender wins possession and play continues."
+        }
+    }
+
+    /// Moves the visible caption onto the exact leg the ball has just
+    /// started. Once the event beats finish, the final leg is explicitly
+    /// labelled and staged as its restart.
+    private func updatePresentationForCurrentLeg() {
+        guard let event = activeAttack?.event else { return }
+        let script = event.presentationScript
+        currentPresentationEventID = event.id
+        currentPresentationSide = event.side
+
+        if waypointIndex < script.beats.count {
+            currentPresentationText = script.beats[waypointIndex].text
+            isPresentingRestart = false
+            return
+        }
+
+        guard waypointIndex < waypoints.count else { return }
+        currentPresentationText = restartCommentary(for: script.restart)
+        isPresentingRestart = true
+        runTargetOverrides.removeAll()
+        markerID = nil
+
+        if case .kickoff(let team) = script.restart {
+            let centre = restartPosition(for: script.restart)
+            possessionTeam = team
+            if let taker = Self.closestOutfieldPlayer(in: players, team: team, to: centre) {
+                runTargetOverrides[taker.id] = centre
+            }
         }
     }
 
@@ -1506,9 +1572,13 @@ final class LegendsMatchSimulation {
                     markerID: pending.markerID,
                     goalkeeperID: pending.goalkeeperID
                 )
+                if pending.kind == .goal, let event = activeAttack?.event {
+                    onGoalPresented?(event)
+                }
                 pendingImpact = nil
             }
             waypointIndex += 1
+            updatePresentationForCurrentLeg()
             if waypointIndex >= waypoints.count {
                 // An attack sequence finished — play any follow-up attack
                 // that was queued behind it before handing back to the
@@ -1558,6 +1628,10 @@ final class LegendsMatchSimulation {
                     markerID = nil
                     beginAmbientPossession(for: possessionTeam, near: ball.position,
                                            preferredPlayerID: preferredRestartPlayerID)
+                    currentPresentationText = nil
+                    currentPresentationSide = nil
+                    currentPresentationEventID = nil
+                    isPresentingRestart = false
                     return
                 }
                 // The event presentation is complete. Hand the ball to a

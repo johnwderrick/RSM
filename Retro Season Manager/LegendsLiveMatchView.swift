@@ -50,9 +50,10 @@ struct LegendsLiveMatchView: View {
     @State private var lastHandledEventID: String?
     @State private var hasFinishedHandoff = false
 
-    @State private var goalFlash = false
-    @State private var isUserGoalFlash = true
-    @State private var goalFlashText = "GOAL!"
+    /// Set only when the 2D ball reaches the scripted goal waypoint. This
+    /// keeps the scorer card locked to the visible finish rather than the
+    /// earlier score mutation in the authoritative engine.
+    @State private var goalFlashEvent: LegendsMatchEvent?
     @State private var eventFlash: MatchFlashKind? = nil
     @State private var shakeTrigger = 0
     @State private var showConfetti = false
@@ -127,7 +128,7 @@ struct LegendsLiveMatchView: View {
                 controlBar
             }
 
-            if goalFlash { goalFlashOverlay }
+            if let goalFlashEvent { goalCardOverlay(for: goalFlashEvent) }
             if let eventFlash { MatchFlashOverlay(kind: eventFlash) }
             if showConfetti { PixelConfettiBurst(colors: confettiColors) }
             if live.isFinished { fullTimeOverlay }
@@ -135,16 +136,18 @@ struct LegendsLiveMatchView: View {
         }
         .matchShake(trigger: shakeTrigger)
         .onAppear {
+            simulation.onGoalPresented = { event in
+                triggerGoalCard(for: event)
+            }
             live.start()
             simulation.speedMultiplier = live.isPaused ? 0 : live.speed
             simulation.start()
         }
         .onDisappear {
+            simulation.onGoalPresented = nil
             live.stop()
             simulation.stop()
         }
-        .onChange(of: live.teamGoals) { _, _ in triggerGoalFlash(isUser: true) }
-        .onChange(of: live.opponentGoals) { _, _ in triggerGoalFlash(isUser: false) }
         .onChange(of: live.isHalfTime) { _, isHalfTime in if isHalfTime { triggerHalfTimeFlash() } }
         .onChange(of: live.isFinished) { _, finished in if finished { triggerFullTimeConfettiIfWon() } }
         .onChange(of: live.speed) { _, newSpeed in simulation.speedMultiplier = live.isPaused ? 0 : newSpeed }
@@ -227,10 +230,9 @@ struct LegendsLiveMatchView: View {
 
     // MARK: - Flash overlays (goal / half-time / confetti / scanline)
 
-    private func triggerGoalFlash(isUser: Bool) {
-        isUserGoalFlash = isUser
-        goalFlashText = isUser ? "GOAL!!!" : "GOAL AGAINST"
-        if isUser {
+    private func triggerGoalCard(for event: LegendsMatchEvent) {
+        guard event.scored else { return }
+        if event.isUserEvent {
             Haptics.success()
             shakeTrigger += 1
             confettiColors = [userColor, Retro.gold, Retro.accent]
@@ -238,41 +240,86 @@ struct LegendsLiveMatchView: View {
         } else {
             Haptics.error()
         }
-        withAnimation(.easeIn(duration: 0.15)) { goalFlash = true }
+
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) {
+            goalFlashEvent = event
+        }
+        let eventID = event.id
         Task {
-            try? await Task.sleep(for: .milliseconds(1400))
-            withAnimation(.easeOut(duration: 0.4)) { goalFlash = false }
-            if isUser {
-                try? await Task.sleep(for: .milliseconds(200))
+            try? await Task.sleep(for: .milliseconds(1650))
+            guard goalFlashEvent?.id == eventID else { return }
+            withAnimation(.easeOut(duration: 0.3)) { goalFlashEvent = nil }
+            if event.isUserEvent {
+                try? await Task.sleep(for: .milliseconds(150))
                 withAnimation { showConfetti = false }
             }
         }
     }
 
-    private var goalFlashOverlay: some View {
-        ZStack {
-            Image(isUserGoalFlash ? "GoalCelebration" : "GoalAgainst")
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-                .ignoresSafeArea()
-            (isUserGoalFlash ? Retro.background : Color.black).opacity(0.30).ignoresSafeArea()
-            VStack(spacing: 6) {
-                Text("⚽︎").font(.system(size: 40))
-                Text(goalFlashText)
-                    .font(.system(.title, design: .monospaced).bold())
-                    .foregroundStyle(.white)
-                if let last = live.commentary.last {
-                    Text(last.text)
-                        .font(.system(.footnote, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.9))
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 30)
+    /// A compact Legends-style scorer card for goals by either team. The
+    /// opponent uses the same deterministic portrait pool as owned cards,
+    /// so both sides receive a real face without needing licensed imagery
+    /// or a full-screen GoalCelebration/GoalAgainst takeover.
+    private func goalCardOverlay(for event: LegendsMatchEvent) -> some View {
+        let card = LegendsCardDatabase.all.first { $0.id == event.shooterID }
+        let simulatedPlayer = simulation.players.first { $0.id == event.shooterID }
+        let position = card?.position.broad ?? simulatedPlayer?.role.broad
+        let accent = event.isUserEvent ? userColor : opponentBadgeColor
+        let teamName = event.isUserEvent ? store.profile.clubName : live.opponent.name
+
+        return HStack(spacing: 14) {
+            PlayerPortraitView(
+                name: event.shooterName,
+                position: position,
+                nation: card?.nation,
+                size: 76
+            )
+            .clipShape(Circle())
+            .overlay(Circle().stroke(accent, lineWidth: 3))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(event.isUserEvent ? "GOAL!" : "GOAL AGAINST")
+                    .font(.system(.caption, design: .monospaced).weight(.black))
+                    .foregroundStyle(event.isUserEvent ? Retro.gold : Retro.warning)
+                    .tracking(1.5)
+                Text(event.shooterName)
+                    .font(.system(.title3, design: .monospaced).weight(.black))
+                    .foregroundStyle(Retro.text)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                Text("\(event.minute)'  ·  \(teamName.uppercased())")
+                    .font(.system(.caption2, design: .monospaced).weight(.bold))
+                    .foregroundStyle(Retro.text.opacity(0.68))
+                    .lineLimit(1)
+                if let creator = event.creatorName, creator != event.shooterName {
+                    Text("ASSIST  \(creator.uppercased())")
+                        .font(.system(size: 8, weight: .black, design: .monospaced))
+                        .foregroundStyle(accent)
+                        .lineLimit(1)
                 }
             }
         }
-        .scaleEffect(goalFlash ? 1.0 : 0.6)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
+        .frame(width: 330, alignment: .leading)
+        .background(
+            LinearGradient(
+                colors: [Retro.panel, accent.opacity(0.24)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(accent.opacity(0.9), lineWidth: 2)
+        )
+        .shadow(color: .black.opacity(0.55), radius: 18, y: 8)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(event.isUserEvent ? "Goal" : "Goal against"), \(event.shooterName), \(event.minute) minutes")
+        .accessibilityIdentifier("legends.goal.scorerCard")
         .allowsHitTesting(false)
-        .transition(.opacity)
+        .transition(.scale(scale: 0.78).combined(with: .opacity))
     }
 
     private func triggerHalfTimeFlash() {
