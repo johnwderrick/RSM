@@ -1077,6 +1077,14 @@ final class LegendsMatchSimulation {
             players[index].homeAnchor = anchor
             steer(&players[index], dt: scaledDt)
         }
+        // Steering happens after the action timeline is advanced. Reattach
+        // the ball to the actor's freshly integrated position so controlled
+        // carries and preparation frames never leave it trailing behind.
+        if activeAttack != nil,
+           let possessorID = scriptedPossessorID,
+           let possessor = players.first(where: { $0.id == possessorID }) {
+            ball.position = possessor.position
+        }
         // A walk-in ends the tick its card reaches the departed spot —
         // next tick they steer to the normal formation shape instead.
         let arrived = subWalkIns.compactMap { id, target -> String? in
