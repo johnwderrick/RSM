@@ -559,6 +559,7 @@ final class LegendsMatchSimulation {
         }
         testLastAttackUsedLeftFlank = wideLeft
         let pattern = presentation?.attackPattern ?? .wideCross
+        let outcome = presentation?.outcome ?? (scored ? .goal : .saved)
         testLastAttackPattern = pattern
         let channelX = wideLeft ? 0.14 : 0.86
         let farPostX = wideLeft ? 0.62 : 0.38
@@ -571,10 +572,32 @@ final class LegendsMatchSimulation {
             CGPoint(x: x, y: forUser ? homeY : 1 - homeY)
         }
 
+        func presentationPoint(_ zone: LegendsPresentationZone) -> CGPoint {
+            switch zone {
+            case .centre: return attackPoint(0.50, 0.24)
+            case .leftBuildUp: return attackPoint(0.38, 0.62)
+            case .rightBuildUp: return attackPoint(0.62, 0.62)
+            case .leftChannel: return attackPoint(0.14, 0.16)
+            case .rightChannel: return attackPoint(0.86, 0.16)
+            case .leftByline: return attackPoint(0.14, 0.055)
+            case .rightByline: return attackPoint(0.86, 0.055)
+            case .edgeOfBox: return attackPoint(wideLeft ? 0.42 : 0.58, 0.105)
+            case .penaltyArea: return attackPoint(0.50, 0.06)
+            case .leftGoal: return attackPoint(0.38, 0.015)
+            case .rightGoal: return attackPoint(0.62, 0.015)
+            case .leftOfGoal: return attackPoint(0.28, 0.015)
+            case .rightOfGoal: return attackPoint(0.72, 0.015)
+            case .leftPost: return attackPoint(0.42, 0.015)
+            case .rightPost: return attackPoint(0.58, 0.015)
+            case .leftCorner: return attackPoint(0.02, 0.02)
+            case .rightCorner: return attackPoint(0.98, 0.02)
+            }
+        }
+
         let buildupOne: CGPoint
         let buildupTwo: CGPoint
-        let creatorPoint: CGPoint
-        let finisherPoint: CGPoint
+        var creatorPoint: CGPoint
+        var finisherPoint: CGPoint
         switch pattern {
         case .wideCross:
             buildupOne = attackPoint(0.50, 0.42)
@@ -603,23 +626,68 @@ final class LegendsMatchSimulation {
             finisherPoint = attackPoint(0.50, 0.205)
         }
 
-        let keeperDivePoint = attackPoint(nearPostX, 0.03)
-        // A goal beats the keeper at the far post; a save meets them
-        // exactly where they're diving to — same point, so the two
-        // waypoints below (shot and keeper) are deliberately identical
-        // for `!scored`.
-        let shotPoint = scored ? attackPoint(farPostX, 0.015) : keeperDivePoint
+        // The ordered commentary beats are the authoritative destinations.
+        // Pattern defaults above exist only for older synthetic test events;
+        // production events make the runner and receiver move to the exact
+        // zones named by their text script.
+        if let carryBeat = presentation?.beats.first(where: { $0.action == .carry }) {
+            creatorPoint = presentationPoint(carryBeat.zone)
+        }
+        if let throwBeat = presentation?.beats.first(where: { $0.action == .throwIn }) {
+            creatorPoint = presentationPoint(throwBeat.zone)
+        }
+        if let presentation,
+           let receivingBeat = presentation.beats.first(where: { $0.receiverID == presentation.shooterID }) {
+            finisherPoint = presentationPoint(receivingBeat.zone)
+        }
+        if let offsideBeat = presentation?.beats.first(where: { $0.action == .offside }) {
+            finisherPoint = presentationPoint(offsideBeat.zone)
+        }
 
-        var points: [BallWaypoint] = [
-            .fixed(buildupOne),
-            .fixed(buildupTwo),
-            wideRunner.map { BallWaypoint.followPlayer(id: $0.id, fallback: creatorPoint) } ?? .fixed(creatorPoint),
-            finisher.map { BallWaypoint.followPlayer(id: $0.id, fallback: finisherPoint) } ?? .fixed(finisherPoint),
-            .fixed(shotPoint),
-        ]
+        let keeperDivePoint = attackPoint(nearPostX, 0.03)
+        let shotPoint = presentation?.beats.last.map { presentationPoint($0.zone) }
+            ?? (scored ? attackPoint(farPostX, 0.015) : keeperDivePoint)
+
+        let pointsFromCommentary: [BallWaypoint]? = presentation.map { script in
+            script.beats.map { beat in
+                let destination = presentationPoint(beat.zone)
+                let followedID: String?
+                switch beat.action {
+                case .carry, .offside:
+                    followedID = beat.actorID
+                case .pass, .cross, .cutback, .throughBall, .throwIn:
+                    followedID = beat.receiverID
+                case .shoot, .goal, .save, .block, .miss, .woodwork,
+                     .foul, .tackle, .clearance:
+                    followedID = nil
+                }
+                if let followedID, players.contains(where: { $0.id == followedID }) {
+                    return .followPlayer(id: followedID, fallback: destination)
+                }
+                return .fixed(destination)
+            }
+        }
+
+        var points: [BallWaypoint]
+        if let pointsFromCommentary, !pointsFromCommentary.isEmpty {
+            // Production events are a literal rendering of the ordered text
+            // beats: one ball destination per sentence/action, in the same
+            // order, with no extra visual-only buildup inserted between them.
+            points = pointsFromCommentary
+        } else {
+            // Compatibility path for older synthetic animation tests, which
+            // intentionally trigger a goal/save without an engine event.
+            points = [
+                .fixed(buildupOne),
+                .fixed(buildupTwo),
+                wideRunner.map { BallWaypoint.followPlayer(id: $0.id, fallback: creatorPoint) } ?? .fixed(creatorPoint),
+                finisher.map { BallWaypoint.followPlayer(id: $0.id, fallback: finisherPoint) } ?? .fixed(finisherPoint),
+                .fixed(shotPoint),
+            ]
+        }
         let impactIndex = points.count - 1
-        if !scored {
-            points.append(.fixed(CGPoint(x: 0.5, y: forUser ? 0.35 : 0.65)))
+        if let presentation, outcome != .goal {
+            points.append(.fixed(restartPosition(for: presentation.restart)))
         }
 
         waypoints = points
@@ -631,13 +699,44 @@ final class LegendsMatchSimulation {
         if let finisher {
             runTargetOverrides[finisher.id] = finisherPoint
         }
+        if let presentation {
+            for beat in presentation.beats {
+                let destination = presentationPoint(beat.zone)
+                switch beat.action {
+                case .carry, .offside, .clearance:
+                    if let actorID = beat.actorID {
+                        runTargetOverrides[actorID] = destination
+                    }
+                case .pass, .cross, .cutback, .throughBall, .throwIn:
+                    if let receiverID = beat.receiverID {
+                        runTargetOverrides[receiverID] = destination
+                    }
+                    if beat.action == .throwIn, let actorID = beat.actorID {
+                        runTargetOverrides[actorID] = destination
+                    }
+                case .shoot:
+                    if let actorID = beat.actorID {
+                        runTargetOverrides[actorID] = destination
+                    }
+                case .foul, .tackle:
+                    if let actorID = beat.actorID {
+                        runTargetOverrides[actorID] = destination
+                    }
+                    if let receiverID = beat.receiverID {
+                        runTargetOverrides[receiverID] = destination
+                    }
+                case .goal, .save, .block, .miss, .woodwork:
+                    break
+                }
+            }
+        }
         let authoritativeKeeper = presentation.flatMap { script -> PlayerSimState? in
             guard let goalkeeperID = script.goalkeeperID else { return nil }
             return defenders.first { $0.id == goalkeeperID }
         }
         let keeper = authoritativeKeeper
             ?? defenders.first(where: { $0.role == .goalkeeper })
-        if let keeper {
+        if let keeper, outcome == .goal || outcome == .saved {
             runTargetOverrides[keeper.id] = keeperDivePoint
         }
 
@@ -666,12 +765,16 @@ final class LegendsMatchSimulation {
         if let markerID {
             runTargetOverrides[markerID] = players.first(where: { $0.id == markerID })?.position
         }
-        pendingImpact = (
-            impactIndex, scored ? .goal : .chance,
-            wideRunner?.name, finisher?.name,
-            markerID.flatMap { id in players.first(where: { $0.id == id })?.name },
-            authoritative?.id, wideRunner?.id, finisher?.id, markerID, keeper?.id
-        )
+        if authoritative?.isShotEvent != false {
+            pendingImpact = (
+                impactIndex, outcome == .goal ? .goal : .chance,
+                wideRunner?.name, finisher?.name,
+                markerID.flatMap { id in players.first(where: { $0.id == id })?.name },
+                authoritative?.id, wideRunner?.id, finisher?.id, markerID, keeper?.id
+            )
+        } else {
+            pendingImpact = nil
+        }
     }
 
     /// Attribute-aware role-preference pick: candidates are ordered by the
@@ -697,6 +800,32 @@ final class LegendsMatchSimulation {
 
     private func distance(_ a: CGPoint, _ b: CGPoint) -> Double {
         hypot(a.x - b.x, a.y - b.y)
+    }
+
+    private func restartPosition(for restart: LegendsMatchRestart) -> CGPoint {
+        switch restart {
+        case .kickoff:
+            return CGPoint(x: 0.5, y: 0.5)
+        case .goalkeeperPossession(let team), .goalKick(let team):
+            return CGPoint(x: 0.5, y: team == .home ? 0.94 : 0.06)
+        case .corner(let team, let channel):
+            return CGPoint(
+                x: channel == .left ? 0.02 : 0.98,
+                y: team == .home ? 0.02 : 0.98
+            )
+        case .freeKick(let team, let channel):
+            return CGPoint(
+                x: channel == .left ? 0.30 : 0.70,
+                y: team == .home ? 0.30 : 0.70
+            )
+        case .throwIn(_, let channel):
+            return CGPoint(x: channel == .left ? 0.02 : 0.98, y: 0.5)
+        case .openPlay(let team, let channel):
+            return CGPoint(
+                x: channel == .left ? 0.30 : 0.70,
+                y: team == .home ? 0.58 : 0.42
+            )
+        }
     }
 
     /// Synchronous single-step advance, no delay and no background `Task`
@@ -744,6 +873,11 @@ final class LegendsMatchSimulation {
         if case .followPlayer(let id, _) = waypoints[index] { return id }
         return nil
     }
+
+    /// Test-only contract for the commentary-first renderer: production
+    /// events create one leg per ordered text beat, plus a final restart leg
+    /// when play does not end in a goal.
+    func testWaypointCount() -> Int { waypoints.count }
 
     /// Open-play test hooks. These expose identities, not mutable state,
     /// so deterministic possession behaviour can be verified without
@@ -923,14 +1057,20 @@ final class LegendsMatchSimulation {
 
     /// Begins a restart/open-play phase with the nearest sensible outfield
     /// player. The ball travels to them on subsequent ticks; it never jumps.
-    private func beginAmbientPossession(for team: Side, near point: CGPoint) {
+    private func beginAmbientPossession(for team: Side, near point: CGPoint,
+                                        preferredPlayerID: String? = nil) {
         possessionTeam = team
         ambientPreviousPossessorID = nil
         ambientPassTargetID = nil
         pendingAmbientTurnoverTeam = nil
         ambientHoldElapsed = 0
         ambientSequencePasses = 0
-        ambientPossessorID = Self.closestOutfieldPlayer(in: players, team: team, to: point)?.id
+        if let preferredPlayerID,
+           players.contains(where: { $0.id == preferredPlayerID && $0.team == team }) {
+            ambientPossessorID = preferredPlayerID
+        } else {
+            ambientPossessorID = Self.closestOutfieldPlayer(in: players, team: team, to: point)?.id
+        }
         ambientPresserID = bestPresser(for: team.opposite, near: point)?.id
         supportPlayerIDs = []
         coverDefenderID = nil
@@ -1375,24 +1515,50 @@ final class LegendsMatchSimulation {
                 // continuous open-play phase (Phase 9).
                 if let currentAttack = activeAttack {
                     activeAttack = nil
+                    var preferredRestartPlayerID: String?
+                    if let event = currentAttack.event {
+                        let script = event.presentationScript
+                        ball.position = restartPosition(for: script.restart)
+                        switch script.restart {
+                        case .kickoff(let team):
+                            possessionTeam = team
+                        case .goalkeeperPossession(let team), .goalKick(let team):
+                            possessionTeam = team
+                            preferredRestartPlayerID = script.goalkeeperID
+                        case .corner(let team, _):
+                            possessionTeam = team
+                            preferredRestartPlayerID = script.creatorID
+                        case .freeKick(let team, _):
+                            possessionTeam = team
+                            preferredRestartPlayerID = team == event.side ? script.shooterID : script.markerID
+                        case .throwIn(let team, _):
+                            possessionTeam = team
+                            preferredRestartPlayerID = script.creatorID
+                        case .openPlay(let team, _):
+                            possessionTeam = team
+                            preferredRestartPlayerID = script.markerID
+                        }
+                    } else {
+                        possessionTeam = currentAttack.forUser ? .away : .home
+                        if currentAttack.scored {
+                            ball.position = CGPoint(x: 0.5, y: 0.5)
+                        }
+                    }
                     if let eventID = currentAttack.event?.id {
                         onEventPresentationCompleted?(eventID)
-                    }
-                    possessionTeam = currentAttack.forUser ? .away : .home
-                    if currentAttack.scored {
-                        // A goal always restarts from a real centre-circle
-                        // kickoff by the side that conceded. The impact stays
-                        // archived at the goal mouth, while the live ball and
-                        // team shape reset for the restart.
-                        ball.position = CGPoint(x: 0.5, y: 0.5)
                     }
                     if !attackQueue.isEmpty {
                         let next = attackQueue.removeFirst()
                         startAttack(next)
                         return // startAttack sets possession
                     }
-                    // No queued attack — the defending team gains the ball
-                    // (goal kick after a save, or kick-off after conceding).
+                    waypoints.removeAll()
+                    waypointIndex = 0
+                    runTargetOverrides.removeAll()
+                    markerID = nil
+                    beginAmbientPossession(for: possessionTeam, near: ball.position,
+                                           preferredPlayerID: preferredRestartPlayerID)
+                    return
                 }
                 // The event presentation is complete. Hand the ball to a
                 // real player on the side entitled to the restart and
