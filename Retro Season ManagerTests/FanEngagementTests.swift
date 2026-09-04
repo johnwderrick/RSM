@@ -68,24 +68,21 @@ final class FanEngagementTests: XCTestCase {
 
     func testYouthBloodingFiresOnceForAnAcademyPlayersFirstStart() async {
         let store = await freshStore()
-        guard let index = store.clubs[store.userClubIndex].players.firstIndex(where: { $0.position == .midfielder }) else {
-            return XCTFail("Expected a midfielder in the starting squad")
+        store.autoPickLineup()
+        guard let selectedMidfielder = store.userStartingXI().first(where: { $0.position == .midfielder }),
+              let index = store.clubs[store.userClubIndex].players.firstIndex(where: {
+                  $0.id == selectedMidfielder.id
+              }) else {
+            return XCTFail("Expected an auto-picked midfielder in a valid starting XI")
         }
+        // Mark a player the production picker has already confirmed as a
+        // valid starter. Swapping an arbitrary squad midfielder into the ID
+        // set could violate the formation when that player was unavailable.
         store.clubs[store.userClubIndex].players[index].isAcademyProduct = true
         store.clubs[store.userClubIndex].players[index].age = 18
-        let playerID = store.clubs[store.userClubIndex].players[index].id
-        store.autoPickLineup()
-        if !store.userStarterIDs.contains(playerID) {
-            guard let selectedMidfielderID = store.userClub.players.first(where: {
-                $0.position == .midfielder && store.userStarterIDs.contains($0.id)
-            })?.id else {
-                return XCTFail("Expected an auto-picked midfielder to replace")
-            }
-            store.userStarterIDs.remove(selectedMidfielderID)
-            store.userStarterIDs.insert(playerID)
-        }
+        let playerID = selectedMidfielder.id
         XCTAssertTrue(store.userStartingXI().contains { $0.id == playerID },
-                      "The fixture must put the academy player in a valid starting XI")
+                      "The fixture must retain the academy player in its valid starting XI")
 
         store.checkYouthBlooding()
 

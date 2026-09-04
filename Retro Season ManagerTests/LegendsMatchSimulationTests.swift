@@ -216,15 +216,18 @@ final class LegendsMatchSimulationTests: XCTestCase {
         let fast = await freshSimulation()
         fast.speedMultiplier = 3
 
-        for _ in 0..<10 {
-            normal.testAdvance(dt: 0.1)
-            fast.testAdvance(dt: 0.1)
-        }
+        // Compare the first integration step while both simulations are
+        // travelling along the same leg. Measuring displacement after ten
+        // steps is invalid for a multi-leg route: the 3× ball can already
+        // have turned back toward the centre while the 1× ball is still on
+        // its outward leg.
+        normal.testAdvance(dt: 0.1)
+        fast.testAdvance(dt: 0.1)
 
         let normalMoved = hypot(normal.ball.position.x - 0.5, normal.ball.position.y - 0.5)
         let fastMoved = hypot(fast.ball.position.x - 0.5, fast.ball.position.y - 0.5)
         XCTAssertGreaterThan(fastMoved, normalMoved,
-                              "3× speed should carry the ball further than 1× over the same number of real-time ticks.")
+                              "3× speed should advance farther along the same initial leg than 1×.")
     }
 
     func testBallStartsAtKickoffCenter() async {
