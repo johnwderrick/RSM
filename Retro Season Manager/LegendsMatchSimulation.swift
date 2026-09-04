@@ -544,7 +544,7 @@ final class LegendsMatchSimulation {
         isPresentingRestart = false
         currentPresentationAction = presentation?.beats.first?.action
         completedPresentationActions = []
-        scriptedPossessorID = presentation?.beats.first.flatMap(possessorID(for:))
+        scriptedPossessorID = presentation?.beats.first.flatMap { possessorID(for: $0) }
         currentLegElapsed = 0
         testAttackStartCount += 1
         possessionTeam = forUser ? .home : .away
