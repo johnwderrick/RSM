@@ -571,9 +571,16 @@ final class LegendsMatchSimulationTests: XCTestCase {
         let second = await freshSimulation()
         var sawAwayPossession = false
 
-        for _ in 0..<350 {
+        // Advance until the deterministic open-play sequence has actually
+        // exercised its required actions. A fixed 35-second window became
+        // invalid once action phases gained realistic preparation and travel
+        // time: it could stop just before the first progressive pass even
+        // though the deterministic sequence was behaving correctly.
+        var tickCount = 0
+        while tickCount < 1_200 {
             first.testAdvance(dt: 0.1)
             second.testAdvance(dt: 0.1)
+            tickCount += 1
             sawAwayPossession = sawAwayPossession || first.possessionTeam == .away
 
             XCTAssertEqual(first.possessionTeam, second.possessionTeam)
@@ -581,8 +588,19 @@ final class LegendsMatchSimulationTests: XCTestCase {
             XCTAssertEqual(first.testAmbientPassTargetID(), second.testAmbientPassTargetID())
             XCTAssertEqual(first.ball.position.x, second.ball.position.x, accuracy: 0.0001)
             XCTAssertEqual(first.ball.position.y, second.ball.position.y, accuracy: 0.0001)
+
+            let actions = Set(first.testAmbientActionHistory.map(\.rawValue))
+            if first.testAmbientCompletedPasses() > 0,
+               sawAwayPossession,
+               actions.count >= 3,
+               first.testAmbientActionHistory.contains(.progressivePass),
+               first.testAmbientActionHistory.contains(.interceptedPass) {
+                break
+            }
         }
 
+        XCTAssertLessThan(tickCount, 1_200,
+                          "Open play should exercise its deterministic action mix before the safety cap.")
         XCTAssertGreaterThan(first.testAmbientCompletedPasses(), 0)
         XCTAssertTrue(sawAwayPossession,
                       "Open play should change hands through a visible interception instead of resetting to home possession.")
