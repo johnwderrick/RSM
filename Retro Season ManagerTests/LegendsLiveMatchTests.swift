@@ -370,9 +370,14 @@ final class LegendsLiveMatchTests: XCTestCase {
         for event in first.events {
             XCTAssertNotEqual(event.creatorID, event.shooterID)
             XCTAssertNotNil(event.markerID)
-            XCTAssertNotNil(event.goalkeeperID)
-            XCTAssertGreaterThanOrEqual(event.expectedGoals, 0.05)
-            XCTAssertLessThanOrEqual(event.expectedGoals, 0.75)
+            if event.isShotEvent {
+                XCTAssertNotNil(event.goalkeeperID)
+                XCTAssertGreaterThanOrEqual(event.expectedGoals, 0.05)
+                XCTAssertLessThanOrEqual(event.expectedGoals, 0.75)
+            } else {
+                XCTAssertNil(event.goalkeeperID)
+                XCTAssertEqual(event.expectedGoals, 0)
+            }
         }
     }
 
