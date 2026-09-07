@@ -19,6 +19,25 @@
 
 import SwiftUI
 
+/// Shared landscape pitch sizing. The normalized simulation frame remains
+/// unchanged; only the presentation uses a wider aspect ratio and a small
+/// safe inset so edge players and markings stay visible.
+enum LegendsPitchLayout {
+    static let aspectRatio: CGFloat = 1.82
+    static let horizontalInset: CGFloat = 2
+    static let verticalInset: CGFloat = 4
+
+    static func aspectFitSize(in proposed: CGSize) -> CGSize {
+        guard proposed.width > 0, proposed.height > 0 else { return .zero }
+        let width = min(proposed.width, proposed.height * aspectRatio)
+        return CGSize(width: width, height: width / aspectRatio)
+    }
+
+    static func projectedPoint(_ point: CGPoint, in size: CGSize) -> CGPoint {
+        CGPoint(x: size.width * (1 - point.y), y: size.height * point.x)
+    }
+}
+
 /// The animated state of a `BallImpact`'s expanding goal-mouth flash at a
 /// given moment — the pure, testable core of `drawImpactFlash`'s visibility
 /// window (the canvas calls `state(for:at:)` with `Date()` on every draw).
@@ -61,6 +80,8 @@ struct LegendsPitchCanvas: View {
     let userName: String
     let opponentName: String
 
+    @State private var renderTick = 0
+
     /// Bumped ~30×/sec by the `.task` sleep-loop below to force fresh
     /// `Canvas` draws. `TimelineView(.animation)` was tried first here and
     /// reliably redrew *only* when some other TimelineView happened to
@@ -70,52 +91,63 @@ struct LegendsPitchCanvas: View {
     /// whole pitch. A plain `@State` counter driving redraws through
     /// SwiftUI's ordinary invalidation path is the well-established,
     /// reliable alternative, so that's what this uses instead.
-    @State private var renderTick = 0
+    private var currentRadioText: String? {
+        simulation.currentPresentationText ?? simulation.currentAmbientCommentaryText
+    }
+
+    private var currentRadioSide: Side? {
+        simulation.currentPresentationText != nil
+            ? simulation.currentPresentationSide
+            : simulation.currentAmbientCommentarySide
+    }
 
     var body: some View {
-        VStack(spacing: 8) {
-            GeometryReader { geo in
-                ZStack {
-                    LandscapePitchBackground()
-                    Canvas { context, size in
-                        _ = renderTick
-                        draw(into: context, size: size)
-                    }
+        ZStack(alignment: .top) {
+            VStack(spacing: 8) {
+                GeometryReader { geo in
+                    ZStack {
+                        LandscapePitchBackground()
+                        Canvas { context, size in
+                            _ = renderTick
+                            draw(into: context, size: size)
+                        }
 
-                    VStack {
-                        Spacer()
-                        if let text = simulation.currentPresentationText {
-                            Text(text)
-                                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                .foregroundStyle(.white)
-                                .multilineTextAlignment(.center)
-                                .lineLimit(2)
-                                .minimumScaleFactor(0.72)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                                .frame(maxWidth: 430)
-                                .background(
-                                    (simulation.currentPresentationSide == .home ? userColor : opponentColor)
-                                        .opacity(simulation.isPresentingRestart ? 0.92 : 0.82)
-                                )
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .stroke(.white.opacity(0.55), lineWidth: 1)
-                                )
-                                .padding(10)
-                                .accessibilityIdentifier("legends.match.currentBeat")
+                        VStack {
+                            Spacer()
+                            if let text = currentRadioText {
+                                Text(text)
+                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(.white)
+                                    .multilineTextAlignment(.center)
+                                    .lineLimit(2)
+                                    .minimumScaleFactor(0.72)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .frame(maxWidth: 430)
+                                    .background(
+                                        (currentRadioSide == .home ? userColor : opponentColor)
+                                            .opacity(simulation.isPresentingRestart ? 0.92 : 0.82)
+                                    )
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .stroke(.white.opacity(0.55), lineWidth: 1)
+                                    )
+                                    .padding(10)
+                                    .accessibilityIdentifier("legends.match.currentBeat")
+                            }
                         }
                     }
                 }
+                .aspectRatio(LegendsPitchLayout.aspectRatio, contentMode: .fit)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Legends match pitch")
+                .accessibilityValue(impactAccessibilitySummary)
+                .accessibilityIdentifier("legends.match.pitch")
+                legend
             }
-            .aspectRatio(1.55, contentMode: .fit)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Legends match pitch")
-            .accessibilityValue(impactAccessibilitySummary)
-            .accessibilityIdentifier("legends.match.pitch")
-            legend
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .task {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(33))
@@ -133,7 +165,7 @@ struct LegendsPitchCanvas: View {
     /// change to the coordinate system itself, which stays reusable
     /// as-is for the Squad screen's vertical tactics board.
     private func landscapePosition(for point: CGPoint, in size: CGSize) -> CGPoint {
-        CGPoint(x: size.width * (1 - point.y), y: size.height * point.x)
+        LegendsPitchLayout.projectedPoint(point, in: size)
     }
 
     private func draw(into context: GraphicsContext, size: CGSize) {

@@ -136,8 +136,20 @@ struct LegendsLiveMatchView: View {
         }
         .matchShake(trigger: shakeTrigger)
         .onAppear {
+            live.enable2DPresentation()
+            simulation.holdGoalRestartUntilCardDismissal()
             simulation.onGoalPresented = { event in
+                guard live.confirmGoalPresentation(for: event.id) else { return }
                 triggerGoalCard(for: event)
+            }
+            simulation.onPresentationBeat = { event, beat, index in
+                live.present2DBeat(for: event, beat: beat, index: index)
+            }
+            simulation.onAmbientAction = { event in
+                live.presentAmbientAction(event)
+            }
+            simulation.onRestartPresentation = { restart in
+                live.presentRestart(restart)
             }
             live.start()
             simulation.speedMultiplier = live.isPaused ? 0 : live.speed
@@ -145,6 +157,9 @@ struct LegendsLiveMatchView: View {
         }
         .onDisappear {
             simulation.onGoalPresented = nil
+            simulation.onPresentationBeat = nil
+            simulation.onAmbientAction = nil
+            simulation.onRestartPresentation = nil
             live.stop()
             simulation.stop()
         }
@@ -187,8 +202,8 @@ struct LegendsLiveMatchView: View {
     private var pitchContent: some View {
         LegendsPitchCanvas(simulation: simulation, userColor: userColor, opponentColor: opponentBadgeColor,
                            userName: store.profile.clubName, opponentName: live.opponent.name)
-            .padding(.horizontal)
-            .padding(.vertical, 6)
+            .padding(.horizontal, LegendsPitchLayout.horizontalInset)
+            .padding(.vertical, LegendsPitchLayout.verticalInset)
     }
 
     /// Forwards immutable engine events to the visual layer. The renderer
@@ -249,6 +264,7 @@ struct LegendsLiveMatchView: View {
             try? await Task.sleep(for: .milliseconds(1650))
             guard goalFlashEvent?.id == eventID else { return }
             withAnimation(.easeOut(duration: 0.3)) { goalFlashEvent = nil }
+            simulation.completeGoalCardPresentation(for: eventID)
             if event.isUserEvent {
                 try? await Task.sleep(for: .milliseconds(150))
                 withAnimation { showConfetti = false }

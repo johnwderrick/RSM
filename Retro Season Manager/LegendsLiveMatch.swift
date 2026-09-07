@@ -74,6 +74,15 @@ struct LegendsMatchEvent: Identifiable, Equatable {
     let goalkeeperName: String?
     let expectedGoals: Double
 
+    /// Stable per-event phrase selector. It is derived from the event ID,
+    /// never from process-randomized hashing or a UI animation, so replaying
+    /// the same seeded match keeps commentary and the visible action aligned.
+    var commentaryVariant: Int {
+        id.utf8.reduce(0) { partial, byte in
+            (partial &* 31 &+ Int(byte)) % 3
+        }
+    }
+
     init(
         id: String, minute: Int, side: Side, outcome: Outcome, channel: Channel,
         attackPattern: AttackPattern = .wideCross,
@@ -113,6 +122,7 @@ struct LegendsMatchEvent: Identifiable, Equatable {
 
 enum LegendsPresentationAction: Equatable {
     case carry
+    case receive
     case pass
     case cross
     case cutback
@@ -205,96 +215,185 @@ struct LegendsMatchPresentationScript: Equatable {
         let bylineZone: LegendsPresentationZone = event.channel == .left ? .leftByline : .rightByline
         let defendingTeam = event.side.opposite
         var scriptedBeats: [LegendsPresentationBeat] = []
+        let receiverTouchText: String
+        switch event.commentaryVariant {
+        case 0: receiverTouchText = "\(event.shooterName) takes a touch."
+        case 1: receiverTouchText = "\(event.shooterName) brings it under control."
+        default: receiverTouchText = "\(event.shooterName) gets there first."
+        }
 
         switch event.attackPattern {
         case .wideCross:
+            let carryText: String
+            let crossText: String
+            switch event.commentaryVariant {
+            case 0:
+                carryText = "\(creator) carries down the \(flank) flank."
+                crossText = "\(creator) sends a cross towards \(event.shooterName)."
+            case 1:
+                carryText = "\(creator) advances into the \(flank) channel."
+                crossText = "\(creator) swings the ball into the box for \(event.shooterName)."
+            default:
+                carryText = "\(creator) makes ground on the \(flank)."
+                crossText = "\(creator) clips a dangerous ball towards \(event.shooterName)."
+            }
             scriptedBeats.append(.init(action: .carry, actorID: beatCreatorID, actorName: creator,
                                        receiverID: nil, receiverName: nil, zone: channelZone,
-                                       text: "\(creator) carries down the \(flank) flank."))
+                                       text: carryText))
             scriptedBeats.append(.init(action: .cross, actorID: beatCreatorID, actorName: creator,
                                        receiverID: event.shooterID, receiverName: event.shooterName,
                                        zone: .penaltyArea,
-                                       text: "\(creator) crosses towards \(event.shooterName)."))
+                                       text: crossText))
+            scriptedBeats.append(.init(action: .receive, actorID: event.shooterID, actorName: event.shooterName,
+                                       receiverID: nil, receiverName: nil, zone: .penaltyArea,
+                                       text: receiverTouchText))
         case .cutback:
+            let bylineText: String
+            let cutbackText: String
+            switch event.commentaryVariant {
+            case 0:
+                bylineText = "\(creator) reaches the byline on the \(flank)."
+                cutbackText = "\(creator) cuts the ball back to \(event.shooterName)."
+            case 1:
+                bylineText = "\(creator) gets to the \(flank) byline."
+                cutbackText = "\(creator) pulls it back for \(event.shooterName)."
+            default:
+                bylineText = "\(creator) stretches the defence on the \(flank)."
+                cutbackText = "\(creator) squares the ball for \(event.shooterName)."
+            }
             scriptedBeats.append(.init(action: .carry, actorID: beatCreatorID, actorName: creator,
                                        receiverID: nil, receiverName: nil, zone: bylineZone,
-                                       text: "\(creator) reaches the byline on the \(flank)."))
+                                       text: bylineText))
             scriptedBeats.append(.init(action: .cutback, actorID: beatCreatorID, actorName: creator,
                                        receiverID: event.shooterID, receiverName: event.shooterName,
                                        zone: .edgeOfBox,
-                                       text: "\(creator) cuts the ball back to \(event.shooterName)."))
+                                       text: cutbackText))
+            scriptedBeats.append(.init(action: .receive, actorID: event.shooterID, actorName: event.shooterName,
+                                       receiverID: nil, receiverName: nil, zone: .edgeOfBox,
+                                       text: receiverTouchText))
         case .centralCombination:
+            let driveText = event.commentaryVariant == 1
+                ? "\(creator) drives through the middle."
+                : "\(creator) drives through the centre."
+            let combineText = event.commentaryVariant == 2
+                ? "\(creator) plays a neat one-two with \(event.shooterName) at the box."
+                : "\(creator) combines with \(event.shooterName) at the edge of the box."
             scriptedBeats.append(.init(action: .carry, actorID: beatCreatorID, actorName: creator,
                                        receiverID: nil, receiverName: nil, zone: .centre,
-                                       text: "\(creator) drives through the centre."))
+                                       text: driveText))
             scriptedBeats.append(.init(action: .pass, actorID: beatCreatorID, actorName: creator,
                                        receiverID: event.shooterID, receiverName: event.shooterName,
                                        zone: .edgeOfBox,
-                                       text: "\(creator) combines with \(event.shooterName) at the edge of the box."))
+                                       text: combineText))
+            scriptedBeats.append(.init(action: .receive, actorID: event.shooterID, actorName: event.shooterName,
+                                       receiverID: nil, receiverName: nil, zone: .edgeOfBox,
+                                       text: receiverTouchText))
         case .counterAttack:
+            let counterText = event.commentaryVariant == 0
+                ? "\(creator) leads a quick counter through the \(flank) channel."
+                : "\(creator) breaks forward down the \(flank) side."
+            let releaseText = event.commentaryVariant == 2
+                ? "\(creator) threads \(event.shooterName) through on goal."
+                : "\(creator) releases \(event.shooterName) into space."
             scriptedBeats.append(.init(action: .carry, actorID: beatCreatorID, actorName: creator,
                                        receiverID: nil, receiverName: nil, zone: buildUpZone,
-                                       text: "\(creator) leads a quick counter through the \(flank) channel."))
+                                       text: counterText))
             scriptedBeats.append(.init(action: .throughBall, actorID: beatCreatorID, actorName: creator,
                                        receiverID: event.shooterID, receiverName: event.shooterName,
                                        zone: .penaltyArea,
-                                       text: "\(creator) releases \(event.shooterName) into space."))
+                                       text: releaseText))
+            scriptedBeats.append(.init(action: .receive, actorID: event.shooterID, actorName: event.shooterName,
+                                       receiverID: nil, receiverName: nil, zone: .penaltyArea,
+                                       text: receiverTouchText))
         case .longShot:
+            let longBallText = event.commentaryVariant == 1
+                ? "\(creator) finds \(event.shooterName) in shooting range."
+                : "\(creator) works the ball into central space for \(event.shooterName)."
             scriptedBeats.append(.init(action: .pass, actorID: beatCreatorID, actorName: creator,
                                        receiverID: event.shooterID, receiverName: event.shooterName,
                                        zone: .edgeOfBox,
-                                       text: "\(creator) works the ball into central space for \(event.shooterName)."))
+                                       text: longBallText))
+            scriptedBeats.append(.init(action: .receive, actorID: event.shooterID, actorName: event.shooterName,
+                                       receiverID: nil, receiverName: nil, zone: .edgeOfBox,
+                                       text: receiverTouchText))
         }
 
         let pressure = event.markerName.map { " under pressure from \($0)" } ?? ""
         if event.isShotEvent {
+            let shotText: String
+            switch event.commentaryVariant {
+            case 0: shotText = "\(event.shooterName) shoots\(pressure)."
+            case 1: shotText = "\(event.shooterName) gets the shot away\(pressure)."
+            default: shotText = "\(event.shooterName) strikes it\(pressure)."
+            }
             scriptedBeats.append(.init(action: .shoot, actorID: event.shooterID, actorName: event.shooterName,
                                        receiverID: nil, receiverName: nil,
                                        zone: event.attackPattern == .longShot ? .edgeOfBox : .penaltyArea,
-                                       text: "\(event.shooterName) shoots\(pressure)."))
+                                       text: shotText))
         }
         switch event.outcome {
         case .goal:
             let keeper = event.goalkeeperName.map { " beyond \($0)" } ?? ""
             let goalZone: LegendsPresentationZone = event.channel == .left ? .rightGoal : .leftGoal
+            let goalText: String
+            switch event.commentaryVariant {
+            case 0: goalText = "The shot flies\(keeper) and into the net!"
+            case 1: goalText = "It beats the goalkeeper\(keeper) and nestles in the net!"
+            default: goalText = "The finish is too good for the keeper\(keeper)!"
+            }
             scriptedBeats.append(.init(action: .goal, actorID: event.shooterID, actorName: event.shooterName,
                                        receiverID: event.goalkeeperID, receiverName: event.goalkeeperName,
                                        zone: goalZone,
-                                       text: "The shot flies\(keeper) and into the net!"))
+                                       text: goalText))
             restart = .kickoff(team: defendingTeam)
         case .saved:
             let keeper = event.goalkeeperName ?? "The goalkeeper"
             let saveZone: LegendsPresentationZone = event.channel == .left ? .leftGoal : .rightGoal
+            let saveText = event.commentaryVariant == 2
+                ? "\(keeper) dives full stretch and keeps it out."
+                : "\(keeper) gets across and saves."
             scriptedBeats.append(.init(action: .save, actorID: event.shooterID, actorName: event.shooterName,
                                        receiverID: event.goalkeeperID, receiverName: event.goalkeeperName,
                                        zone: saveZone,
-                                       text: "\(keeper) gets across and saves."))
+                                       text: saveText))
             restart = .goalkeeperPossession(team: defendingTeam)
         case .blocked:
             let marker = event.markerName ?? "The defender"
+            let blockText = event.commentaryVariant == 1
+                ? "\(marker) gets a body in the way and blocks the effort."
+                : "\(marker) throws himself in the way and makes the block."
             scriptedBeats.append(.init(action: .block, actorID: event.shooterID, actorName: event.shooterName,
                                        receiverID: event.markerID, receiverName: event.markerName,
                                        zone: .penaltyArea,
-                                       text: "\(marker) throws himself in the way and makes the block."))
+                                       text: blockText))
             restart = .corner(team: event.side, channel: event.channel)
         case .missed:
+            let missText = event.commentaryVariant == 0
+                ? "The effort flashes wide of the far post."
+                : "The effort drifts just wide of the far post."
             scriptedBeats.append(.init(action: .miss, actorID: event.shooterID, actorName: event.shooterName,
                                        receiverID: nil, receiverName: nil,
                                        zone: event.channel == .left ? .rightOfGoal : .leftOfGoal,
-                                       text: "The effort flashes wide of the far post."))
+                                       text: missText))
             restart = .goalKick(team: defendingTeam)
         case .woodwork:
+            let woodworkText = event.commentaryVariant == 2
+                ? "The strike rattles the post!"
+                : "The ball crashes against the post!"
             scriptedBeats.append(.init(action: .woodwork, actorID: event.shooterID, actorName: event.shooterName,
                                        receiverID: nil, receiverName: nil,
                                        zone: event.channel == .left ? .rightPost : .leftPost,
-                                       text: "The ball crashes against the post!"))
+                                       text: woodworkText))
             restart = .goalKick(team: defendingTeam)
         case .foul:
             let marker = event.markerName ?? "The defender"
+            let foulText = event.commentaryVariant == 1
+                ? "\(marker) catches \(event.shooterName) in the \(flank) channel."
+                : "\(marker) brings down \(event.shooterName) in the \(flank) channel."
             scriptedBeats = [.init(action: .foul, actorID: event.markerID, actorName: marker,
                                    receiverID: event.shooterID, receiverName: event.shooterName,
                                    zone: channelZone,
-                                   text: "\(marker) brings down \(event.shooterName) in the \(flank) channel.")]
+                                   text: foulText)]
             restart = .freeKick(team: event.side, channel: event.channel)
         case .offside:
             scriptedBeats = [.init(action: .offside, actorID: event.shooterID, actorName: event.shooterName,
@@ -310,17 +409,23 @@ struct LegendsMatchPresentationScript: Equatable {
             restart = .throwIn(team: event.side, channel: event.channel)
         case .tackled:
             let marker = event.markerName ?? "The defender"
+            let tackleText = event.commentaryVariant == 2
+                ? "\(marker) nicks the ball away from \(event.shooterName)."
+                : "\(marker) times the tackle on \(event.shooterName) and wins possession."
             scriptedBeats = [.init(action: .tackle, actorID: event.markerID, actorName: marker,
                                    receiverID: event.shooterID, receiverName: event.shooterName,
                                    zone: channelZone,
-                                   text: "\(marker) times the tackle on \(event.shooterName) and wins possession.")]
+                                   text: tackleText)]
             restart = .openPlay(team: defendingTeam, channel: event.channel)
         case .cleared:
             let marker = event.markerName ?? "The defender"
+            let clearanceText = event.commentaryVariant == 0
+                ? "\(marker) reads the danger and clears towards the \(flank) touchline."
+                : "\(marker) sees the danger and hooks it towards the \(flank) touchline."
             scriptedBeats = [.init(action: .clearance, actorID: event.markerID, actorName: marker,
                                    receiverID: nil, receiverName: nil,
                                    zone: channelZone,
-                                   text: "\(marker) reads the danger and clears towards the \(flank) touchline.")]
+                                   text: clearanceText)]
             restart = .throwIn(team: event.side, channel: event.channel)
         }
         beats = scriptedBeats
@@ -382,10 +487,18 @@ final class LegendsLiveMatch {
 
     private var loopTask: Task<Void, Never>?
     /// Engine events currently being presented by the 2D pitch. The match
-    /// clock waits while this set is non-empty, keeping commentary, actors
-    /// and the visible ball sequence on the same authoritative event.
+    /// clock waits while these sets are non-empty, keeping commentary,
+    /// actors and the visible ball sequence on the same authoritative event.
     private var presentationEventIDs: Set<String> = []
-    var isAwaiting2DPresentation: Bool { !presentationEventIDs.isEmpty }
+    private var unstartedPresentationEventIDs: Set<String> = []
+    private var uses2DPresentation = false
+    private var pendingGoalEvents: [String: LegendsMatchEvent] = [:]
+    private var finishRequested = false
+    private var presentedBeatKeys: Set<String> = []
+    private var presentedAmbientActionIDs: Set<String> = []
+    var isAwaiting2DPresentation: Bool {
+        !presentationEventIDs.isEmpty || !unstartedPresentationEventIDs.isEmpty
+    }
     /// Goals/subs after minute 45 — drives stoppage time, a cheap echo
     /// of Career's event-counted approach without needing cards/injuries.
     private var secondHalfEventCount = 0
@@ -507,11 +620,75 @@ final class LegendsLiveMatch {
         loopTask?.cancel()
         loopTask = nil
         presentationEventIDs.removeAll()
+        unstartedPresentationEventIDs.removeAll()
         isPaused = true
     }
 
+    /// Enables the presentation-aware path used by the 2D match view. The
+    /// seeded outcome is still selected immediately; goal score/commentary
+    /// consequences wait for the renderer's net-confirmation callback.
+    func enable2DPresentation() {
+        uses2DPresentation = true
+    }
+
+    /// Keeps the direct centre restart behind the existing goal card. The
+    /// simulation still owns the restart transition; this flag only lets the
+    /// renderer acknowledge when the current card has finished.
+    func holdGoalRestartUntilCardDismissal() {
+        uses2DPresentation = true
+    }
+
+    func completeGoalCardPresentation(for eventID: String) {
+        // The simulation owns the waiting event. This method is intentionally
+        // a no-op at the score-engine level; the view forwards the dismissal
+        // to the pitch state so a stale card cannot alter the result.
+        _ = eventID
+    }
+
+    func presentAmbientAction(_ event: LegendsAmbientActionEvent) {
+        guard presentedAmbientActionIDs.insert(event.id).inserted else { return }
+        say(event.text, side: event.team)
+    }
+
+    func presentRestart(_ restart: LegendsMatchRestart) {
+        let text: String
+        let side: Side
+        switch restart {
+        case .kickoff(let team):
+            text = "The conceding team restart from the centre spot."
+            side = team
+        case .goalkeeperPossession(let team):
+            text = "The goalkeeper gathers the ball and restarts play."
+            side = team
+        case .goalKick(let team):
+            text = "Play restarts with a goal kick."
+            side = team
+        case .corner(let team, _):
+            text = "The attacking side prepare to take the corner."
+            side = team
+        case .freeKick(let team, _):
+            text = "Play restarts with the free kick."
+            side = team
+        case .throwIn(let team, _):
+            text = "Play restarts with the throw-in."
+            side = team
+        case .openPlay(let team, _):
+            text = "The defender wins possession and play continues."
+            side = team
+        }
+        say(text, side: side)
+    }
+
     func skipToEnd() {
+        // Skip is intentionally headless: release any visual holds and
+        // commit already-selected goals before using the same tick path to
+        // finish the match synchronously.
+        uses2DPresentation = false
         presentationEventIDs.removeAll()
+        unstartedPresentationEventIDs.removeAll()
+        let pending = events.compactMap { pendingGoalEvents.removeValue(forKey: $0.id) }
+        for event in pending { scoreGoal(event) }
+        finishRequested = false
         isHalfTime = false
         isPaused = false
         while !isFinished { tick() }
@@ -526,11 +703,35 @@ final class LegendsLiveMatch {
     }
 
     func begin2DPresentation(for eventID: String) {
+        unstartedPresentationEventIDs.remove(eventID)
         presentationEventIDs.insert(eventID)
     }
 
     func complete2DPresentation(for eventID: String) {
         presentationEventIDs.remove(eventID)
+        unstartedPresentationEventIDs.remove(eventID)
+        finishMatchIfReady()
+    }
+
+    /// Confirms a goal only after the pitch has reached the goal beat. The
+    /// event and its shooter were selected earlier; this method only releases
+    /// the visible score/commentary consequences once the ball is on the line.
+    @discardableResult
+    func confirmGoalPresentation(for eventID: String) -> Bool {
+        guard let event = pendingGoalEvents.removeValue(forKey: eventID) else { return false }
+        scoreGoal(event)
+        finishMatchIfReady()
+        return true
+    }
+
+    /// Adds one authored beat to the live feed when its matching visual
+    /// action begins. Goal beats are intentionally held back: the goal line
+    /// is emitted by `confirmGoalPresentation` at the instant the ball lands.
+    func present2DBeat(for event: LegendsMatchEvent, beat: LegendsPresentationBeat, index: Int) {
+        let key = "\(event.id)-\(index)"
+        guard presentedBeatKeys.insert(key).inserted else { return }
+        guard beat.action != .goal else { return }
+        say(beat.text, side: event.side)
     }
 
     private func loop() async {
@@ -578,7 +779,7 @@ final class LegendsLiveMatch {
         recomputeMomentum()
 
         if minute >= totalMinutes {
-            finishMatch()
+            finishMatchIfReady()
         }
     }
 
@@ -729,11 +930,17 @@ final class LegendsLiveMatch {
             goalkeeperID: defense.goalkeeperID, goalkeeperName: defense.goalkeeperName,
             expectedGoals: pConvert
         )
-        events.append(event)
+        appendAuthoritativeEvent(event)
         if scored {
-            scoreGoal(event)
+            if uses2DPresentation {
+                pendingGoalEvents[event.id] = event
+            } else {
+                scoreGoal(event)
+            }
         } else {
-            say("Big chance for \(forUser ? store.profile.clubName : opponent.name). \(event.presentationScript.detailedText)", side: event.side)
+            if !uses2DPresentation {
+                say("Big chance for \(forUser ? store.profile.clubName : opponent.name). \(event.presentationScript.detailedText)", side: event.side)
+            }
             bumpMomentum(towardUser: forUser, by: 0.05)
         }
     }
@@ -795,8 +1002,10 @@ final class LegendsLiveMatch {
             goalkeeperID: nil, goalkeeperName: nil,
             expectedGoals: 0
         )
-        events.append(event)
-        say(event.presentationScript.detailedText, side: event.side)
+        appendAuthoritativeEvent(event)
+        if !uses2DPresentation {
+            say(event.presentationScript.detailedText, side: event.side)
+        }
     }
 
     private func incidentParticipants(forUser: Bool) -> [(id: String, name: String)] {
@@ -989,6 +1198,13 @@ final class LegendsLiveMatch {
         )
     }
 
+    private func appendAuthoritativeEvent(_ event: LegendsMatchEvent) {
+        events.append(event)
+        if uses2DPresentation {
+            unstartedPresentationEventIDs.insert(event.id)
+        }
+    }
+
     /// `scorerCardID` is only ever supplied for the user side —
     /// `scorerCardIDs` is user-scoped bookkeeping (nothing in the UI
     /// reads an opponent-side equivalent), while `scorerName` names
@@ -996,17 +1212,18 @@ final class LegendsLiveMatch {
     /// opponent goals a named scorer in commentary — they previously had
     /// none at all.
     private func scoreGoal(_ event: LegendsMatchEvent) {
+        let confirmation = event.presentationScript.beats.last(where: { $0.action == .goal })?.text ?? "The finish is in."
         if event.isUserEvent {
             teamGoals += 1
             scorerCardIDs.append(event.shooterID)
             let assist = event.creatorName.map { " (assist: \($0))" } ?? ""
-            say("⚽︎ GOAL! \(event.shooterName)!\(assist) \(event.presentationScript.detailedText) \(store.profile.clubName) \(teamGoals)-\(opponentGoals) \(opponent.name)", side: .home)
+            say("⚽︎ GOAL! \(event.shooterName) scores! \(confirmation)\(assist) \(store.profile.clubName) \(teamGoals)-\(opponentGoals) \(opponent.name)", side: .home)
             bumpMomentum(towardUser: true, by: 0.22)
             SoundManager.shared.play(.goalCrowd)
         } else {
             opponentGoals += 1
             let assist = event.creatorName.map { " (assist: \($0))" } ?? ""
-            say("⚽︎ GOAL! \(event.shooterName)!\(assist) \(event.presentationScript.detailedText) \(opponent.name) \(opponentGoals)-\(teamGoals) \(store.profile.clubName)", side: .away)
+            say("⚽︎ GOAL! \(event.shooterName) scores! \(confirmation)\(assist) \(opponent.name) \(opponentGoals)-\(teamGoals) \(store.profile.clubName)", side: .away)
             bumpMomentum(towardUser: false, by: 0.22)
         }
         if minute > 45 { secondHalfEventCount += 1 }
@@ -1021,7 +1238,19 @@ final class LegendsLiveMatch {
         momentum += (0.5 - momentum) * 0.12
     }
 
+    private func finishMatchIfReady() {
+        guard !isFinished else { return }
+        guard finishRequested || minute >= totalMinutes else { return }
+        if uses2DPresentation && (isAwaiting2DPresentation || !pendingGoalEvents.isEmpty) {
+            finishRequested = true
+            return
+        }
+        finishRequested = false
+        finishMatch()
+    }
+
     private func finishMatch() {
+        guard !isFinished else { return }
         isFinished = true
         isPaused = true
         say("Full-time! \(store.profile.clubName) \(teamGoals)-\(opponentGoals) \(opponent.name)")

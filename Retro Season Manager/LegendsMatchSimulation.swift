@@ -225,10 +225,92 @@ private struct PendingAttack {
 /// represented; they never create goals or rewrite engine outcomes.
 enum LegendsAmbientAction: String, Equatable {
     case carry
+    case receive
     case progressivePass
     case recycle
     case switchPlay
     case interceptedPass
+}
+
+/// One real continuous-possession action shared by the pitch and the radio
+/// commentary feed. Participants are captured when the decision happens;
+/// neither consumer has to infer them from prose or from nearby positions.
+struct LegendsAmbientActionEvent: Identifiable, Equatable {
+    let id: String
+    let sequence: Int
+    let action: LegendsAmbientAction
+    let team: Side
+    let actorID: String
+    let actorName: String
+    let receiverID: String?
+    let receiverName: String?
+    let defenderID: String?
+    let defenderName: String?
+    let text: String
+
+    init(sequence: Int, action: LegendsAmbientAction, team: Side,
+         actorID: String, actorName: String,
+         receiverID: String? = nil, receiverName: String? = nil,
+         defenderID: String? = nil, defenderName: String? = nil) {
+        self.id = "A\(sequence)"
+        self.sequence = sequence
+        self.action = action
+        self.team = team
+        self.actorID = actorID
+        self.actorName = actorName
+        self.receiverID = receiverID
+        self.receiverName = receiverName
+        self.defenderID = defenderID
+        self.defenderName = defenderName
+        self.text = Self.commentaryText(sequence: sequence, action: action,
+                                        actorName: actorName, receiverName: receiverName,
+                                        defenderName: defenderName)
+    }
+
+    private static func commentaryText(sequence: Int, action: LegendsAmbientAction,
+                                       actorName: String, receiverName: String?,
+                                       defenderName: String?) -> String {
+        switch action {
+        case .carry:
+            switch sequence % 4 {
+            case 0: return "\(actorName) carries it forward..."
+            case 1: return "\(actorName) drives on with the ball..."
+            case 2: return "Still \(actorName), moving forward..."
+            default: return "\(actorName) brings it into the next phase..."
+            }
+        case .receive:
+            switch sequence % 3 {
+            case 0: return "\(actorName) takes a touch..."
+            case 1: return "\(actorName) brings it under control..."
+            default: return "\(actorName) gets there first..."
+            }
+        case .progressivePass:
+            guard let receiverName else { return "\(actorName) looks forward..." }
+            switch sequence % 3 {
+            case 0: return "\(actorName) finds \(receiverName) ahead..."
+            case 1: return "\(actorName) feeds \(receiverName) forward..."
+            default: return "\(actorName) plays it into \(receiverName)..."
+            }
+        case .recycle:
+            guard let receiverName else { return "They recycle possession..." }
+            switch sequence % 3 {
+            case 0: return "Back to \(receiverName)..."
+            case 1: return "\(actorName) keeps it moving back to \(receiverName)..."
+            default: return "They recycle possession through \(receiverName)..."
+            }
+        case .switchPlay:
+            guard let receiverName else { return "They switch the play..." }
+            switch sequence % 3 {
+            case 0: return "\(actorName) switches the play to \(receiverName)..."
+            case 1: return "The ball is worked across to \(receiverName)..."
+            default: return "\(actorName) moves it wide to \(receiverName)..."
+            }
+        case .interceptedPass:
+            let target = receiverName.map { " towards \($0)" } ?? ""
+            let defender = defenderName ?? "the defender"
+            return "\(actorName) tries it\(target), but \(defender) reads it and intercepts..."
+        }
+    }
 }
 
 // Deliberately not @Observable: the rendering view drives its Canvas
@@ -247,6 +329,12 @@ final class LegendsMatchSimulation {
     private(set) var currentPresentationText: String?
     private(set) var currentPresentationSide: Side?
     private(set) var currentPresentationEventID: String?
+    /// The latest radio line for continuous possession. It is the same
+    /// immutable action event delivered to `LegendsLiveMatch`, so the pitch
+    /// subtitle and the commentary feed cannot describe different actions.
+    private(set) var currentAmbientCommentaryText: String?
+    private(set) var currentAmbientCommentarySide: Side?
+    private(set) var currentAmbientActionEvent: LegendsAmbientActionEvent?
     private(set) var isPresentingRestart = false
     /// The football action currently being performed, plus the ordered
     /// history completed for this event. These are presentation facts only:
@@ -261,6 +349,18 @@ final class LegendsMatchSimulation {
     /// Fired when a scripted goal actually reaches its goal-mouth waypoint,
     /// not when the match engine changes the score several seconds earlier.
     var onGoalPresented: ((LegendsMatchEvent) -> Void)?
+    /// Fired when an authored beat begins. The live match uses this to put
+    /// the same passer, receiver or defender into the text feed at the
+    /// moment the corresponding pitch action starts.
+    var onPresentationBeat: ((LegendsMatchEvent, LegendsPresentationBeat, Int) -> Void)?
+    /// Fired once for each real continuous-possession decision. The live
+    /// engine consumes the authored text; the pitch retains the same event
+    /// as its current radio line.
+    var onAmbientAction: ((LegendsAmbientActionEvent) -> Void)?
+    /// Fired when a direct restart state is installed. The restart is already
+    /// at its authoritative location; this callback only narrates that same
+    /// state in the live commentary feed.
+    var onRestartPresentation: ((LegendsMatchRestart) -> Void)?
     /// Called only after the final visual waypoint for an authoritative
     /// event resolves. The live engine uses this acknowledgement to release
     /// its presentation hold and advance to the next minute/commentary line.
@@ -341,6 +441,8 @@ final class LegendsMatchSimulation {
     private var ambientDecisionIndex = 0
     private(set) var testLastAmbientAction: LegendsAmbientAction?
     private(set) var testAmbientActionHistory: [LegendsAmbientAction] = []
+    private(set) var ambientActionEvents: [LegendsAmbientActionEvent] = []
+    private var ambientCommentarySequence = 0
 
     private let ambientHoldDuration = 0.55
 
@@ -381,6 +483,32 @@ final class LegendsMatchSimulation {
     /// anchor in `tick()` for exactly these players, and cleared the
     /// tick they arrive.
     private var subWalkIns: [String: CGPoint] = [:]
+
+    /// The last restart placed by an authoritative event. Restart locations
+    /// are state transitions, not ball-travel waypoints: the ball is placed
+    /// directly at this position once the preceding action finishes.
+    private(set) var lastRestart: LegendsMatchRestart?
+    private(set) var directRestartCount = 0
+
+    /// A short restart presentation keeps the goal/dead-ball reaction visible
+    /// while the ball is already in its legally correct location. It never
+    /// advances the ball between unrelated states.
+    private var restartPresentationElapsed = 0.0
+    private let restartPresentationDuration = 0.35
+    /// A goal restart remains at the centre spot until the goal card/flash
+    /// has dismissed. This prevents normal open play from pulling the ball
+    /// away from centre while the celebration is still on screen.
+    private var waitingForGoalCardDismissalEventID: String?
+    private var kickoffTakerID: String?
+    private var kickoffTakerPosition: CGPoint?
+    private var restartSetupTargets: [String: CGPoint] = [:]
+    private var holdsGoalCardRestart = false
+    /// Gives the final shot/save/block a complete render tick before the
+    /// direct restart resets the players. The ball and the outcome remain
+    /// authoritative immediately; only the restart transition is deferred
+    /// so a keeper/defender can be seen at the same point as the impact.
+    private var restartPendingAfterImpact = false
+
     /// Which goal line the *defending* team's own goal sits on for the
     /// currently active sequence — 0 when the away team is defending
     /// (they defend the opponent's/y=0 goal, i.e. a home attack is live),
@@ -541,7 +669,16 @@ final class LegendsMatchSimulation {
         currentPresentationText = presentation?.beats.first?.text
         currentPresentationSide = authoritative?.side
         currentPresentationEventID = authoritative?.id
+        currentAmbientCommentaryText = nil
+        currentAmbientCommentarySide = nil
+        currentAmbientActionEvent = nil
+        waitingForGoalCardDismissalEventID = nil
+        kickoffTakerID = nil
+        kickoffTakerPosition = nil
+        restartSetupTargets.removeAll()
         isPresentingRestart = false
+        restartPresentationElapsed = 0
+        restartPendingAfterImpact = false
         currentPresentationAction = presentation?.beats.first?.action
         completedPresentationActions = []
         scriptedPossessorID = presentation?.beats.first.flatMap { possessorID(for: $0) }
@@ -682,7 +819,7 @@ final class LegendsMatchSimulation {
                 let destination = presentationPoint(beat.zone)
                 let followedID: String?
                 switch beat.action {
-                case .carry, .offside:
+                case .carry, .receive, .offside:
                     followedID = beat.actorID
                 case .pass, .cross, .cutback, .throughBall, .throwIn:
                     followedID = beat.receiverID
@@ -715,12 +852,11 @@ final class LegendsMatchSimulation {
             ]
         }
         let impactIndex = points.count - 1
-        if let presentation {
-            // Every authoritative incident includes a visible restart leg.
-            // Goals therefore travel through a real centre-spot phase instead
-            // of snapping to kickoff only after the attack has disappeared.
-            points.append(.fixed(restartPosition(for: presentation.restart)))
-        }
+        // Restarts are direct state placements, never ball-travel waypoints.
+        // The final meaningful beat still resolves at its authoritative
+        // destination; `beginDirectRestartPresentation()` then places the
+        // ball and holds the short restart caption without drawing an
+        // artificial path from the goal or foul location.
 
         waypoints = points
         waypointIndex = 0
@@ -735,7 +871,7 @@ final class LegendsMatchSimulation {
             for beat in presentation.beats {
                 let destination = presentationPoint(beat.zone)
                 switch beat.action {
-                case .carry, .offside, .clearance:
+                case .carry, .receive, .offside, .clearance:
                     if let actorID = beat.actorID {
                         runTargetOverrides[actorID] = destination
                     }
@@ -797,6 +933,11 @@ final class LegendsMatchSimulation {
         if let markerID {
             runTargetOverrides[markerID] = players.first(where: { $0.id == markerID })?.position
         }
+        if authoritative != nil {
+            updatePresentationForCurrentLeg()
+        } else {
+            notifyCurrentPresentationBeat()
+        }
         if authoritative?.isShotEvent != false {
             pendingImpact = (
                 impactIndex, outcome == .goal ? .goal : .chance,
@@ -832,6 +973,21 @@ final class LegendsMatchSimulation {
 
     private func distance(_ a: CGPoint, _ b: CGPoint) -> Double {
         hypot(a.x - b.x, a.y - b.y)
+    }
+
+    private func placeBallForDirectRestart(_ restart: LegendsMatchRestart) {
+        ball.position = restartPosition(for: restart)
+        lastRestart = restart
+        directRestartCount += 1
+    }
+
+    private func restartTeam(_ restart: LegendsMatchRestart) -> Side {
+        switch restart {
+        case .kickoff(let team), .goalkeeperPossession(let team), .goalKick(let team),
+             .corner(let team, _), .freeKick(let team, _), .throwIn(let team, _),
+             .openPlay(let team, _):
+            return team
+        }
     }
 
     private func restartPosition(for restart: LegendsMatchRestart) -> CGPoint {
@@ -889,6 +1045,8 @@ final class LegendsMatchSimulation {
         switch action {
         case .carry:
             return PresentationTiming(preparation: 0.10, ballSpeed: 0, controlledCarry: true)
+        case .receive:
+            return PresentationTiming(preparation: 0.18, ballSpeed: 0, controlledCarry: true)
         case .pass:
             return PresentationTiming(preparation: 0.22, ballSpeed: 0.40, controlledCarry: false)
         case .cross:
@@ -914,7 +1072,7 @@ final class LegendsMatchSimulation {
 
     private func possessorID(for beat: LegendsPresentationBeat) -> String? {
         switch beat.action {
-        case .carry, .pass, .cross, .cutback, .throughBall, .shoot, .throwIn, .clearance:
+        case .carry, .receive, .pass, .cross, .cutback, .throughBall, .shoot, .throwIn, .clearance:
             return beat.actorID
         case .tackle:
             return beat.actorID
@@ -930,6 +1088,46 @@ final class LegendsMatchSimulation {
         }
     }
 
+    /// Emits a beat once its visual leg becomes current. The callback is
+    /// idempotent at the live-engine layer, so queueing cannot duplicate
+    /// commentary when a render or test tick revisits the same state.
+    private func notifyCurrentPresentationBeat() {
+        guard let event = activeAttack?.event,
+              let script = activeAttack?.event?.presentationScript,
+              script.beats.indices.contains(waypointIndex) else { return }
+        let beat = script.beats[waypointIndex]
+        onPresentationBeat?(event, beat, waypointIndex)
+    }
+
+    private func applyPresentationRunTarget(for beat: LegendsPresentationBeat, destination: CGPoint) {
+        switch beat.action {
+        case .carry, .receive, .offside, .clearance:
+            if let actorID = beat.actorID {
+                runTargetOverrides[actorID] = destination
+            }
+        case .pass, .cross, .cutback, .throughBall, .throwIn:
+            if let receiverID = beat.receiverID {
+                runTargetOverrides[receiverID] = destination
+            }
+            if beat.action == .throwIn, let actorID = beat.actorID {
+                runTargetOverrides[actorID] = destination
+            }
+        case .shoot:
+            if let actorID = beat.actorID {
+                runTargetOverrides[actorID] = destination
+            }
+        case .foul, .tackle:
+            if let actorID = beat.actorID {
+                runTargetOverrides[actorID] = destination
+            }
+            if let receiverID = beat.receiverID {
+                runTargetOverrides[receiverID] = destination
+            }
+        case .goal, .save, .block, .miss, .woodwork:
+            break
+        }
+    }
+
     /// Moves every visible and testable timeline property together when a
     /// new action begins. The caption, possessor halo and movement therefore
     /// all read from the same beat index.
@@ -942,10 +1140,21 @@ final class LegendsMatchSimulation {
 
         if waypointIndex < script.beats.count {
             let beat = script.beats[waypointIndex]
-            currentPresentationText = beat.text
+            // Keep the active participant moving toward this beat's own
+            // destination. Later beats may use the same player (for example
+            // a receiver taking a touch and then shooting), so assigning all
+            // targets once at attack start would make an earlier controlled
+            // beat wait forever for a player already steering to a later one.
+            if waypoints.indices.contains(waypointIndex) {
+                applyPresentationRunTarget(for: beat, destination: fixedDestination(for: waypoints[waypointIndex]))
+            }
+            // The goal beat is confirmed by the impact callback below. Do
+            // not expose its sentence while the ball is still travelling.
+            currentPresentationText = beat.action == .goal ? nil : beat.text
             currentPresentationAction = beat.action
             scriptedPossessorID = possessorID(for: beat)
             isPresentingRestart = false
+            notifyCurrentPresentationBeat()
             return
         }
 
@@ -967,6 +1176,25 @@ final class LegendsMatchSimulation {
         }
     }
 
+    /// Keeps the direct centre restart behind the existing goal card. The
+    /// simulation still owns the restart transition; this flag is enabled
+    /// by the live view before playback and released only when that same
+    /// card finishes, so the centre spot cannot be overwritten by ambient
+    /// possession while the celebration is visible.
+    func holdGoalRestartUntilCardDismissal() {
+        holdsGoalCardRestart = true
+        // The simulation owns the waiting event; the live view keeps the
+        // score/card lifecycle separate from this presentation-only hold.
+    }
+
+    /// Releases the centre-spot hold for the matching goal card. A stale or
+    /// repeated dismissal is ignored, so an old overlay cannot release a
+    /// newer restart or advance the ball twice.
+    func completeGoalCardPresentation(for eventID: String) {
+        guard waitingForGoalCardDismissalEventID == eventID else { return }
+        waitingForGoalCardDismissalEventID = nil
+        beginDirectRestartPresentation()
+    }
     /// Synchronous single-step advance, no delay and no background `Task`
     /// — the async-free path unit tests drive instead of `start()`'s real
     /// loop, mirroring `LegendsLiveMatch.testAdvanceMinute()`.
@@ -974,7 +1202,14 @@ final class LegendsMatchSimulation {
         tick(dt: dt)
     }
 
-    /// Test-only: whether `playerID` currently has a run-target override
+    /// Test-only: whether the exact centre-spot restart is waiting for the
+    /// matching goal card to dismiss. While true, the ball and kickoff taker
+    /// are already at (0.5, 0.5), but the kickoff has not been released.
+    func testIsWaitingForGoalCardDismissal() -> Bool {
+        waitingForGoalCardDismissalEventID != nil
+    }
+
+
     /// from an in-progress attack sequence — lets tests confirm Phase 3's
     /// player/ball coupling without exposing the dictionary itself.
     func testHasRunOverride(for playerID: String) -> Bool {
@@ -1014,9 +1249,12 @@ final class LegendsMatchSimulation {
     }
 
     /// Test-only contract for the commentary-first renderer: production
-    /// events create one leg per ordered text beat, plus a final restart leg
-    /// when play does not end in a goal.
+    /// events create exactly one leg per ordered text beat. Restarts are
+    /// direct state placements after the final beat, never extra travel.
     func testWaypointCount() -> Int { waypoints.count }
+    func testLastRestart() -> LegendsMatchRestart? { lastRestart }
+    func testDirectRestartCount() -> Int { directRestartCount }
+    func testKickoffTakerID() -> String? { kickoffTakerID }
 
     /// Open-play test hooks. These expose identities, not mutable state,
     /// so deterministic possession behaviour can be verified without
@@ -1025,6 +1263,7 @@ final class LegendsMatchSimulation {
     func testAmbientPassTargetID() -> String? { ambientPassTargetID }
     func testAmbientPresserID() -> String? { ambientPresserID }
     func testAmbientCompletedPasses() -> Int { ambientCompletedPasses }
+    func testAmbientActionEvents() -> [LegendsAmbientActionEvent] { ambientActionEvents }
     func testHasActiveAttack() -> Bool { activeAttack != nil }
     func testRunTarget(for playerID: String) -> CGPoint? { runTargetOverrides[playerID] }
     func testSupportPlayerIDs() -> [String] { supportPlayerIDs }
@@ -1061,7 +1300,9 @@ final class LegendsMatchSimulation {
         }
         for index in players.indices {
             let anchor: CGPoint
-            if let override = runTargetOverrides[players[index].id] {
+            if let restartTarget = restartSetupTargets[players[index].id], isPresentingRestart {
+                anchor = restartTarget
+            } else if let override = runTargetOverrides[players[index].id] {
                 anchor = override
             } else if let walkTarget = subWalkIns[players[index].id] {
                 anchor = walkTarget
@@ -1080,7 +1321,7 @@ final class LegendsMatchSimulation {
         // Steering happens after the action timeline is advanced. Reattach
         // the ball to the actor's freshly integrated position so controlled
         // carries and preparation frames never leave it trailing behind.
-        if activeAttack != nil,
+        if activeAttack != nil, !isPresentingRestart,
            let possessorID = scriptedPossessorID,
            let possessor = players.first(where: { $0.id == possessorID }) {
             ball.position = possessor.position
@@ -1127,6 +1368,7 @@ final class LegendsMatchSimulation {
                 ambientPassTargetID = nil
                 ambientHoldElapsed = 0
 
+                recordAmbientAction(.receive, actor: target)
                 if let turnoverTeam = pendingAmbientTurnoverTeam {
                     possessionTeam = turnoverTeam
                     pendingAmbientTurnoverTeam = nil
@@ -1150,7 +1392,10 @@ final class LegendsMatchSimulation {
         ambientDecisionIndex += 1
         let presser = players.first { $0.id == ambientPresserID }
         let pressureDistance = presser.map { distance($0.position, possessor.position) } ?? 1
-        let pressured = pressureDistance < 0.14
+        // A defender within roughly a player's immediate-control radius is
+        // pressure; the wider threshold made compact blocks read as constant
+        // pressure and pushed every decision into recycle/switch branches.
+        let pressured = pressureDistance < 0.10
         let dribbling = LegendsMatchSelectors.dribbling(possessor.detailed)
         let defending = presser.map { LegendsMatchSelectors.defending($0.detailed) } ?? 50
 
@@ -1173,32 +1418,55 @@ final class LegendsMatchSimulation {
         }
 
         if action == .carry {
-            recordAmbientAction(.carry)
+            recordAmbientAction(.carry, actor: possessor)
             ambientHoldElapsed = 0
             return
         }
 
         if let receiver = choosePassRecipient(from: possessor, action: action) {
-            if passWillBeIntercepted(from: possessor, to: receiver, presser: presser),
+            if passWillBeIntercepted(from: possessor, to: receiver, presser: presser, action: action),
                let interceptor = Self.closestOutfieldPlayer(
                    in: players, team: possessionTeam.opposite, to: midpoint(possessor.position, receiver.position)
                ) {
-                recordAmbientAction(.interceptedPass)
+                recordAmbientAction(.interceptedPass, actor: possessor, receiver: receiver, defender: interceptor)
                 ambientPassTargetID = interceptor.id
                 pendingAmbientTurnoverTeam = possessionTeam.opposite
             } else {
-                recordAmbientAction(action)
+                recordAmbientAction(action, actor: possessor, receiver: receiver)
                 ambientPassTargetID = receiver.id
             }
             ambientHoldElapsed = 0
         }
     }
 
-    private func recordAmbientAction(_ action: LegendsAmbientAction) {
+    private func recordAmbientAction(_ action: LegendsAmbientAction,
+                                     actor: PlayerSimState,
+                                     receiver: PlayerSimState? = nil,
+                                     defender: PlayerSimState? = nil) {
         testLastAmbientAction = action
         testAmbientActionHistory.append(action)
+        ambientCommentarySequence += 1
+        let event = LegendsAmbientActionEvent(
+            sequence: ambientCommentarySequence,
+            action: action,
+            team: actor.team,
+            actorID: actor.id,
+            actorName: actor.name,
+            receiverID: receiver?.id,
+            receiverName: receiver?.name,
+            defenderID: defender?.id,
+            defenderName: defender?.name
+        )
+        ambientActionEvents.append(event)
+        currentAmbientActionEvent = event
+        currentAmbientCommentaryText = event.text
+        currentAmbientCommentarySide = event.team
+        onAmbientAction?(event)
         if testAmbientActionHistory.count > 100 {
             testAmbientActionHistory.removeFirst(testAmbientActionHistory.count - 100)
+        }
+        if ambientActionEvents.count > 100 {
+            ambientActionEvents.removeFirst(ambientActionEvents.count - 100)
         }
     }
 
@@ -1396,7 +1664,7 @@ final class LegendsMatchSimulation {
                 directionScore = -forwardProgress * 1.45
             case .switchPlay:
                 directionScore = abs(candidate.position.x - possessor.position.x) * 1.8
-            case .carry, .interceptedPass:
+            case .carry, .interceptedPass, .receive:
                 directionScore = forwardProgress
             }
             let supportBonus = supportPlayerIDs.contains(candidate.id) ? 0.32 : 0
@@ -1414,10 +1682,17 @@ final class LegendsMatchSimulation {
     /// Deterministic pass-risk model. Distance, pressure and the nearest
     /// defender raise risk; passing and first touch lower it. A stable action
     /// index replaces random rolls so identical simulations remain identical.
+    private func stableValue(_ value: String) -> Int {
+        value.utf8.reduce(17) { partial, byte in
+            (partial &* 31 &+ Int(byte)) % 10_000
+        }
+    }
+
     private func passWillBeIntercepted(
         from passer: PlayerSimState,
         to receiver: PlayerSimState,
-        presser: PlayerSimState?
+        presser: PlayerSimState?,
+        action: LegendsAmbientAction
     ) -> Bool {
         let passDistance = distance(passer.position, receiver.position)
         let lanePoint = midpoint(passer.position, receiver.position)
@@ -1440,11 +1715,27 @@ final class LegendsMatchSimulation {
         let lanePressure = laneDefender.map {
             max(0, 0.18 - distance($0.position, lanePoint)) * 170
         } ?? 0
-        let risk = max(5.0, min(55.0,
-            8 + passDistance * 52 + pressure + lanePressure
-                + Double(defending - passing) * 0.20 - Double(touch - 50) * 0.08
+        // Pass type is part of the football decision: recycling is the
+        // safest outlet, progressive play accepts moderate risk for territory,
+        // and a switch exposes a longer diagonal lane. Each adjustment is
+        // bounded so attributes and spacing still matter more than a fixed
+        // turnover rule.
+        let actionAdjustment: Double
+        switch action {
+        case .recycle: actionAdjustment = -8
+        case .progressivePass: actionAdjustment = 0
+        case .switchPlay: actionAdjustment = 5
+        case .carry, .interceptedPass, .receive: actionAdjustment = 0
+        }
+        let risk = max(4.0, min(44.0,
+            6 + passDistance * 38 + pressure * 0.55 + lanePressure * 0.60
+                + Double(defending - passing) * 0.16 - Double(touch - 50) * 0.08
+                + actionAdjustment
         ))
-        let stableRoll = (ambientDecisionIndex * 37 + ambientSequencePasses * 17 + passer.id.count * 11 + receiver.id.count * 7) % 100
+        // Stable player identity prevents different pairs with equal-length
+        // IDs from collapsing into the same repetitive turnover pattern.
+        let identityRoll = stableValue("\(passer.id)|\(receiver.id)")
+        let stableRoll = (ambientDecisionIndex * 37 + ambientSequencePasses * 17 + identityRoll) % 100
         return Double(stableRoll) < risk
     }
 
@@ -1468,8 +1759,18 @@ final class LegendsMatchSimulation {
 
     private func dribbleTarget(for player: PlayerSimState) -> CGPoint {
         let direction = player.team == .home ? -1.0 : 1.0
+        let isWide = [.leftBack, .rightBack, .leftMid, .rightMid, .leftWing, .rightWing].contains(player.role)
+        // Wide players carry into the channel instead of being pulled toward
+        // the centre every time they receive the ball. Central players still
+        // make a modest inside movement to create a passing angle.
+        let lateralMovement: Double
+        if isWide {
+            lateralMovement = player.baseAnchor.x < 0.5 ? -0.012 : 0.012
+        } else {
+            lateralMovement = (0.5 - player.position.x) * 0.08
+        }
         return clampedToPitch(CGPoint(
-            x: player.position.x + (0.5 - player.position.x) * 0.08,
+            x: player.position.x + lateralMovement,
             y: player.position.y + direction * 0.055
         ))
     }
@@ -1628,7 +1929,23 @@ final class LegendsMatchSimulation {
     }
 
     private func advanceBall(dt: Double) {
-        guard dt > 0, waypointIndex < waypoints.count else { return }
+        guard dt > 0 else { return }
+        // A goal has reached the net, but its card is still on screen. Keep
+        // the ball and the preceding shot state untouched until the view
+        // acknowledges dismissal of that exact card.
+        guard waitingForGoalCardDismissalEventID == nil else { return }
+        if restartPendingAfterImpact {
+            restartPendingAfterImpact = false
+            beginDirectRestartPresentation()
+            return
+        }
+        if isPresentingRestart {
+            restartPresentationElapsed += dt
+            guard restartPresentationElapsed >= restartPresentationDuration else { return }
+            finishActiveAttackAfterRestart()
+            return
+        }
+        guard waypointIndex < waypoints.count else { return }
         let waypoint = waypoints[waypointIndex]
         let script = activeAttack?.event?.presentationScript
         let beat = script.flatMap { $0.beats.indices.contains(waypointIndex) ? $0.beats[waypointIndex] : nil }
@@ -1690,7 +2007,21 @@ final class LegendsMatchSimulation {
                 markerID: pending.markerID,
                 goalkeeperID: pending.goalkeeperID
             )
+            if pending.kind == .chance,
+               let goalkeeperID = pending.goalkeeperID,
+               let goalkeeperIndex = players.firstIndex(where: { $0.id == goalkeeperID }) {
+                // A saved chance is one shared visual outcome: at the
+                // impact tick the keeper has reached the same point as the
+                // shot. This is a finish of the keeper's dive, not a second
+                // outcome roll or a decorative reaction after the ball has
+                // already gone elsewhere.
+                players[goalkeeperIndex].position = target
+                players[goalkeeperIndex].homeAnchor = target
+                players[goalkeeperIndex].velocity = .zero
+            }
             if pending.kind == .goal, let event = activeAttack?.event {
+                // The ball is now on the goal line. Only at this point may
+                // the live engine publish the goal line, score and card.
                 onGoalPresented?(event)
             }
             pendingImpact = nil
@@ -1699,64 +2030,30 @@ final class LegendsMatchSimulation {
             completedPresentationActions.append(action)
         }
         waypointIndex += 1
-        updatePresentationForCurrentLeg()
 
-        guard waypointIndex >= waypoints.count else { return }
+        let reachedFinalWaypoint = waypointIndex >= waypoints.count
+        if !reachedFinalWaypoint {
+            updatePresentationForCurrentLeg()
+            return
+        }
 
-        // An attack sequence finished — play any follow-up attack that was
-        // queued behind it before handing back to continuous open play.
-        if let currentAttack = activeAttack {
-            activeAttack = nil
-            var preferredRestartPlayerID: String?
-            if let event = currentAttack.event {
-                let presentation = event.presentationScript
-                ball.position = restartPosition(for: presentation.restart)
-                switch presentation.restart {
-                case .kickoff(let team):
-                    possessionTeam = team
-                case .goalkeeperPossession(let team), .goalKick(let team):
-                    possessionTeam = team
-                    preferredRestartPlayerID = presentation.goalkeeperID
-                case .corner(let team, _):
-                    possessionTeam = team
-                    preferredRestartPlayerID = presentation.creatorID
-                case .freeKick(let team, _):
-                    possessionTeam = team
-                    preferredRestartPlayerID = team == event.side ? presentation.shooterID : presentation.markerID
-                case .throwIn(let team, _):
-                    possessionTeam = team
-                    preferredRestartPlayerID = presentation.creatorID
-                case .openPlay(let team, _):
-                    possessionTeam = team
-                    preferredRestartPlayerID = presentation.markerID
-                }
-            } else {
-                possessionTeam = currentAttack.forUser ? .away : .home
-                if currentAttack.scored {
-                    ball.position = CGPoint(x: 0.5, y: 0.5)
-                }
-            }
-            if let eventID = currentAttack.event?.id {
-                onEventPresentationCompleted?(eventID)
-            }
-            if !attackQueue.isEmpty {
-                let next = attackQueue.removeFirst()
-                startAttack(next)
-                return
-            }
-            waypoints.removeAll()
-            waypointIndex = 0
-            runTargetOverrides.removeAll()
-            markerID = nil
-            beginAmbientPossession(for: possessionTeam, near: ball.position,
-                                   preferredPlayerID: preferredRestartPlayerID)
+        // A goal card is a real presentation phase. Do not install the
+        // centre-spot restart until that card has dismissed; this prevents
+        // the card/celebration from hiding a reset that happened too early.
+        if let event = activeAttack?.event, event.scored, holdsGoalCardRestart {
+            waitingForGoalCardDismissalEventID = event.id
             currentPresentationText = nil
-            currentPresentationSide = nil
-            currentPresentationEventID = nil
             currentPresentationAction = nil
-            scriptedPossessorID = nil
             currentLegElapsed = 0
-            isPresentingRestart = false
+            return
+        }
+
+        // Non-goal outcomes and headless/test attacks enter their direct
+        // restart on the next simulation tick. That one-tick handoff keeps
+        // the final impact visible with the keeper/defender at the same
+        // point before the restart setup repositions the teams.
+        if activeAttack != nil {
+            restartPendingAfterImpact = true
             return
         }
 
@@ -1768,6 +2065,124 @@ final class LegendsMatchSimulation {
         scriptedPossessorID = nil
         currentLegElapsed = 0
         beginAmbientPossession(for: possessionTeam, near: ball.position)
+    }
+
+    private func beginDirectRestartPresentation() {
+        guard let currentAttack = activeAttack else { return }
+        let restart: LegendsMatchRestart
+        if let authoritativeEvent = currentAttack.event {
+            restart = authoritativeEvent.presentationScript.restart
+        } else {
+            let team: Side = currentAttack.forUser ? .away : .home
+            restart = currentAttack.scored ? .kickoff(team: team) : .openPlay(team: team, channel: .left)
+        }
+
+        placeBallForDirectRestart(restart)
+        let restartTeam = restartTeam(restart)
+        possessionTeam = restartTeam
+        restartSetupTargets = Dictionary(uniqueKeysWithValues: players.map { ($0.id, $0.baseAnchor) })
+        runTargetOverrides.removeAll()
+        markerID = nil
+        kickoffTakerID = nil
+        kickoffTakerPosition = nil
+
+        if case .kickoff = restart {
+            let centre = restartPosition(for: restart)
+            let taker = players
+                .filter { $0.team == restartTeam && $0.role != .goalkeeper }
+                .min {
+                    let lhsCentrality = abs($0.position.x - centre.x) + abs($0.position.y - centre.y)
+                    let rhsCentrality = abs($1.position.x - centre.x) + abs($1.position.y - centre.y)
+                    if abs(lhsCentrality - rhsCentrality) > 0.0001 { return lhsCentrality < rhsCentrality }
+                    return $0.id < $1.id
+                }
+            if let taker {
+                kickoffTakerID = taker.id
+                kickoffTakerPosition = centre
+                restartSetupTargets[taker.id] = centre
+                if let index = players.firstIndex(where: { $0.id == taker.id }) {
+                    players[index].position = centre
+                    players[index].homeAnchor = centre
+                    players[index].velocity = .zero
+                }
+                scriptedPossessorID = taker.id
+            }
+        }
+
+        for index in players.indices {
+            guard players[index].id != kickoffTakerID,
+                  let target = restartSetupTargets[players[index].id] else { continue }
+            players[index].position = target
+            players[index].homeAnchor = target
+            players[index].velocity = .zero
+        }
+
+        // The exact centre placement is installed only after a goal card has
+        // dismissed. `waitingForGoalCardDismissalEventID` owns that hold, so
+        // this method never moves a goal ball while the scorer card is live.
+        restartPendingAfterImpact = false
+        restartPresentationElapsed = 0
+        isPresentingRestart = true
+        currentPresentationSide = restartTeam
+        currentPresentationText = restartCommentary(for: restart)
+        currentPresentationAction = nil
+        onRestartPresentation?(restart)
+    }
+
+    private func finishActiveAttackAfterRestart() {
+        guard let currentAttack = activeAttack else {
+            isPresentingRestart = false
+            return
+        }
+        activeAttack = nil
+        var preferredRestartPlayerID: String? = kickoffTakerID
+        restartSetupTargets.removeAll()
+        if let event = currentAttack.event {
+            let presentation = event.presentationScript
+            switch presentation.restart {
+            case .kickoff(let team):
+                possessionTeam = team
+            case .goalkeeperPossession(let team), .goalKick(let team):
+                possessionTeam = team
+                preferredRestartPlayerID = presentation.goalkeeperID
+            case .corner(let team, _):
+                possessionTeam = team
+                preferredRestartPlayerID = presentation.creatorID
+            case .freeKick(let team, _):
+                possessionTeam = team
+                preferredRestartPlayerID = team == event.side ? presentation.shooterID : presentation.markerID
+            case .throwIn(let team, _):
+                possessionTeam = team
+                preferredRestartPlayerID = presentation.creatorID
+            case .openPlay(let team, _):
+                possessionTeam = team
+                preferredRestartPlayerID = presentation.markerID
+            }
+        }
+        if let eventID = currentAttack.event?.id {
+            onEventPresentationCompleted?(eventID)
+        }
+        isPresentingRestart = false
+        restartPresentationElapsed = 0
+        kickoffTakerID = nil
+        kickoffTakerPosition = nil
+        if !attackQueue.isEmpty {
+            let next = attackQueue.removeFirst()
+            startAttack(next)
+            return
+        }
+        waypoints.removeAll()
+        waypointIndex = 0
+        runTargetOverrides.removeAll()
+        markerID = nil
+        beginAmbientPossession(for: possessionTeam, near: ball.position,
+                               preferredPlayerID: preferredRestartPlayerID)
+        currentPresentationText = nil
+        currentPresentationSide = nil
+        currentPresentationEventID = nil
+        currentPresentationAction = nil
+        scriptedPossessorID = nil
+        currentLegElapsed = 0
     }
 
     private func steer(_ player: inout PlayerSimState, dt: Double) {

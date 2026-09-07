@@ -175,6 +175,36 @@ final class LegendsLiveMatchTests: XCTestCase {
         XCTAssertFalse(live.isAwaiting2DPresentation)
     }
 
+    func test2DGoalWaitsForVisualConfirmationAndConfirmsOnlyOnce() async {
+        let store = await freshStore()
+        strongestXI(store)
+        let live = LegendsLiveMatch(
+            store: store,
+            opponent: LegendsOpponent(name: "Presentation Rivals", rating: 60),
+            rng: FirstGoalRNG()
+        )
+        live.enable2DPresentation()
+        live.testAdvanceMinute()
+
+        guard let goal = live.events.first(where: { $0.scored }) else {
+            return XCTFail("The deterministic goal source should create a goal event")
+        }
+        XCTAssertEqual(live.teamGoals, 0)
+        XCTAssertEqual(live.opponentGoals, 0)
+        XCTAssertFalse(live.commentary.contains { $0.text.contains("GOAL!") },
+                       "The score line must wait for the visual goal confirmation")
+
+        XCTAssertTrue(live.confirmGoalPresentation(for: goal.id))
+        let scoreAfterConfirmation = (live.teamGoals, live.opponentGoals)
+        XCTAssertEqual(scoreAfterConfirmation.0 + scoreAfterConfirmation.1, 1)
+        XCTAssertTrue(live.commentary.contains { $0.text.contains("GOAL!") })
+
+        XCTAssertFalse(live.confirmGoalPresentation(for: goal.id),
+                       "A visual callback replay must not award the same goal twice")
+        XCTAssertEqual(live.teamGoals, scoreAfterConfirmation.0)
+        XCTAssertEqual(live.opponentGoals, scoreAfterConfirmation.1)
+    }
+
     func testScheduledIncidentsAddDetailedCommentaryWithoutChangingTheScore() async {
         let store = await freshStore()
         strongestXI(store)
@@ -194,10 +224,16 @@ final class LegendsLiveMatchTests: XCTestCase {
         XCTAssertTrue(live.events.contains { $0.outcome == .tackled })
         XCTAssertTrue(live.events.contains { $0.outcome == .cleared })
         XCTAssertTrue(live.commentary.contains { $0.text.contains("takes the throw-in") })
-        XCTAssertTrue(live.commentary.contains { $0.text.contains("brings down") })
+        XCTAssertTrue(live.commentary.contains {
+            $0.text.contains("brings down") || $0.text.contains("catches")
+        }, "Foul commentary should describe the same foul with a stable participant")
         XCTAssertTrue(live.commentary.contains { $0.text.contains("caught offside") })
-        XCTAssertTrue(live.commentary.contains { $0.text.contains("wins possession") })
-        XCTAssertTrue(live.commentary.contains { $0.text.contains("clears towards") })
+        XCTAssertTrue(live.commentary.contains {
+            $0.text.contains("wins possession") || $0.text.contains("nicks the ball away")
+        }, "Tackle commentary should describe the same turnover with a stable participant")
+        XCTAssertTrue(live.commentary.contains {
+            $0.text.contains("clears towards") || $0.text.contains("hooks it towards")
+        }, "Clearance commentary should describe the same defending action")
         XCTAssertTrue(live.events.allSatisfy { !$0.isShotEvent && $0.expectedGoals == 0 })
     }
 
@@ -619,4 +655,15 @@ final class LegendsLiveMatchTests: XCTestCase {
 
 private struct NoChanceRNG: RandomNumberGenerator {
     mutating func next() -> UInt64 { UInt64.max / 2 }
+}
+
+private struct FirstGoalRNG: RandomNumberGenerator {
+    private var values: [UInt64] = Array(repeating: UInt64.max / 2, count: 11)
+        + [0, UInt64.max / 2, 0]
+    private var index = 0
+
+    mutating func next() -> UInt64 {
+        defer { index += 1 }
+        return values.indices.contains(index) ? values[index] : UInt64.max / 2
+    }
 }

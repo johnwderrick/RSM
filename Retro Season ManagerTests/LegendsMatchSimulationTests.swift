@@ -708,8 +708,9 @@ final class LegendsMatchSimulationTests: XCTestCase {
         XCTAssertTrue(script.detailedText.contains(marker.name))
         XCTAssertTrue(script.detailedText.contains(keeper.name))
         XCTAssertTrue(script.detailedText.contains("right"))
-        XCTAssertTrue(script.detailedText.contains("cuts the ball back"))
-        XCTAssertTrue(script.detailedText.contains("saves"))
+        XCTAssertEqual(script.beats[1].action, .cutback)
+        XCTAssertEqual(script.beats[1].receiverID, home[1].id)
+        XCTAssertTrue(script.detailedText.contains("saves") || script.detailedText.contains("keeps it out"))
 
         simulation.trigger(event)
         XCTAssertEqual(simulation.testLastAttackPattern, script.attackPattern)
@@ -812,13 +813,15 @@ final class LegendsMatchSimulationTests: XCTestCase {
         )
         let script = event.presentationScript
 
-        XCTAssertEqual(script.beats.map(\.action), [.carry, .cutback, .shoot, .block])
-        XCTAssertEqual(script.beats.map(\.actorID), ["creator", "creator", "shooter", "shooter"])
+        XCTAssertEqual(script.beats.map(\.action), [.carry, .cutback, .receive, .shoot, .block])
+        XCTAssertEqual(script.beats.map(\.actorID), ["creator", "creator", "shooter", "shooter", "shooter"])
         XCTAssertEqual(script.beats[1].receiverID, "shooter")
-        XCTAssertEqual(script.beats[3].receiverID, "marker")
-        XCTAssertTrue(script.detailedText.contains("Vale reaches the byline on the right"))
-        XCTAssertTrue(script.detailedText.contains("cuts the ball back to Cole"))
-        XCTAssertTrue(script.detailedText.contains("makes the block"))
+        XCTAssertEqual(script.beats[4].receiverID, "marker")
+        XCTAssertTrue(script.beats[0].text.contains("Vale"), "The carry beat must name its actor")
+        XCTAssertTrue(script.beats[1].text.contains("Cole"), "The cutback beat must name its receiver")
+        XCTAssertTrue(script.beats[3].text.contains("Cole"), "The shot beat must name its shooter")
+        XCTAssertTrue(script.beats[4].text.contains("Shaw"), "The block beat must name its defender")
+        XCTAssertTrue(script.detailedText.contains("block"), "The variant still needs to describe a block")
         XCTAssertEqual(script.restart, .corner(team: .home, channel: .right))
     }
 
@@ -844,15 +847,17 @@ final class LegendsMatchSimulationTests: XCTestCase {
 
         simulation.trigger(event)
 
-        XCTAssertEqual(script.beats.map(\.action), [.carry, .cutback, .shoot, .block])
-        XCTAssertEqual(simulation.testWaypointCount(), script.beats.count + 1,
-                       "Each text beat must produce exactly one 2D leg; the only extra leg is the scripted corner restart")
+        XCTAssertEqual(script.beats.map(\.action), [.carry, .cutback, .receive, .shoot, .block])
+        XCTAssertEqual(simulation.testWaypointCount(), script.beats.count,
+                       "Each text beat must produce exactly one 2D leg; the corner is a direct restart placement")
         XCTAssertEqual(simulation.testFollowedPlayerID(atLegIndex: 0), script.creatorID)
         XCTAssertEqual(simulation.testFollowedPlayerID(atLegIndex: 1), script.shooterID)
-        XCTAssertNil(simulation.testFollowedPlayerID(atLegIndex: 2),
+        XCTAssertEqual(simulation.testFollowedPlayerID(atLegIndex: 2), script.shooterID,
+                       "The receiver beat should follow the receiving player")
+        XCTAssertNil(simulation.testFollowedPlayerID(atLegIndex: 3),
                      "The shot must leave the player's feet toward the scripted outcome zone")
-        XCTAssertNil(simulation.testFollowedPlayerID(atLegIndex: 3))
-        XCTAssertNil(simulation.testFollowedPlayerID(atLegIndex: 4),
+        XCTAssertNil(simulation.testFollowedPlayerID(atLegIndex: 4))
+        XCTAssertNil(simulation.testFollowedPlayerID(atLegIndex: 5),
                      "The restart is a fixed corner position, not an invented player action")
     }
 
@@ -892,8 +897,13 @@ final class LegendsMatchSimulationTests: XCTestCase {
 
             if let action = simulation.currentPresentationAction,
                let beat = script.beats.first(where: { $0.action == action }) {
-                XCTAssertEqual(simulation.currentPresentationText, beat.text,
-                               "The visible sentence must be the action currently being performed")
+                if action == .goal {
+                    XCTAssertNil(simulation.currentPresentationText,
+                                 "Goal commentary must wait for the visual net confirmation")
+                } else {
+                    XCTAssertEqual(simulation.currentPresentationText, beat.text,
+                                   "The visible sentence must be the action currently being performed")
+                }
             }
 
             if simulation.currentPresentationAction == .carry,
@@ -916,6 +926,122 @@ final class LegendsMatchSimulationTests: XCTestCase {
         XCTAssertTrue(sawReceiverControl, "The receiver must take control before preparing the shot")
         XCTAssertEqual(simulation.completedPresentationActions, script.beats.map(\.action),
                        "Actions must complete in the exact order authored by commentary")
+    }
+
+    func testGoalCardDismissalInstallsCentreRestartOnlyAfterTheCardIsReleased() async {
+        let simulation = await freshSimulation()
+        let home = simulation.players.filter { $0.team == .home && $0.role != .goalkeeper }
+        let away = simulation.players.filter { $0.team == .away }
+        guard home.count >= 2,
+              let marker = away.first(where: { $0.role != .goalkeeper }),
+              let keeper = away.first(where: { $0.role == .goalkeeper }) else {
+            return XCTFail("Expected complete teams")
+        }
+        let event = LegendsMatchEvent(
+            id: "card-held-goal", minute: 70, side: .home,
+            outcome: .goal, channel: .left, attackPattern: .wideCross,
+            creatorID: home[0].id, creatorName: home[0].name,
+            shooterID: home[1].id, shooterName: home[1].name,
+            markerID: marker.id, markerName: marker.name,
+            goalkeeperID: keeper.id, goalkeeperName: keeper.name,
+            expectedGoals: 0.40
+        )
+        var presentedGoalIDs: [String] = []
+        simulation.holdGoalRestartUntilCardDismissal()
+        simulation.onGoalPresented = { presentedGoalIDs.append($0.id) }
+        simulation.trigger(event)
+
+        var ticks = 0
+        while !simulation.testIsWaitingForGoalCardDismissal() && ticks < ticksToCompleteAnAttack {
+            simulation.testAdvance(dt: 0.1)
+            ticks += 1
+        }
+
+        XCTAssertTrue(simulation.testIsWaitingForGoalCardDismissal(),
+                      "The goal sequence must wait for the matching card dismissal")
+        XCTAssertEqual(presentedGoalIDs, [event.id])
+        XCTAssertNil(simulation.testLastRestart(),
+                     "The centre restart must not be installed while the goal card is visible")
+        XCTAssertNotEqual(simulation.ball.position.y, 0.5, accuracy: 0.02,
+                          "The ball should remain at the confirmed goal until the card is released")
+        XCTAssertNil(simulation.testKickoffTakerID())
+
+        simulation.completeGoalCardPresentation(for: "stale-card")
+        XCTAssertTrue(simulation.testIsWaitingForGoalCardDismissal(),
+                      "A stale card callback must not release the current goal hold")
+
+        simulation.completeGoalCardPresentation(for: event.id)
+        XCTAssertFalse(simulation.testIsWaitingForGoalCardDismissal())
+        XCTAssertTrue(simulation.isPresentingRestart)
+        XCTAssertEqual(simulation.testLastRestart(), .kickoff(team: .away))
+        XCTAssertEqual(simulation.testDirectRestartCount(), 1)
+        XCTAssertEqual(simulation.ball.position.x, 0.5, accuracy: 0.0001)
+        XCTAssertEqual(simulation.ball.position.y, 0.5, accuracy: 0.0001,
+                       "The authoritative kickoff state must place the ball exactly on centre")
+        guard let takerID = simulation.testKickoffTakerID(),
+              let taker = simulation.players.first(where: { $0.id == takerID }) else {
+            return XCTFail("The conceding team must have a real kickoff taker")
+        }
+        XCTAssertEqual(taker.team, .away)
+        XCTAssertEqual(taker.position.x, 0.5, accuracy: 0.0001)
+        XCTAssertEqual(taker.position.y, 0.5, accuracy: 0.0001)
+
+        // The restart presentation owns the centre spot for its whole
+        // visible window; no stale shot waypoint may move the ball early.
+        simulation.testAdvance(dt: 0.1)
+        XCTAssertEqual(simulation.ball.position.x, 0.5, accuracy: 0.0001)
+        XCTAssertEqual(simulation.ball.position.y, 0.5, accuracy: 0.0001)
+
+        for _ in 0..<5 where simulation.testHasActiveAttack() {
+            simulation.testAdvance(dt: 0.1)
+        }
+        XCTAssertFalse(simulation.testHasActiveAttack())
+        XCTAssertEqual(simulation.testDirectRestartCount(), 1,
+                       "Releasing the card must install exactly one direct restart")
+    }
+
+    func testAmbientRadioEventsUseTheSameRealParticipantsAsThePitchAction() async {
+        let simulation = await freshSimulation()
+        var callbacks: [LegendsAmbientActionEvent] = []
+        simulation.onAmbientAction = { callbacks.append($0) }
+
+        var ticks = 0
+        while callbacks.count < 4 && ticks < 500 {
+            simulation.testAdvance(dt: 0.1)
+            ticks += 1
+        }
+
+        XCTAssertGreaterThanOrEqual(callbacks.count, 4,
+                                    "Active possession should produce readable radio beats")
+        XCTAssertEqual(callbacks, simulation.testAmbientActionEvents(),
+                       "The pitch and commentary must consume the same immutable ambient events")
+        XCTAssertEqual(callbacks.map { $0.sequence }, Array(1...callbacks.count))
+        for event in callbacks {
+            XCTAssertFalse(event.actorID.isEmpty,
+                           "Every radio beat must retain the real actor identity")
+            XCTAssertFalse(event.actorName.isEmpty,
+                           "Every radio beat must retain the real actor name")
+            switch event.action {
+            case .carry, .receive:
+                XCTAssertTrue(event.text.contains(event.actorName),
+                              "Possession commentary must name its actual actor")
+            case .progressivePass, .recycle, .switchPlay:
+                if let receiverName = event.receiverName {
+                    XCTAssertTrue(event.text.contains(receiverName),
+                                  "Pass commentary must name its actual receiver when it uses a named receiver")
+                } else {
+                    XCTAssertTrue(event.text.contains(event.actorName) || event.text.contains("They"),
+                                  "A pass without a receiver must retain a meaningful radio line")
+                }
+            case .interceptedPass:
+                XCTAssertNotNil(event.receiverID)
+                XCTAssertNotNil(event.receiverName)
+                XCTAssertNotNil(event.defenderID)
+                XCTAssertNotNil(event.defenderName)
+                XCTAssertTrue(event.text.contains(event.defenderName ?? ""),
+                              "Interception commentary must name the defender who won the ball")
+            }
+        }
     }
 
     func testGoalPresentationFiresAtTheNetThenShowsAVisibleKickoffPhase() async {
@@ -944,8 +1070,8 @@ final class LegendsMatchSimulationTests: XCTestCase {
 
         XCTAssertEqual(simulation.currentPresentationText, script.beats.first?.text)
         XCTAssertEqual(simulation.currentPresentationEventID, event.id)
-        XCTAssertEqual(simulation.testWaypointCount(), script.beats.count + 1,
-                       "A goal requires a final visible centre-spot restart leg")
+        XCTAssertEqual(simulation.testWaypointCount(), script.beats.count,
+                       "The goal restart is a direct centre-spot placement, not a travel leg")
         XCTAssertTrue(presentedGoalIDs.isEmpty,
                       "The scorer card must not appear when the engine merely queues the goal")
 
@@ -2028,12 +2154,13 @@ final class LegendsMatchSimulationTests: XCTestCase {
 
         let width = mid.width
         let height = mid.height
-        // The canvas renders the 0...1 pitch transposed into a 620x400
-        // pitch area at the top of the 620x430 frame (the geometry the ring
-        // snapshot test confirmed empirically): landscape x = width*(1 - y),
-        // landscape y = 400*x.
+        // The canvas renders the normalized pitch through the shared wider
+        // projection. Derive its actual aspect-fit size instead of assuming
+        // the old 1.55-ratio 400-point height.
+        let pitchSize = LegendsPitchLayout.aspectFitSize(in: CGSize(width: width, height: height))
         func landscape(_ point: CGPoint) -> (x: Int, y: Int) {
-            (Int(Double(width) * (1 - point.y)), Int(400.0 * point.x))
+            let projected = LegendsPitchLayout.projectedPoint(point, in: pitchSize)
+            return (Int(projected.x), Int(projected.y))
         }
         func isRedPixel(_ i: Int) -> Bool {
             midPixels[i] > 140 && midPixels[i + 1] < 90 && midPixels[i + 2] < 90
@@ -2051,7 +2178,6 @@ final class LegendsMatchSimulationTests: XCTestCase {
 
         let widePos = landscape(wide.position)
         let finisherPos = landscape(finisher.position)
-
         // Each runner's dot (10pt red disc minus the white surname label) is
         // actually rendered at the position the sim says it stands at.
         XCTAssertGreaterThan(redPixelCount(in: midPixels, near: widePos.x, widePos.y, radius: 12), 30,
@@ -2150,11 +2276,12 @@ final class LegendsMatchSimulationTests: XCTestCase {
 
         let width = before.width
         let height = before.height
-        // The canvas renders the 0...1 pitch transposed into a 620x400
-        // pitch area at the top of the 620x430 frame (the geometry the
-        // earlier snapshot tests confirmed empirically).
+        // Use the same aspect-fit pitch projection as the production canvas;
+        // the wider pitch no longer has the old fixed 400-point height.
+        let pitchSize = LegendsPitchLayout.aspectFitSize(in: CGSize(width: width, height: height))
         func landscape(_ point: CGPoint) -> (x: Int, y: Int) {
-            (Int(Double(width) * (1 - point.y)), Int(400.0 * point.x))
+            let projected = LegendsPitchLayout.projectedPoint(point, in: pitchSize)
+            return (Int(projected.x), Int(projected.y))
         }
         func redPixelCount(in buffer: [UInt8], near cx: Int, _ cy: Int, radius r: Int) -> Int {
             var count = 0
@@ -2304,11 +2431,12 @@ final class LegendsMatchSimulationTests: XCTestCase {
 
         let width = before.width
         let height = before.height
-        // The canvas renders the 0...1 pitch transposed into a 620x400
-        // pitch area at the top of the 620x430 frame (the geometry the
-        // earlier snapshot tests confirmed empirically).
+        // Use the same aspect-fit pitch projection as the production canvas;
+        // the wider pitch no longer has the old fixed 400-point height.
+        let pitchSize = LegendsPitchLayout.aspectFitSize(in: CGSize(width: width, height: height))
         func landscape(_ point: CGPoint) -> (x: Int, y: Int) {
-            (Int(Double(width) * (1 - point.y)), Int(400.0 * point.x))
+            let projected = LegendsPitchLayout.projectedPoint(point, in: pitchSize)
+            return (Int(projected.x), Int(projected.y))
         }
         func redPixelCount(in buffer: [UInt8], near cx: Int, _ cy: Int, radius r: Int) -> Int {
             var count = 0
@@ -2352,8 +2480,8 @@ final class LegendsMatchSimulationTests: XCTestCase {
         let endCentroid = redCentroid(in: afterPixels, near: endPos.x, endPos.y, radius: 12)
         let renderedMovement = hypot(endCentroid.x - startCentroid.x, endCentroid.y - startCentroid.y)
         let expectedMovement = hypot(
-            Double(width) * (end.y - start.y),
-            400.0 * (end.x - start.x)
+            Double(pitchSize.width) * (end.y - start.y),
+            Double(pitchSize.height) * (end.x - start.x)
         )
         XCTAssertGreaterThan(renderedMovement, 10,
                              "The rejoin should visibly move the dot across the pitch")
@@ -2445,11 +2573,12 @@ final class LegendsMatchSimulationTests: XCTestCase {
 
         let width = frame1.width
         let height = frame1.height
-        // The canvas renders the 0...1 pitch transposed into a 620x400
-        // pitch area at the top of the 620x430 frame (the geometry the
-        // earlier snapshot tests confirmed empirically).
+        // Use the same aspect-fit pitch projection as the production canvas;
+        // the wider pitch no longer has the old fixed 400-point height.
+        let pitchSize = LegendsPitchLayout.aspectFitSize(in: CGSize(width: width, height: height))
         func landscape(_ point: CGPoint) -> (x: Int, y: Int) {
-            (Int(Double(width) * (1 - point.y)), Int(400.0 * point.x))
+            let projected = LegendsPitchLayout.projectedPoint(point, in: pitchSize)
+            return (Int(projected.x), Int(projected.y))
         }
         func redPixelCount(in buffer: [UInt8], near cx: Int, _ cy: Int, radius r: Int) -> Int {
             var count = 0
@@ -2596,8 +2725,10 @@ final class LegendsMatchSimulationTests: XCTestCase {
 
         let width = image.width
         let height = image.height
+        let pitchSize = LegendsPitchLayout.aspectFitSize(in: CGSize(width: width, height: height))
         func landscape(_ point: CGPoint) -> (x: Int, y: Int) {
-            (Int(Double(width) * (1 - point.y)), Int(400.0 * point.x))
+            let projected = LegendsPitchLayout.projectedPoint(point, in: pitchSize)
+            return (Int(projected.x), Int(projected.y))
         }
         func redPixelCount(in buffer: [UInt8], near cx: Int, _ cy: Int, radius r: Int) -> Int {
             var count = 0

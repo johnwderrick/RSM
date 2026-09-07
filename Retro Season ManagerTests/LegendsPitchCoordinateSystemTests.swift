@@ -90,6 +90,32 @@ final class LegendsPitchCoordinateSystemTests: XCTestCase {
             XCTAssertEqual(anchors.first!.x, 0.5, accuracy: 0.0001, "\(formation.name) first anchor should be centered.")
         }
     }
+
+    func testWiderLandscapeProjectionPreservesBoundsAtMultipleSizes() {
+        let sizes = [
+            CGSize(width: 568, height: 320),
+            CGSize(width: 852, height: 393),
+            CGSize(width: 932, height: 430),
+            CGSize(width: 1180, height: 820)
+        ]
+
+        for size in sizes {
+            let fitted = LegendsPitchLayout.aspectFitSize(in: size)
+            XCTAssertEqual(fitted.width / fitted.height, LegendsPitchLayout.aspectRatio, accuracy: 0.0001)
+            let centre = LegendsPitchLayout.projectedPoint(CGPoint(x: 0.5, y: 0.5), in: fitted)
+            XCTAssertEqual(centre.x, fitted.width / 2, accuracy: 0.0001,
+                           "The normalized centre spot must map to the visual pitch centre")
+            XCTAssertEqual(centre.y, fitted.height / 2, accuracy: 0.0001,
+                           "The normalized centre spot must map to the visual pitch centre")
+            for point in [CGPoint.zero, CGPoint(x: 1, y: 0), CGPoint(x: 0, y: 1), CGPoint(x: 1, y: 1)] {
+                let projected = LegendsPitchLayout.projectedPoint(point, in: fitted)
+                XCTAssertGreaterThanOrEqual(projected.x, 0)
+                XCTAssertGreaterThanOrEqual(projected.y, 0)
+                XCTAssertLessThanOrEqual(projected.x, fitted.width)
+                XCTAssertLessThanOrEqual(projected.y, fitted.height)
+            }
+        }
+    }
 }
 
 @MainActor
