@@ -200,10 +200,12 @@ struct LegendsLiveMatchView: View {
     }
 
     private var pitchContent: some View {
+        // `LegendsPitchCanvas` measures this real flexible region and owns
+        // the small drawing/legend insets itself. Keeping padding here too
+        // would subtract the same safe space twice and recreate the dead
+        // horizontal margins this layout is meant to remove.
         LegendsPitchCanvas(simulation: simulation, userColor: userColor, opponentColor: opponentBadgeColor,
                            userName: store.profile.clubName, opponentName: live.opponent.name)
-            .padding(.horizontal, LegendsPitchLayout.horizontalInset)
-            .padding(.vertical, LegendsPitchLayout.verticalInset)
     }
 
     /// Forwards immutable engine events to the visual layer. The renderer

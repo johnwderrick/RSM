@@ -20,17 +20,35 @@
 import SwiftUI
 
 /// Shared landscape pitch sizing. The normalized simulation frame remains
-/// unchanged; only the presentation uses a wider aspect ratio and a small
-/// safe inset so edge players and markings stay visible.
+/// unchanged; the presentation fits the largest safe pitch inside the real
+/// container that remains after the legend and small drawing insets.
 enum LegendsPitchLayout {
     static let aspectRatio: CGFloat = 1.82
+    /// The markings and player/ball dots need only a small presentation
+    /// buffer; the frame itself is allowed to approach the safe horizontal
+    /// edges instead of reserving a large fixed side margin.
     static let horizontalInset: CGFloat = 2
     static let verticalInset: CGFloat = 4
+    static let legendHeight: CGFloat = 18
+    static let legendSpacing: CGFloat = 8
 
     static func aspectFitSize(in proposed: CGSize) -> CGSize {
         guard proposed.width > 0, proposed.height > 0 else { return .zero }
         let width = min(proposed.width, proposed.height * aspectRatio)
         return CGSize(width: width, height: width / aspectRatio)
+    }
+
+    /// Returns the maximum pitch frame that fits inside the actual canvas
+    /// container. `proposed` is the space left between the score bar and
+    /// control bar, so this calculation does not guess at a device size or
+    /// consume the legend's vertical space by accident.
+    static func maximumSafePitchSize(in proposed: CGSize) -> CGSize {
+        guard proposed.width > 0, proposed.height > 0 else { return .zero }
+        let available = CGSize(
+            width: max(0, proposed.width - horizontalInset * 2),
+            height: max(0, proposed.height - verticalInset * 2 - legendHeight - legendSpacing)
+        )
+        return aspectFitSize(in: available)
     }
 
     static func projectedPoint(_ point: CGPoint, in size: CGSize) -> CGPoint {
@@ -102,50 +120,55 @@ struct LegendsPitchCanvas: View {
     }
 
     var body: some View {
-        ZStack(alignment: .top) {
-            VStack(spacing: 8) {
-                GeometryReader { geo in
-                    ZStack {
-                        LandscapePitchBackground()
-                        Canvas { context, size in
-                            _ = renderTick
-                            draw(into: context, size: size)
-                        }
+        GeometryReader { container in
+            let pitchSize = LegendsPitchLayout.maximumSafePitchSize(in: container.size)
 
-                        VStack {
-                            Spacer()
-                            if let text = currentRadioText {
-                                Text(text)
-                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                    .foregroundStyle(.white)
-                                    .multilineTextAlignment(.center)
-                                    .lineLimit(2)
-                                    .minimumScaleFactor(0.72)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 8)
-                                    .frame(maxWidth: 430)
-                                    .background(
-                                        (currentRadioSide == .home ? userColor : opponentColor)
-                                            .opacity(simulation.isPresentingRestart ? 0.92 : 0.82)
-                                    )
-                                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 8)
-                                            .stroke(.white.opacity(0.55), lineWidth: 1)
-                                    )
-                                    .padding(10)
-                                    .accessibilityIdentifier("legends.match.currentBeat")
-                            }
+            VStack(spacing: LegendsPitchLayout.legendSpacing) {
+                ZStack {
+                    LandscapePitchBackground()
+                    Canvas { context, size in
+                        _ = renderTick
+                        draw(into: context, size: size)
+                    }
+
+                    VStack {
+                        Spacer()
+                        if let text = currentRadioText {
+                            Text(text)
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundStyle(.white)
+                                .multilineTextAlignment(.center)
+                                .lineLimit(2)
+                                .minimumScaleFactor(0.72)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .frame(maxWidth: 430)
+                                .background(
+                                    (currentRadioSide == .home ? userColor : opponentColor)
+                                        .opacity(simulation.isPresentingRestart ? 0.92 : 0.82)
+                                )
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(.white.opacity(0.55), lineWidth: 1)
+                                )
+                                .padding(10)
+                                .accessibilityIdentifier("legends.match.currentBeat")
                         }
                     }
                 }
-                .aspectRatio(LegendsPitchLayout.aspectRatio, contentMode: .fit)
+                .frame(width: pitchSize.width, height: pitchSize.height)
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("Legends match pitch")
                 .accessibilityValue(impactAccessibilitySummary)
                 .accessibilityIdentifier("legends.match.pitch")
+
                 legend
+                    .frame(width: pitchSize.width, height: LegendsPitchLayout.legendHeight)
             }
+            .padding(.horizontal, LegendsPitchLayout.horizontalInset)
+            .padding(.vertical, LegendsPitchLayout.verticalInset)
+            .frame(width: container.size.width, height: container.size.height, alignment: .top)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .task {

@@ -237,6 +237,50 @@ final class LegendsLiveMatchTests: XCTestCase {
         XCTAssertTrue(live.events.allSatisfy { !$0.isShotEvent && $0.expectedGoals == 0 })
     }
 
+    func test2DCommentaryDeduplicatesBeatAndAmbientEventIDs() async {
+        let store = await freshStore()
+        let live = LegendsLiveMatch(store: store, opponent: LegendsOpponent(name: "Commentary Rivals", rating: 60))
+        let event = LegendsMatchEvent(
+            id: "commentary-dedup", minute: 18, side: .home,
+            outcome: .goal, channel: .right, attackPattern: .centralCombination,
+            creatorID: "creator", creatorName: "Carter",
+            shooterID: "shooter", shooterName: "Hughes",
+            markerID: "marker", markerName: "Taylor",
+            goalkeeperID: "keeper", goalkeeperName: "Morgan",
+            expectedGoals: 0.35
+        )
+        let script = event.presentationScript
+        XCTAssertEqual(script, event.presentationScript,
+                       "Variant selection must remain deterministic for one authoritative event")
+
+        live.present2DBeat(for: event, beat: script.beats[0], index: 0)
+        live.present2DBeat(for: event, beat: script.beats[0], index: 0)
+        XCTAssertEqual(live.commentary.count, 1)
+        XCTAssertTrue(live.commentary[0].text.contains("Carter"))
+
+        live.present2DBeat(for: event, beat: script.beats[1], index: 1)
+        XCTAssertEqual(live.commentary.count, 2)
+        XCTAssertTrue(live.commentary[1].text.contains("Hughes"),
+                      "The structured receiver must remain the participant named by the pass beat")
+
+        let goalBeat = script.beats.last(where: { $0.action == .goal })!
+        live.present2DBeat(for: event, beat: goalBeat, index: script.beats.count - 1)
+        XCTAssertEqual(live.commentary.count, 2,
+                       "Goal text must not be emitted by a premature beat callback")
+
+        let ambient = LegendsAmbientActionEvent(
+            sequence: 7, action: .progressivePass, team: .home,
+            actorID: "creator", actorName: "Carter",
+            receiverID: "receiver", receiverName: "Hughes"
+        )
+        live.presentAmbientAction(ambient)
+        live.presentAmbientAction(ambient)
+        XCTAssertEqual(live.commentary.count, 3,
+                       "One structured ambient event should produce one commentary line")
+        XCTAssertTrue(live.commentary.last?.text.contains("Carter") == true)
+        XCTAssertTrue(live.commentary.last?.text.contains("Hughes") == true)
+    }
+
     func testGoalRateIncreasesWithStrongerAttackRating() async {
         let strongAvg = await averageGoals(trials: statisticalTrialCount) { self.strongestXI($0) }
         let weakAvg = await averageGoals(trials: statisticalTrialCount) { self.weakestXI($0) }

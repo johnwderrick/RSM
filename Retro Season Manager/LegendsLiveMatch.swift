@@ -217,9 +217,9 @@ struct LegendsMatchPresentationScript: Equatable {
         var scriptedBeats: [LegendsPresentationBeat] = []
         let receiverTouchText: String
         switch event.commentaryVariant {
-        case 0: receiverTouchText = "\(event.shooterName) takes a touch."
-        case 1: receiverTouchText = "\(event.shooterName) brings it under control."
-        default: receiverTouchText = "\(event.shooterName) gets there first."
+        case 0: receiverTouchText = "\(event.shooterName) takes it under control."
+        case 1: receiverTouchText = "\(event.shooterName) cushions the pass and brings it down."
+        default: receiverTouchText = "\(event.shooterName) takes a touch and looks up."
         }
 
         switch event.attackPattern {
@@ -228,13 +228,13 @@ struct LegendsMatchPresentationScript: Equatable {
             let crossText: String
             switch event.commentaryVariant {
             case 0:
-                carryText = "\(creator) carries down the \(flank) flank."
+                carryText = "\(creator) carries down the \(flank) flank, with room to run."
                 crossText = "\(creator) sends a cross towards \(event.shooterName)."
             case 1:
-                carryText = "\(creator) advances into the \(flank) channel."
+                carryText = "\(creator) advances into the \(flank) channel and looks for support."
                 crossText = "\(creator) swings the ball into the box for \(event.shooterName)."
             default:
-                carryText = "\(creator) makes ground on the \(flank)."
+                carryText = "\(creator) makes ground on the \(flank), stretching the defence."
                 crossText = "\(creator) clips a dangerous ball towards \(event.shooterName)."
             }
             scriptedBeats.append(.init(action: .carry, actorID: beatCreatorID, actorName: creator,
@@ -252,11 +252,11 @@ struct LegendsMatchPresentationScript: Equatable {
             let cutbackText: String
             switch event.commentaryVariant {
             case 0:
-                bylineText = "\(creator) reaches the byline on the \(flank)."
-                cutbackText = "\(creator) cuts the ball back to \(event.shooterName)."
+                bylineText = "\(creator) reaches the byline on the \(flank) and looks up."
+                cutbackText = "\(creator) cuts it back for \(event.shooterName)."
             case 1:
                 bylineText = "\(creator) gets to the \(flank) byline."
-                cutbackText = "\(creator) pulls it back for \(event.shooterName)."
+                cutbackText = "\(creator) pulls it back into the path of \(event.shooterName)."
             default:
                 bylineText = "\(creator) stretches the defence on the \(flank)."
                 cutbackText = "\(creator) squares the ball for \(event.shooterName)."
@@ -272,12 +272,18 @@ struct LegendsMatchPresentationScript: Equatable {
                                        receiverID: nil, receiverName: nil, zone: .edgeOfBox,
                                        text: receiverTouchText))
         case .centralCombination:
-            let driveText = event.commentaryVariant == 1
-                ? "\(creator) drives through the middle."
-                : "\(creator) drives through the centre."
-            let combineText = event.commentaryVariant == 2
-                ? "\(creator) plays a neat one-two with \(event.shooterName) at the box."
-                : "\(creator) combines with \(event.shooterName) at the edge of the box."
+            let driveText: String
+            switch event.commentaryVariant {
+            case 0: driveText = "\(creator) drives through the centre, carrying the move forward."
+            case 1: driveText = "\(creator) drives through midfield."
+            default: driveText = "\(creator) turns inside and carries it through the middle."
+            }
+            let combineText: String
+            switch event.commentaryVariant {
+            case 0: combineText = "\(creator) keeps it moving into \(event.shooterName) at the edge of the box."
+            case 1: combineText = "\(creator) combines with \(event.shooterName) at the edge of the area."
+            default: combineText = "\(creator) plays a neat one-two with \(event.shooterName) at the box."
+            }
             scriptedBeats.append(.init(action: .carry, actorID: beatCreatorID, actorName: creator,
                                        receiverID: nil, receiverName: nil, zone: .centre,
                                        text: driveText))
@@ -289,12 +295,18 @@ struct LegendsMatchPresentationScript: Equatable {
                                        receiverID: nil, receiverName: nil, zone: .edgeOfBox,
                                        text: receiverTouchText))
         case .counterAttack:
-            let counterText = event.commentaryVariant == 0
-                ? "\(creator) leads a quick counter through the \(flank) channel."
-                : "\(creator) breaks forward down the \(flank) side."
-            let releaseText = event.commentaryVariant == 2
-                ? "\(creator) threads \(event.shooterName) through on goal."
-                : "\(creator) releases \(event.shooterName) into space."
+            let counterText: String
+            switch event.commentaryVariant {
+            case 0: counterText = "\(creator) leads a quick counter through the \(flank) channel."
+            case 1: counterText = "\(creator) breaks forward down the \(flank) side."
+            default: counterText = "\(creator) carries the counter into the \(flank) channel."
+            }
+            let releaseText: String
+            switch event.commentaryVariant {
+            case 0: releaseText = "\(creator) releases \(event.shooterName) into space."
+            case 1: releaseText = "\(creator) threads \(event.shooterName) through on goal."
+            default: releaseText = "\(creator) spots the run and sends \(event.shooterName) through."
+            }
             scriptedBeats.append(.init(action: .carry, actorID: beatCreatorID, actorName: creator,
                                        receiverID: nil, receiverName: nil, zone: buildUpZone,
                                        text: counterText))
@@ -306,9 +318,12 @@ struct LegendsMatchPresentationScript: Equatable {
                                        receiverID: nil, receiverName: nil, zone: .penaltyArea,
                                        text: receiverTouchText))
         case .longShot:
-            let longBallText = event.commentaryVariant == 1
-                ? "\(creator) finds \(event.shooterName) in shooting range."
-                : "\(creator) works the ball into central space for \(event.shooterName)."
+            let longBallText: String
+            switch event.commentaryVariant {
+            case 0: longBallText = "\(creator) works it into central space for \(event.shooterName)."
+            case 1: longBallText = "\(creator) finds \(event.shooterName) in shooting range."
+            default: longBallText = "\(creator) moves it quickly into \(event.shooterName) at the top of the area."
+            }
             scriptedBeats.append(.init(action: .pass, actorID: beatCreatorID, actorName: creator,
                                        receiverID: event.shooterID, receiverName: event.shooterName,
                                        zone: .edgeOfBox,
@@ -322,9 +337,9 @@ struct LegendsMatchPresentationScript: Equatable {
         if event.isShotEvent {
             let shotText: String
             switch event.commentaryVariant {
-            case 0: shotText = "\(event.shooterName) shoots\(pressure)."
-            case 1: shotText = "\(event.shooterName) gets the shot away\(pressure)."
-            default: shotText = "\(event.shooterName) strikes it\(pressure)."
+            case 0: shotText = "\(event.shooterName) opens up for the shot\(pressure)."
+            case 1: shotText = "\(event.shooterName) has a sight of goal and gets it away\(pressure)."
+            default: shotText = "\(event.shooterName) pulls the trigger\(pressure)."
             }
             scriptedBeats.append(.init(action: .shoot, actorID: event.shooterID, actorName: event.shooterName,
                                        receiverID: nil, receiverName: nil,
@@ -337,9 +352,9 @@ struct LegendsMatchPresentationScript: Equatable {
             let goalZone: LegendsPresentationZone = event.channel == .left ? .rightGoal : .leftGoal
             let goalText: String
             switch event.commentaryVariant {
-            case 0: goalText = "The shot flies\(keeper) and into the net!"
-            case 1: goalText = "It beats the goalkeeper\(keeper) and nestles in the net!"
-            default: goalText = "The finish is too good for the keeper\(keeper)!"
+            case 0: goalText = "\(event.shooterName) finds the net\(keeper)!"
+            case 1: goalText = "\(event.shooterName) beats the goalkeeper\(keeper) and it nestles in the net!"
+            default: goalText = "The finish from \(event.shooterName) is too good for the keeper\(keeper)!"
             }
             scriptedBeats.append(.init(action: .goal, actorID: event.shooterID, actorName: event.shooterName,
                                        receiverID: event.goalkeeperID, receiverName: event.goalkeeperName,
@@ -349,9 +364,12 @@ struct LegendsMatchPresentationScript: Equatable {
         case .saved:
             let keeper = event.goalkeeperName ?? "The goalkeeper"
             let saveZone: LegendsPresentationZone = event.channel == .left ? .leftGoal : .rightGoal
-            let saveText = event.commentaryVariant == 2
-                ? "\(keeper) dives full stretch and keeps it out."
-                : "\(keeper) gets across and saves."
+            let saveText: String
+            switch event.commentaryVariant {
+            case 0: saveText = "\(keeper) gathers the effort comfortably."
+            case 1: saveText = "\(keeper) gets across and saves."
+            default: saveText = "\(keeper) dives full stretch and keeps it out."
+            }
             scriptedBeats.append(.init(action: .save, actorID: event.shooterID, actorName: event.shooterName,
                                        receiverID: event.goalkeeperID, receiverName: event.goalkeeperName,
                                        zone: saveZone,
@@ -359,9 +377,12 @@ struct LegendsMatchPresentationScript: Equatable {
             restart = .goalkeeperPossession(team: defendingTeam)
         case .blocked:
             let marker = event.markerName ?? "The defender"
-            let blockText = event.commentaryVariant == 1
-                ? "\(marker) gets a body in the way and blocks the effort."
-                : "\(marker) throws himself in the way and makes the block."
+            let blockText: String
+            switch event.commentaryVariant {
+            case 0: blockText = "Blocked! \(marker) gets in the way."
+            case 1: blockText = "\(marker) gets a body in the way and blocks the effort."
+            default: blockText = "\(marker) throws himself in the way and makes the block."
+            }
             scriptedBeats.append(.init(action: .block, actorID: event.shooterID, actorName: event.shooterName,
                                        receiverID: event.markerID, receiverName: event.markerName,
                                        zone: .penaltyArea,

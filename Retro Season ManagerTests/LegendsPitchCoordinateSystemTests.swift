@@ -116,6 +116,54 @@ final class LegendsPitchCoordinateSystemTests: XCTestCase {
             }
         }
     }
+    func testMaximumSafePitchSizeFitsTheMeasuredLandscapeContainer() {
+        let containers = [
+            CGSize(width: 568, height: 220),   // compact iPhone match region
+            CGSize(width: 852, height: 260),   // larger iPhone match region
+            CGSize(width: 1180, height: 520),  // iPad landscape match region
+            CGSize(width: 1366, height: 620)   // iPad Pro landscape match region
+        ]
+
+        for container in containers {
+            let fitted = LegendsPitchLayout.maximumSafePitchSize(in: container)
+            XCTAssertGreaterThan(fitted.width, 0)
+            XCTAssertGreaterThan(fitted.height, 0)
+            XCTAssertEqual(fitted.width / fitted.height, LegendsPitchLayout.aspectRatio, accuracy: 0.0001)
+            XCTAssertLessThanOrEqual(fitted.width + LegendsPitchLayout.horizontalInset * 2,
+                                     container.width + 0.001,
+                                     "Pitch must remain inside the measured horizontal container at \(container)")
+            XCTAssertLessThanOrEqual(fitted.height + LegendsPitchLayout.verticalInset * 2
+                                     + LegendsPitchLayout.legendHeight + LegendsPitchLayout.legendSpacing,
+                                     container.height + 0.001,
+                                     "Pitch plus legend must remain inside the measured vertical container at \(container)")
+
+            let centre = LegendsPitchLayout.projectedPoint(CGPoint(x: 0.5, y: 0.5), in: fitted)
+            XCTAssertEqual(centre.x, fitted.width / 2, accuracy: 0.0001)
+            XCTAssertEqual(centre.y, fitted.height / 2, accuracy: 0.0001)
+            for point in [CGPoint.zero, CGPoint(x: 1, y: 0), CGPoint(x: 0, y: 1), CGPoint(x: 1, y: 1)] {
+                let projected = LegendsPitchLayout.projectedPoint(point, in: fitted)
+                XCTAssertGreaterThanOrEqual(projected.x, 0)
+                XCTAssertGreaterThanOrEqual(projected.y, 0)
+                XCTAssertLessThanOrEqual(projected.x, fitted.width)
+                XCTAssertLessThanOrEqual(projected.y, fitted.height)
+            }
+        }
+    }
+
+    func testMaximumSafePitchUsesNearlyAllWidthWhenWidthIsTheLimitingDimension() {
+        let containers = [
+            CGSize(width: 852, height: 520),
+            CGSize(width: 1180, height: 700),
+            CGSize(width: 1366, height: 800)
+        ]
+
+        for container in containers {
+            let fitted = LegendsPitchLayout.maximumSafePitchSize(in: container)
+            let usableWidth = container.width - LegendsPitchLayout.horizontalInset * 2
+            XCTAssertGreaterThanOrEqual(fitted.width, usableWidth * 0.99,
+                                         "The pitch should approach both safe horizontal edges at \(container)")
+        }
+    }
 }
 
 @MainActor

@@ -272,43 +272,62 @@ struct LegendsAmbientActionEvent: Identifiable, Equatable {
                                        defenderName: String?) -> String {
         switch action {
         case .carry:
-            switch sequence % 4 {
+            switch sequence % 6 {
             case 0: return "\(actorName) carries it forward..."
-            case 1: return "\(actorName) drives on with the ball..."
-            case 2: return "Still \(actorName), moving forward..."
-            default: return "\(actorName) brings it into the next phase..."
+            case 1: return "\(actorName) drives into midfield..."
+            case 2: return "There's space ahead of \(actorName)..."
+            case 3: return "\(actorName) moves forward with the ball..."
+            case 4: return "\(actorName) holds possession under pressure..."
+            default: return "Still \(actorName), looking for support..."
             }
         case .receive:
-            switch sequence % 3 {
-            case 0: return "\(actorName) takes a touch..."
-            case 1: return "\(actorName) brings it under control..."
-            default: return "\(actorName) gets there first..."
+            switch sequence % 6 {
+            case 0: return "\(actorName) takes it under control..."
+            case 1: return "\(actorName) cushions the pass..."
+            case 2: return "\(actorName) brings it down neatly..."
+            case 3: return "\(actorName) takes a touch and looks up..."
+            case 4: return "Good first touch from \(actorName)..."
+            default: return "\(actorName) receives with the move still on..."
             }
         case .progressivePass:
             guard let receiverName else { return "\(actorName) looks forward..." }
-            switch sequence % 3 {
+            switch sequence % 6 {
             case 0: return "\(actorName) finds \(receiverName) ahead..."
             case 1: return "\(actorName) feeds \(receiverName) forward..."
-            default: return "\(actorName) plays it into \(receiverName)..."
+            case 2: return "\(actorName) moves it quickly into \(receiverName)..."
+            case 3: return "\(actorName) threads it forward to \(receiverName)..."
+            case 4: return "\(actorName) turns it around the corner to \(receiverName)..."
+            default: return "A clever ball into \(receiverName) from \(actorName)..."
             }
         case .recycle:
             guard let receiverName else { return "They recycle possession..." }
-            switch sequence % 3 {
+            switch sequence % 6 {
             case 0: return "Back to \(receiverName)..."
-            case 1: return "\(actorName) keeps it moving back to \(receiverName)..."
-            default: return "They recycle possession through \(receiverName)..."
+            case 1: return "\(actorName) sends it back to \(receiverName)..."
+            case 2: return "They recycle possession through \(receiverName)..."
+            case 3: return "RSM start again from \(receiverName)..."
+            case 4: return "\(actorName) keeps it moving back to \(receiverName)..."
+            default: return "Simple ball to \(receiverName) from \(actorName)..."
             }
         case .switchPlay:
             guard let receiverName else { return "They switch the play..." }
-            switch sequence % 3 {
+            switch sequence % 6 {
             case 0: return "\(actorName) switches the play to \(receiverName)..."
             case 1: return "The ball is worked across to \(receiverName)..."
-            default: return "\(actorName) moves it wide to \(receiverName)..."
+            case 2: return "Out wide to \(receiverName)..."
+            case 3: return "\(actorName) moves it wide to \(receiverName)..."
+            case 4: return "They move it from side to side, finding \(receiverName)..."
+            default: return "\(actorName) opens the pitch up for \(receiverName)..."
             }
         case .interceptedPass:
             let target = receiverName.map { " towards \($0)" } ?? ""
             let defender = defenderName ?? "the defender"
-            return "\(actorName) tries it\(target), but \(defender) reads it and intercepts..."
+            switch sequence % 4 {
+            case 0: return "\(defender) steps across and intercepts \(actorName)'s ball\(target)..."
+            case 1: return "\(actorName) tries it\(target), but \(defender) reads the pass..."
+            case 2: return "The pass is cut out by \(defender), who wins it back..."
+            default: return "\(defender) gets there first and intercepts for the other side..."
+            }
         }
     }
 }
