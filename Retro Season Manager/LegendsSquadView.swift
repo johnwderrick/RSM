@@ -2,16 +2,8 @@
 //  LegendsSquadView.swift
 //  Retro Season Manager
 //
-//  Squad Builder — a true pitch-diagram layout: circular tokens
-//  positioned in formation-shaped rows (adapting PitchView.swift's own
-//  row-stacking technique, which already proves this look doesn't need
-//  coordinate-based placement), a bench grid, and a stat row. Landscape
-//  layout (the app is landscape-locked; the reference screenshot the
-//  user shared was portrait, so pitch/bench sit side by side here
-//  rather than stacked). All store-layer logic (assign/clear/captain/
-//  formation, the one-card-per-player and retired-card rules) and
-//  LegendsCardPickerSheet are reused unchanged from the original list
-//  version — only the visual layer changed.
+//  PES-inspired Squad presentation. Existing store operations and picker
+//  sheets remain authoritative for eligibility, assignment and swaps.
 //
 
 import SwiftUI
@@ -23,6 +15,8 @@ struct LegendsSquadView: View {
     var onBack: () -> Void
 
     @State private var pickerTarget: PickerTarget? = nil
+    @State private var selectedTab = "SQUAD"
+    @State private var showClub = false
     @State private var showLibrary = false
     @State private var detailCard: LegendsCard? = nil
 
@@ -38,48 +32,55 @@ struct LegendsSquadView: View {
     }
 
     var body: some View {
-        LegendsMenuShell(store: store, title: "SQUAD", subtitle: "BUILD YOUR STARTING XI", icon: "person.3.fill", accent: LegendsPalette.blue, onBack: onBack, currentNav: .squad, onNavigate: onNavigate, scrollContent: false) {
+        LegendsMenuShell(store: store, title: "SQUAD", subtitle: "BUILD YOUR STARTING XI", icon: "person.3.fill", accent: LegendsPalette.blue, onBack: onBack, currentNav: .squad, onNavigate: onNavigate, scrollContent: false, squadPresentation: true) {
             GeometryReader { geo in
                 VStack(spacing: 6) {
-                    pickerStrip
-                    HStack(spacing: 8) {
-                        libraryStat("LIBRARY", store.profile.ownedCardIDs.count - store.profile.startingXICardIDs.compactMap { $0 }.count - store.profile.benchCardIDs.compactMap { $0 }.count)
-                        libraryStat("ACTIVE", store.profile.activatedCardIDs.count)
-                        Spacer()
-                        Button {
-                            Haptics.tap()
-                            showLibrary = true
-                        } label: {
-                            Label("PLAYER LIBRARY", systemImage: "books.vertical.fill")
-                                .font(.system(size: 10, weight: .black, design: .monospaced))
-                                .foregroundStyle(LegendsPalette.navy)
-                                .padding(.horizontal, 11)
-                                .padding(.vertical, 8)
-                                .background(LegendsPalette.blueWash)
-                                .clipShape(Capsule())
-                        }
-                        .buttonStyle(PressableButtonStyle())
-                    }
-                    .padding(.horizontal)
-                    HStack(alignment: .top, spacing: 12) {
-                        LegendsPitchView(store: store, onOpenDetail: { card in
-                            Haptics.tap()
-                            detailCard = card
-                        }) { index in
-                            Haptics.tap()
-                            pickerTarget = PickerTarget(kind: .xi(index))
+                    squadTabs
+                    HStack(alignment: .top, spacing: 8) {
+                        Group {
+                            if selectedTab == "SQUAD" {
+                                LegendsPitchView(store: store, onOpenDetail: { detailCard = $0 }) { index in
+                                    pickerTarget = PickerTarget(kind: .xi(index))
+                                }
+                            } else {
+                                configurationPanel
+                            }
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-
                         sidePanel
-                            .frame(width: 190)
-                            .frame(maxHeight: .infinity)
+                            .frame(width: min(260, max(170, geo.size.width * 0.29)))
                     }
                     .frame(maxHeight: .infinity)
-                    .padding(.horizontal)
-                    .padding(.bottom, 8)
+                    HStack(spacing: 16) {
+                        Text(store.profile.formationName)
+                            .font(.system(size: 12, weight: .black, design: .monospaced))
+                        strength("ATTACK", store.attackRating, color: .green)
+                        strength("DEFENCE", store.defenceRating, color: .yellow)
+                        Spacer(minLength: 0)
+                        Button("CLUB & TRAINING") { showClub = true }
+                            .font(.system(size: 9, weight: .bold))
+                            .padding(9)
+                            .background(.blue.opacity(0.5), in: RoundedRectangle(cornerRadius: 5))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(.black.opacity(0.18))
                 }
                 .frame(width: geo.size.width, height: geo.size.height)
+            }
+        }
+        .sheet(isPresented: $showClub) {
+            NavigationStack {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        reservesPanel
+                        careerPanel
+                    }.padding()
+                }
+                .background(LegendsPalette.contentBackground)
+                .navigationTitle("Club & Training")
+                .toolbar { Button("Done") { showClub = false } }
             }
         }
         .sheet(isPresented: $showLibrary) {
@@ -107,70 +108,107 @@ struct LegendsSquadView: View {
     }
 
 
-    private func libraryStat(_ label: String, _ value: Int) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text("\(max(0, value))").font(.system(size: 13, weight: .black, design: .rounded))
-            Text(label).font(.system(size: 8, weight: .black, design: .monospaced))
+    private var squadTabs: some View {
+        HStack(spacing: 4) {
+            ForEach(["SQUAD", "FORMATIONS", "TACTICS", "ROLES"], id: \.self) { tab in
+                Button { selectedTab = tab; Haptics.tap() } label: {
+                    Text(tab)
+                        .font(.system(size: 10, weight: .black, design: .monospaced))
+                        .frame(maxWidth: .infinity, minHeight: 32)
+                        .background(selectedTab == tab ? Color.green.opacity(0.8) : Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 4))
+                }
+                .accessibilityIdentifier("squad.tab.\(tab)")
+            }
+            Button { showLibrary = true } label: {
+                Image(systemName: "books.vertical").frame(width: 36, height: 32)
+            }.accessibilityLabel("Player library")
         }
-        .foregroundStyle(LegendsPalette.navy)
+        .foregroundStyle(.white)
+        .buttonStyle(.plain)
     }
 
-    private var pickerStrip: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(Formation.all) { formation in
-                    Button {
-                        Haptics.tap()
-                        store.setFormation(formation.name)
-                    } label: {
-                        Text(formation.name)
-                            .font(.system(.footnote, design: .monospaced).bold())
-                            .foregroundStyle(store.profile.formationName == formation.name ? Retro.background : Retro.text)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 8)
-                            .background(store.profile.formationName == formation.name ? Retro.accent : Retro.panel)
-                            .clipShape(Capsule())
+    private var configurationPanel: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                Text(selectedTab).font(.system(size: 15, weight: .black))
+                if selectedTab == "FORMATIONS" {
+                    Text("Choose your starting XI shape").font(.caption)
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 95))], spacing: 10) {
+                        ForEach(Formation.all) { formation in
+                            Button { store.setFormation(formation.name) } label: {
+                                HStack {
+                                    Text(formation.name)
+                                    if store.profile.formationName == formation.name { Image(systemName: "checkmark") }
+                                }
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                                .background(store.profile.formationName == formation.name ? Color.green.opacity(0.6) : .white.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
+                            }
+                        }
                     }
-                    .buttonStyle(PressableButtonStyle())
-                }
-
-                Divider().frame(height: 20)
-
-                Picker("Mentality", selection: Binding(
-                    get: { store.profile.preferredMentality },
-                    set: { store.setPreferredMentality($0) }
-                )) {
+                } else if selectedTab == "TACTICS" {
+                    Text("Match mentality").font(.caption)
                     ForEach(Mentality.allCases) { mentality in
-                        Text(mentality.rawValue).tag(mentality)
+                        Button { store.setPreferredMentality(mentality) } label: {
+                            HStack {
+                                Text(mentality.rawValue)
+                                Spacer()
+                                if store.profile.preferredMentality == mentality { Image(systemName: "checkmark.circle.fill") }
+                            }.padding(12).background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+                        }
                     }
+                } else {
+                    Text("Captain · select a starting XI player").font(.caption)
+                    ForEach(store.profile.startingXICardIDs.compactMap { id in
+                        id.flatMap { id in LegendsCardDatabase.all.first { $0.id == id } }
+                    }) { card in
+                        Button { store.setCaptain(cardID: card.id) } label: {
+                            HStack {
+                                Text(card.name)
+                                Spacer()
+                                if store.profile.captainCardID == card.id { Image(systemName: "c.circle.fill") }
+                            }.padding(10).background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+                        }
+                    }
+                    Button("Clear captain") { store.setCaptain(cardID: nil) }.padding(.vertical, 8)
                 }
-                .pickerStyle(.menu)
-                .tint(Retro.highlight)
-            }
-            .padding(.horizontal)
+            }.padding(14)
         }
+        .foregroundStyle(.white)
+        .buttonStyle(.plain)
+        .background(.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 6))
+    }
+
+    private func strength(_ label: String, _ value: Int, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack { Text(label); Spacer(); Text("\(value)") }
+                .font(.system(size: 8, weight: .bold, design: .monospaced))
+            GeometryReader { geo in
+                Capsule().fill(.white.opacity(0.15))
+                Capsule().fill(color).frame(width: geo.size.width * min(1, max(0, Double(value) / 100)))
+            }.frame(height: 4)
+        }.frame(maxWidth: 150)
     }
 
     private var sidePanel: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("MATCHDAY · BENCH (\(filledBenchCount)/\(LegendsStore.benchSize))")
-                .font(.system(.caption, design: .monospaced).bold())
-                .foregroundStyle(Retro.accent)
-            Text("\(store.activeClubPlayers.count) ACTIVE · \(store.reservePlayers.count) RESERVES")
-                .font(.system(size: 8, weight: .black, design: .monospaced))
-                .foregroundStyle(LegendsPalette.navy)
-
+            Text("SUBSTITUTES (\(filledBenchCount)/\(LegendsStore.benchSize))")
+                .font(.system(size: 10, weight: .black, design: .monospaced))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(8)
+                .background(.green.opacity(0.45))
             ScrollView {
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
                     ForEach(0..<LegendsStore.benchSize, id: \.self) { index in benchToken(index) }
-                }
+                }.padding(6)
             }
-            .frame(maxHeight: .infinity)
-            Divider()
-            reservesPanel
-            statRow
-            careerPanel
+            Text("Drag players to swap")
+                .font(.system(size: 8, weight: .medium))
+                .foregroundStyle(.white.opacity(0.65))
+                .padding(8)
         }
+        .foregroundStyle(.white)
+        .background(.black.opacity(0.2), in: RoundedRectangle(cornerRadius: 6))
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(.white.opacity(0.16)))
     }
 
     private var reservesPanel: some View {
@@ -247,7 +285,7 @@ struct LegendsSquadView: View {
         let slot = LegendsSquadSlot.bench(index)
         return LegendsPlayerToken(card: card, role: card?.position ?? .centralMid,
                                    overall: card.map { store.effectiveOverall(for: $0) },
-                                   chemistryStars: 0, isCaptain: false, diameter: 40,
+                                   chemistryStars: 0, isCaptain: false, diameter: 30, showChemistry: false, squadStyle: true,
                                    slot: slot, onSwap: { store.swapSquadSlots($0, $1) }) {
             Haptics.tap()
             if let card {
@@ -720,38 +758,39 @@ struct LegendsPitchView: View {
         return [fwd, mid, def, gk]
     }
 
-    /// The default 60pt token doesn't fit 4 rows in a landscape phone's
-    /// height budget (see the Squad screen's own header/picker-strip
-    /// chrome above it) — so instead of a fixed size, the pitch measures
-    /// its own allotted height and sizes tokens to actually fit it,
-    /// rather than assuming a portrait-sized budget it never gets.
-    private func diameter(for availableHeight: CGFloat) -> CGFloat {
-        let rowCount = CGFloat(rowRanges.count)
-        let rowSpacing: CGFloat = 6
-        let verticalPadding: CGFloat = 8
-        let rowHeight = (availableHeight - verticalPadding * 2 - rowSpacing * (rowCount - 1)) / rowCount
-        // Budget beyond the circle itself for the name label + chemistry dots.
-        return max(32, min(60, rowHeight - 22))
-    }
-
     var body: some View {
         GeometryReader { geo in
-            let tokenDiameter = diameter(for: geo.size.height)
             ZStack {
                 PitchBackground()
-                PitchGridDots()
+                VStack {
+                    HStack {
+                        Text("TEAM OVR  \(store.currentTeamRating)")
+                        Spacer()
+                        Text("CHEMISTRY  \(store.totalChemistry)/33")
+                    }
+                    .font(.system(size: 9, weight: .black, design: .monospaced))
+                    .foregroundStyle(.white)
+                    .padding(8)
+                    Spacer()
+                }
                 VStack(spacing: 6) {
                     ForEach(Array(rowRanges.enumerated()), id: \.offset) { _, range in
                         HStack(spacing: 6) {
                             ForEach(Array(range), id: \.self) { index in
-                                slotToken(index, diameter: tokenDiameter)
+                                GeometryReader { cell in
+                                    slotToken(index, diameter: 28)
+                                        .frame(width: 94, height: 64)
+                                        .scaleEffect(min(1.35, min(cell.size.width / 94, cell.size.height / 64)))
+                                        .position(x: cell.size.width / 2, y: cell.size.height / 2)
+                                }
                             }
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+                .padding(.horizontal, 12)
+                .padding(.top, 28)
+                .padding(.bottom, 6)
             }
         }
     }
@@ -765,7 +804,7 @@ struct LegendsPitchView: View {
         return LegendsPlayerToken(card: card, role: role,
                                    overall: card.map { store.effectiveOverall(for: $0) },
                                    chemistryStars: cardID != nil ? store.chemistryStars(forXISlot: index) : 0,
-                                   isCaptain: isCaptain, diameter: diameter,
+                                   isCaptain: isCaptain, diameter: diameter, squadStyle: true,
                                    slot: slot, onSwap: { store.swapSquadSlots($0, $1) }) {
             if let card {
                 onOpenDetail(card)
@@ -789,6 +828,7 @@ struct LegendsPlayerToken: View {
     let isCaptain: Bool
     var diameter: CGFloat = 60
     var showChemistry: Bool = true
+    var squadStyle = false
     /// This token's own squad position and a swap callback — when both
     /// are supplied, the token becomes a drag source *and* drop target,
     /// so dragging one token onto another swaps the two players. Left
@@ -827,6 +867,9 @@ struct LegendsPlayerToken: View {
 
     private var tokenButton: some View {
         Button(action: onTap) {
+            if squadStyle {
+                squadTile
+            } else {
             VStack(spacing: 3) {
                 ZStack {
                     Circle()
@@ -869,8 +912,39 @@ struct LegendsPlayerToken: View {
                         .foregroundStyle(Retro.text.opacity(0.4))
                 }
             }
+            }
         }
         .buttonStyle(.plain)
+    }
+
+    private var squadTile: some View {
+        VStack(spacing: 2) {
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(.white.opacity(0.12))
+                    .overlay(Circle().stroke(.white.opacity(0.35)))
+                    .overlay(Image(systemName: card == nil ? "plus" : "person.fill")
+                        .font(.system(size: diameter * 0.5)).foregroundStyle(.white.opacity(0.35)))
+                    .frame(width: diameter, height: diameter)
+                VStack(spacing: 2) {
+                    Text(overall.map(String.init) ?? "—")
+                        .font(.system(size: max(10, diameter * 0.38), weight: .black, design: .rounded))
+                    Text(role.rawValue)
+                        .font(.system(size: 7, weight: .black))
+                        .padding(.horizontal, 3).padding(.vertical, 1)
+                        .background(ringColor, in: RoundedRectangle(cornerRadius: 2))
+                }
+                if isCaptain { Text("C").font(.system(size: 8, weight: .black)).foregroundStyle(.yellow) }
+            }
+            Text(card?.name ?? "Select player")
+                .font(.system(size: 9, weight: .bold))
+                .lineLimit(1).minimumScaleFactor(0.7)
+            if showChemistry { chemistryDots }
+        }
+        .foregroundStyle(.white)
+        .padding(4)
+        .frame(maxWidth: .infinity)
+        .background(Color(red: 0.02, green: 0.12, blue: 0.22).opacity(0.9), in: RoundedRectangle(cornerRadius: 5))
     }
 
     private var chemistryDots: some View {

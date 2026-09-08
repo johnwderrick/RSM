@@ -951,6 +951,7 @@ struct LegendsMenuShell<Content: View>: View {
     let currentNav: LegendsNavItem
     let onNavigate: ((LegendsNavItem) -> Void)?
     let scrollContent: Bool
+    var squadPresentation = false
     @ViewBuilder let content: () -> Content
 
     @Environment(\.verticalSizeClass) private var verticalSizeClass
@@ -958,7 +959,7 @@ struct LegendsMenuShell<Content: View>: View {
 
     init(store: LegendsStore, title: String, subtitle: String = "RSM LEGENDS", icon: String,
          accent: Color, onBack: @escaping () -> Void, currentNav: LegendsNavItem = .home,
-         onNavigate: ((LegendsNavItem) -> Void)? = nil, scrollContent: Bool = true,
+         onNavigate: ((LegendsNavItem) -> Void)? = nil, scrollContent: Bool = true, squadPresentation: Bool = false,
          @ViewBuilder content: @escaping () -> Content) {
         self.store = store
         self.title = title
@@ -969,13 +970,14 @@ struct LegendsMenuShell<Content: View>: View {
         self.currentNav = currentNav
         self.onNavigate = onNavigate
         self.scrollContent = scrollContent
+        self.squadPresentation = squadPresentation
         self.content = content
     }
 
     var body: some View {
         GeometryReader { geo in
             ZStack {
-                LegendsPalette.contentBackground.ignoresSafeArea()
+                (squadPresentation ? LegendsPalette.navy : LegendsPalette.contentBackground).ignoresSafeArea()
                 HStack(spacing: 0) {
                     LegendsSidebar(selected: .constant(currentNav), compact: geo.size.width < 700) { item in
                         onNavigate?(item)
@@ -994,8 +996,8 @@ struct LegendsMenuShell<Content: View>: View {
                             }
                         } else {
                             content()
-                                .padding(.horizontal, 18)
-                                .padding(.vertical, 18)
+                                .padding(.horizontal, squadPresentation ? 8 : 18)
+                                .padding(.vertical, squadPresentation ? 6 : 18)
                                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                         }
                     }

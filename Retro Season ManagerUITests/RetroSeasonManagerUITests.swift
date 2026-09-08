@@ -130,6 +130,36 @@ final class RetroSeasonManagerUITests: XCTestCase {
         XCTAssertTrue(squadTabAgain.isHittable, "Sidebar should be interactive, not frozen, after returning Home")
     }
 
+    func testSquadRedesignTabsAndLibraryRemainReachable() throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_LEGENDS_TRAINING"]
+        app.launch()
+        XCTAssertTrue(app.buttons["experience.legends"].waitForExistence(timeout: 8))
+        app.buttons["experience.legends"].tap()
+        XCTAssertTrue(app.buttons["Squad"].waitForExistence(timeout: 8))
+        app.buttons["Squad"].tap()
+        for tab in ["FORMATIONS", "TACTICS", "ROLES", "SQUAD"] {
+            let button = app.buttons["squad.tab.\(tab)"]
+            XCTAssertTrue(button.waitForExistence(timeout: 5))
+            XCTAssertTrue(button.isHittable)
+            button.tap()
+            if tab == "FORMATIONS" {
+                let formation = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "4-4-2")).firstMatch
+                XCTAssertTrue(formation.waitForExistence(timeout: 3))
+                formation.tap()
+            }
+        }
+        let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        screenshot.name = "Squad redesign"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        let library = app.buttons["Player library"]
+        XCTAssertTrue(library.isHittable)
+        library.tap()
+        XCTAssertTrue(app.navigationBars.firstMatch.waitForExistence(timeout: 5))
+    }
+
     func testLegendsTrainingPlanPersistsAfterLeavingAndReopening() throws {
         let app = XCUIApplication()
         app.launchArguments = ["UITEST_LEGENDS_TRAINING"]
