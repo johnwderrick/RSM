@@ -274,7 +274,6 @@ extension LegendsStore {
             dateOfBirth: Date(timeIntervalSince1970: 315_532_800), archetype: .architect
         )
         migrateOwnedPlayerRecords()
-        persist()
     }
     #endif
 }

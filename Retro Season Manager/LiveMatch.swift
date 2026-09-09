@@ -377,11 +377,12 @@ final class LiveMatch {
             let side: Side = attackStrength(.home) >= attackStrength(.away) ? .home : .away
             penaltyAwardedCount += 1
             say("PENALTY! \(teamName(side.opposite)) concede a spot-kick.", side: side)
+            addShot(side)
+            addShotOnTarget(side)
             // 78% of penalties are converted.
             if Double.random(in: 0..<1) < 0.78 {
                 scoreGoal(side, penalty: true)
             } else {
-                addShotOnTarget(side)
                 let takerName = penaltyTaker(side).map { " by \($0.name)" } ?? ""
                 say("Penalty saved! The keeper guesses right and denies\(takerName).", side: side)
             }

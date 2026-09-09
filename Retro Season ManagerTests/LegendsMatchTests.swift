@@ -65,6 +65,14 @@ final class LegendsStoreMatchTests: XCTestCase {
         store.profile.divisionSeason = 1
         store.profile.lastDivisionSeasonResult = nil
         store.profile.activatedCardIDs = []
+        store.profile.totalWins = 0
+        store.profile.currentWinStreak = 0
+        store.profile.matchesToday = 0
+        store.profile.winsToday = 0
+        store.profile.winsThisWeek = 0
+        store.profile.goalsThisWeek = 0
+        store.profile.lastDailyReset = Date()
+        store.profile.lastWeeklyReset = Date()
         store.profile.completedPermanentChallengeIDs = []
         store.profile.completedDailyChallengeIDs = []
         store.profile.completedWeeklyChallengeIDs = Set(LegendsChallengeDatabase.all.filter { $0.cadence == .weekly }.map(\.id))
