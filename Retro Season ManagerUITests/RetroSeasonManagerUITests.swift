@@ -160,6 +160,44 @@ final class RetroSeasonManagerUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars.firstMatch.waitForExistence(timeout: 5))
     }
 
+    /// Captures the polished Legends pre-kickoff composition on a real
+    /// landscape device and proves the primary action remains reachable after
+    /// the dashboard-to-match navigation.
+    func testLegendsPreKickoffScreenIsCenteredAndKickoffReachable() throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_RESET_LEGENDS_MANAGER"]
+        app.launch()
+        completeOnboarding(app)
+
+        let playMatch = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "PLAY MATCH")).firstMatch
+        XCTAssertTrue(playMatch.waitForExistence(timeout: 8),
+                      "Expected the Play Match feature on the Legends dashboard")
+        // The dashboard itself is vertically scrollable on compact landscape
+        // phones; tapping the card lets XCUITest bring it into the visible
+        // region before exercising the actual pre-kickoff controls.
+        playMatch.tap()
+
+        let kickoff = app.buttons["legends.match.kickoff"]
+        XCTAssertTrue(kickoff.waitForExistence(timeout: 8),
+                      "Expected the pre-kickoff action on the Play Match screen")
+        XCTAssertTrue(kickoff.isHittable,
+                      "KICK OFF must remain reachable on a compact landscape screen")
+        XCTAssertTrue(app.staticTexts["DIVISION 10"].waitForExistence(timeout: 3),
+                      "Division should remain visible with sufficient contrast")
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "FIXTURES REMAIN")).firstMatch.exists,
+                      "Fixtures remaining should remain visible on the pre-kickoff screen")
+
+        let screenshot = XCUIScreen.main.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = "Legends pre-kickoff \(Int(app.windows.firstMatch.frame.width))x\(Int(app.windows.firstMatch.frame.height))"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        let size = app.windows.firstMatch.frame.size
+        let path = "/tmp/rsm_pre_kickoff_\(Int(size.width))x\(Int(size.height)).png"
+        try? screenshot.pngRepresentation.write(to: URL(fileURLWithPath: path))
+    }
+
     func testLegendsTrainingPlanPersistsAfterLeavingAndReopening() throws {
         let app = XCUIApplication()
         app.launchArguments = ["UITEST_LEGENDS_TRAINING"]

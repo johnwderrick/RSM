@@ -951,6 +951,7 @@ struct LegendsMenuShell<Content: View>: View {
     let currentNav: LegendsNavItem
     let onNavigate: ((LegendsNavItem) -> Void)?
     let scrollContent: Bool
+    let centerContent: Bool
     var squadPresentation = false
     @ViewBuilder let content: () -> Content
 
@@ -959,7 +960,7 @@ struct LegendsMenuShell<Content: View>: View {
 
     init(store: LegendsStore, title: String, subtitle: String = "RSM LEGENDS", icon: String,
          accent: Color, onBack: @escaping () -> Void, currentNav: LegendsNavItem = .home,
-         onNavigate: ((LegendsNavItem) -> Void)? = nil, scrollContent: Bool = true, squadPresentation: Bool = false,
+         onNavigate: ((LegendsNavItem) -> Void)? = nil, scrollContent: Bool = true, centerContent: Bool = false, squadPresentation: Bool = false,
          @ViewBuilder content: @escaping () -> Content) {
         self.store = store
         self.title = title
@@ -970,6 +971,7 @@ struct LegendsMenuShell<Content: View>: View {
         self.currentNav = currentNav
         self.onNavigate = onNavigate
         self.scrollContent = scrollContent
+        self.centerContent = centerContent
         self.squadPresentation = squadPresentation
         self.content = content
     }
@@ -988,11 +990,23 @@ struct LegendsMenuShell<Content: View>: View {
                     VStack(spacing: 0) {
                         header
                         if scrollContent {
-                            ScrollView(showsIndicators: false) {
-                                content()
-                                    .padding(.horizontal, 18)
-                                    .padding(.vertical, 18)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            if centerContent {
+                                GeometryReader { contentGeo in
+                                    ScrollView(showsIndicators: false) {
+                                        content()
+                                            .padding(.horizontal, 18)
+                                            .padding(.vertical, 18)
+                                            .frame(maxWidth: .infinity, minHeight: contentGeo.size.height, alignment: .center)
+                                    }
+                                    .frame(width: contentGeo.size.width, height: contentGeo.size.height)
+                                }
+                            } else {
+                                ScrollView(showsIndicators: false) {
+                                    content()
+                                        .padding(.horizontal, 18)
+                                        .padding(.vertical, 18)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
                             }
                         } else {
                             content()

@@ -59,6 +59,9 @@ struct LegendsMatchView: View {
     @State private var summary: LegendsMatchOutcomeSummary? = nil
     @State private var launchError: String? = nil
 
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    private var compactHeight: Bool { verticalSizeClass == .compact }
+
     var body: some View {
         ZStack {
             Retro.background.ignoresSafeArea()
@@ -97,15 +100,22 @@ struct LegendsMatchView: View {
                     }
                 })
             } else {
-                LegendsMenuShell(store: store, title: "PLAY MATCH", subtitle: store.profile.division.displayName, icon: "soccerball", accent: LegendsPalette.green, onBack: onBack, currentNav: .home, onNavigate: onNavigate) {
-                    if let summary {
-                        resultPanel(summary)
-                            .transition(.scale(scale: 0.9).combined(with: .opacity))
-                    } else if LegendsMatchLaunchValidator.issue(in: store) == nil {
-                        readyPanel
-                    } else {
-                        notReadyPanel
+                LegendsMenuShell(store: store, title: "PLAY MATCH", subtitle: store.profile.division.displayName, icon: "soccerball", accent: LegendsPalette.green, onBack: onBack, currentNav: .home, onNavigate: onNavigate, centerContent: true) {
+                    VStack(spacing: 0) {
+                        if let summary {
+                            resultPanel(summary)
+                                .transition(.scale(scale: 0.9).combined(with: .opacity))
+                        } else if LegendsMatchLaunchValidator.issue(in: store) == nil {
+                            readyPanel
+                        } else {
+                            notReadyPanel
+                        }
                     }
+                    // The shell keeps most destination content leading-aligned.
+                    // The match entry state is a focused three-part composition,
+                    // so make its container consume the available column and
+                    // centre the composition beside the sidebar.
+                    .frame(maxWidth: .infinity, alignment: .center)
                 }
             }
         }
@@ -132,30 +142,30 @@ struct LegendsMatchView: View {
         .frame(maxWidth: 420)
     }
 
+    /// A compact, centred pre-kickoff composition: match context first,
+    /// team information second, and the primary action last. The light
+    /// match column uses the Legends palette rather than Retro's pale-green
+    /// text roles, which were designed for dark retro panels and lost contrast
+    /// against the pre-kickoff surface.
     private var readyPanel: some View {
-        VStack(spacing: 20) {
-            VStack(spacing: 6) {
-                Text(store.profile.division.displayName.uppercased())
-                    .font(.system(.caption, design: .monospaced).bold())
-                    .foregroundStyle(Retro.highlight)
-                    .tracking(2)
-                Text("\(store.divisionFixturesRemaining) FIXTURES REMAIN · RANK TOP 2 TO PROMOTE")
-                    .font(.system(.caption2, design: .monospaced))
-                    .foregroundStyle(Retro.text.opacity(0.6))
-            }
+        VStack(spacing: compactHeight ? 14 : 20) {
+            matchDetails
 
             Panel(title: "YOUR TEAM") {
-                HStack {
+                HStack(spacing: 12) {
                     Text(store.profile.clubName)
                         .font(.system(.callout, design: .monospaced).bold())
                         .foregroundStyle(Retro.text)
-                    Spacer()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                    Spacer(minLength: 8)
                     Text("\(store.currentTeamRating) OVR")
                         .font(.system(.callout, design: .monospaced).bold())
                         .foregroundStyle(Retro.accent)
+                        .fixedSize()
                 }
             }
-            .frame(maxWidth: 380)
+            .frame(maxWidth: 460)
 
             Button {
                 launchMatch()
@@ -163,14 +173,39 @@ struct LegendsMatchView: View {
                 Text("KICK OFF")
                     .font(.system(.headline, design: .monospaced).bold())
                     .foregroundStyle(Retro.background)
-                    .frame(maxWidth: 260)
-                    .padding(.vertical, 14)
+                    .frame(maxWidth: 320, minHeight: 48)
+                    .padding(.vertical, compactHeight ? 11 : 14)
                     .background(Retro.accent)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
             }
             .buttonStyle(PressableButtonStyle())
             .accessibilityIdentifier("legends.match.kickoff")
         }
+        .padding(.horizontal, compactHeight ? 8 : 20)
+        .frame(maxWidth: 520)
+    }
+
+    private var matchDetails: some View {
+        VStack(spacing: 5) {
+            Text(store.profile.division.displayName.uppercased())
+                .font(.system(.caption, design: .monospaced).bold())
+                .foregroundStyle(LegendsPalette.navy)
+                .tracking(2)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            Text("\(store.divisionFixturesRemaining) FIXTURES REMAIN · RANK TOP 2 TO PROMOTE")
+                .font(.system(.caption2, design: .monospaced).bold())
+                .foregroundStyle(LegendsPalette.blue)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 12)
+        .padding(.vertical, compactHeight ? 9 : 11)
+        .background(LegendsPalette.blueWash)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(LegendsPalette.blue.opacity(0.22), lineWidth: 1))
     }
 
     private func launchMatch() {

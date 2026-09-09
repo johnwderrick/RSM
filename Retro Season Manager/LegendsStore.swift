@@ -182,6 +182,7 @@ struct LegendsProfile: Codable {
     var startingXICardIDs: [String?] = Array(repeating: nil, count: 11)
     var benchCardIDs: [String?] = Array(repeating: nil, count: LegendsStore.benchSize)
     var captainCardID: String? = nil
+    var squadRoleAssignments: [String: String] = [:]
     /// Wins accumulated at the current division (Phase 7) — resets on
     /// promotion. See `LegendsStore.winsToPromote`.
     var divisionWins: Int = 0
@@ -321,7 +322,7 @@ struct LegendsProfile: Codable {
         case coins, packTokens, division, teamRating, ownedCardIDs, activatedCardIDs
         case playerCareers, legendsHall, clubRecords, lastSeasonReview
         case duplicateProgress, cardUpgrades
-        case formationName, startingXICardIDs, benchCardIDs, captainCardID
+        case formationName, startingXICardIDs, benchCardIDs, captainCardID, squadRoleAssignments
         case divisionWins, divisionTable, divisionSchedule, divisionSeason, lastDivisionSeasonResult
         case totalWins, currentWinStreak, matchesToday, winsToday, winsThisWeek, goalsThisWeek
         case lastDailyReset, lastWeeklyReset
@@ -439,6 +440,7 @@ struct LegendsProfile: Codable {
         cardUpgrades = try c.decodeIfPresent([String: Int].self, forKey: .cardUpgrades) ?? [:]
         formationName = try c.decodeIfPresent(String.self, forKey: .formationName) ?? "4-4-2"
         captainCardID = try c.decodeIfPresent(String.self, forKey: .captainCardID)
+        squadRoleAssignments = try c.decodeIfPresent([String: String].self, forKey: .squadRoleAssignments) ?? [:]
         divisionWins = try c.decodeIfPresent(Int.self, forKey: .divisionWins) ?? 0
         divisionTable = try c.decodeIfPresent([LegendsDivisionRecord].self, forKey: .divisionTable) ?? []
         divisionSchedule = try c.decodeIfPresent([LegendsFixture].self, forKey: .divisionSchedule) ?? []
@@ -686,6 +688,7 @@ final class LegendsStore {
     }
 
     func persist() {
+        sanitizeSquadRoleAssignments()
         guard let data = try? JSONEncoder().encode(profile) else { return }
         try? data.write(to: Self.fileURL)
     }

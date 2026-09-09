@@ -16,6 +16,8 @@ struct LegendsSquadView: View {
 
     @State private var pickerTarget: PickerTarget? = nil
     @State private var selectedTab = "SQUAD"
+    @State private var roleGroup = "Leadership"
+    @State private var selectedRole: LegendsSquadRole?
     @State private var showClub = false
     @State private var showLibrary = false
     @State private var detailCard: LegendsCard? = nil
@@ -69,6 +71,9 @@ struct LegendsSquadView: View {
                 }
                 .frame(width: geo.size.width, height: geo.size.height)
             }
+        }
+        .sheet(item: $selectedRole) { role in
+            rolePicker(role)
         }
         .sheet(isPresented: $showClub) {
             NavigationStack {
@@ -157,25 +162,112 @@ struct LegendsSquadView: View {
                         }
                     }
                 } else {
-                    Text("Captain · select a starting XI player").font(.caption)
-                    ForEach(store.profile.startingXICardIDs.compactMap { id in
-                        id.flatMap { id in LegendsCardDatabase.all.first { $0.id == id } }
-                    }) { card in
-                        Button { store.setCaptain(cardID: card.id) } label: {
-                            HStack {
-                                Text(card.name)
-                                Spacer()
-                                if store.profile.captainCardID == card.id { Image(systemName: "c.circle.fill") }
-                            }.padding(10).background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
-                        }
-                    }
-                    Button("Clear captain") { store.setCaptain(cardID: nil) }.padding(.vertical, 8)
+                    rolesPanel
                 }
             }.padding(14)
         }
         .foregroundStyle(.white)
         .buttonStyle(.plain)
         .background(.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 6))
+    }
+
+    private var rolePlayers: [LegendsCard] {
+        store.profile.startingXICardIDs.compactMap { id in
+            id.flatMap { id in LegendsCardDatabase.all.first { $0.id == id } }
+        }
+    }
+
+    private var rolesPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 4) {
+                ForEach(["Leadership", "Set Pieces", "Corners"], id: \.self) { group in
+                    Button { roleGroup = group } label: {
+                        Text(group)
+                            .font(.system(size: 10, weight: .bold))
+                            .lineLimit(1).minimumScaleFactor(0.8)
+                            .frame(maxWidth: .infinity, minHeight: 36)
+                            .background(roleGroup == group ? .blue.opacity(0.65) : .white.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+                    }
+                    .accessibilityIdentifier("squad.roles.group.\(group)")
+                }
+            }
+            ForEach(LegendsSquadRole.allCases.filter { $0.group == roleGroup }) { role in
+                let card = rolePlayers.first { $0.id == store.squadRoleCardID(role) }
+                Button { selectedRole = role } label: {
+                    HStack(spacing: 10) {
+                        if let card {
+                            PlayerPortraitView(name: card.name, position: card.position.broad, nation: card.nation, size: 32)
+                                .accessibilityHidden(true)
+                        } else {
+                            Image(systemName: roleGroup == "Leadership" ? "person.crop.circle.badge.checkmark" : "soccerball")
+                                .frame(width: 32, height: 32).foregroundStyle(.white.opacity(0.55))
+                        }
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(role.title).font(.system(size: 12, weight: .bold))
+                            Text(card?.name ?? "Not assigned")
+                                .font(.system(size: 11)).foregroundStyle(.white.opacity(0.65))
+                        }
+                        Spacer(minLength: 4)
+                        Image(systemName: "chevron.right").font(.caption)
+                    }
+                    .padding(10)
+                    .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+                }
+                .accessibilityIdentifier("squad.role.\(role.rawValue)")
+            }
+            Text(roleGroup == "Leadership"
+                 ? "Choose two different players from your starting XI."
+                 : "Selections are saved for your squad. Matches currently choose set-piece takers automatically.")
+                .font(.system(size: 10)).foregroundStyle(.white.opacity(0.65))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func rolePicker(_ role: LegendsSquadRole) -> some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 8) {
+                    Button("Clear assignment") {
+                        store.setSquadRole(role, cardID: nil)
+                        selectedRole = nil
+                    }.padding(10)
+                    if rolePlayers.isEmpty {
+                        Text("Add players to your starting XI to assign roles.").padding()
+                    }
+                    ForEach(rolePlayers) { card in
+                        let unavailable = role == .viceCaptain && card.id == store.profile.captainCardID
+                        Button {
+                            store.setSquadRole(role, cardID: card.id)
+                            selectedRole = nil
+                        } label: {
+                            HStack(spacing: 12) {
+                                PlayerPortraitView(name: card.name, position: card.position.broad, nation: card.nation, size: 40)
+                                    .accessibilityHidden(true)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(card.name).font(.headline)
+                                    Text(unavailable ? "Already captain" : "\(card.position.rawValue) · \(store.effectiveOverall(for: card)) OVR")
+                                        .font(.caption).foregroundStyle(LegendsPalette.navy.opacity(0.65))
+                                }
+                                Spacer()
+                                if store.squadRoleCardID(role) == card.id { Image(systemName: "checkmark.circle.fill") }
+                            }.padding(10)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(unavailable)
+                        .opacity(unavailable ? 0.45 : 1)
+                    }
+                }.padding()
+            }
+            .foregroundStyle(LegendsPalette.navy)
+            .background(LegendsPalette.contentBackground)
+            .navigationTitle(role.title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                Button("Done") { selectedRole = nil }
+                    .foregroundStyle(LegendsPalette.blue)
+            }
+        }
+        .tint(LegendsPalette.blue)
     }
 
     private func strength(_ label: String, _ value: Int, color: Color) -> some View {
@@ -920,12 +1012,19 @@ struct LegendsPlayerToken: View {
     private var squadTile: some View {
         VStack(spacing: 2) {
             HStack(spacing: 4) {
-                Circle()
-                    .fill(.white.opacity(0.12))
-                    .overlay(Circle().stroke(.white.opacity(0.35)))
-                    .overlay(Image(systemName: card == nil ? "plus" : "person.fill")
-                        .font(.system(size: diameter * 0.5)).foregroundStyle(.white.opacity(0.35)))
-                    .frame(width: diameter, height: diameter)
+                if let card {
+                    PlayerPortraitView(name: card.name, position: card.position.broad,
+                                       nation: card.nation, size: diameter)
+                        .clipShape(Circle())
+                        .accessibilityHidden(true)
+                } else {
+                    Circle()
+                        .fill(.white.opacity(0.12))
+                        .overlay(Circle().stroke(.white.opacity(0.35)))
+                        .overlay(Image(systemName: "plus")
+                            .font(.system(size: diameter * 0.5)).foregroundStyle(.white.opacity(0.35)))
+                        .frame(width: diameter, height: diameter)
+                }
                 VStack(spacing: 2) {
                     Text(overall.map(String.init) ?? "—")
                         .font(.system(size: max(10, diameter * 0.38), weight: .black, design: .rounded))

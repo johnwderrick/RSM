@@ -10,6 +10,55 @@
 
 import Foundation
 
+enum LegendsSquadRole: String, CaseIterable, Identifiable {
+    case captain, viceCaptain, penalties, freeKicks, leftCorner, rightCorner
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .captain: return "Captain"
+        case .viceCaptain: return "Vice-captain"
+        case .penalties: return "Penalty taker"
+        case .freeKicks: return "Free-kick taker"
+        case .leftCorner: return "Left corners"
+        case .rightCorner: return "Right corners"
+        }
+    }
+    var group: String {
+        switch self {
+        case .captain, .viceCaptain: return "Leadership"
+        case .penalties, .freeKicks: return "Set Pieces"
+        case .leftCorner, .rightCorner: return "Corners"
+        }
+    }
+}
+
+extension LegendsStore {
+    func squadRoleCardID(_ role: LegendsSquadRole) -> String? {
+        let id = role == .captain ? profile.captainCardID : profile.squadRoleAssignments[role.rawValue]
+        guard let id, profile.startingXICardIDs.contains(id),
+              role != .viceCaptain || id != profile.captainCardID else { return nil }
+        return id
+    }
+
+    func setSquadRole(_ role: LegendsSquadRole, cardID: String?) {
+        guard cardID == nil || profile.startingXICardIDs.contains(cardID) else { return }
+        if role == .captain { setCaptain(cardID: cardID); return }
+        guard role != .viceCaptain || cardID == nil || cardID != profile.captainCardID else { return }
+        profile.squadRoleAssignments[role.rawValue] = cardID
+        persist()
+    }
+
+    /// Shared save boundary covers swaps, clearing, formation changes and retirement.
+    func sanitizeSquadRoleAssignments() {
+        let startingIDs = Set(profile.startingXICardIDs.compactMap { $0 })
+        profile.squadRoleAssignments = profile.squadRoleAssignments.filter { key, id in
+            guard let role = LegendsSquadRole(rawValue: key), role != .captain,
+                  startingIDs.contains(id) else { return false }
+            return role != .viceCaptain || id != profile.captainCardID
+        }
+    }
+}
+
 /// Presentation-only controls for the Player Library. Keeping these
 /// value types outside the view makes filtering/sorting deterministic and
 /// easy to exercise without rendering SwiftUI.

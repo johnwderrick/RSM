@@ -31,6 +31,38 @@ final class LegendsSquadTests: XCTestCase {
         return store
     }
 
+    func testSquadRolesPersistAndOldSavesDefaultToUnassigned() async throws {
+        let store = await freshStore()
+        let cards = LegendsCardDatabase.all.filter { store.profile.ownedCardIDs.contains($0.id) }
+        store.assign(cardID: cards[0].id, toXISlot: 1)
+        store.setSquadRole(.penalties, cardID: cards[0].id)
+        let encoded = try JSONEncoder().encode(store.profile)
+        let decoded = try JSONDecoder().decode(LegendsProfile.self, from: encoded)
+        XCTAssertEqual(decoded.squadRoleAssignments["penalties"], cards[0].id)
+        var oldSave = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        oldSave.removeValue(forKey: "squadRoleAssignments")
+        let legacy = try JSONDecoder().decode(LegendsProfile.self, from: JSONSerialization.data(withJSONObject: oldSave))
+        XCTAssertTrue(legacy.squadRoleAssignments.isEmpty)
+    }
+
+    func testLeadershipIsDistinctAndRolesClearWhenPlayerLeavesXI() async {
+        let store = await freshStore()
+        let cards = LegendsCardDatabase.all.filter { store.profile.ownedCardIDs.contains($0.id) }
+        store.assign(cardID: cards[0].id, toXISlot: 1)
+        store.assign(cardID: cards[1].id, toXISlot: 2)
+        store.setCaptain(cardID: cards[0].id)
+        store.setSquadRole(.viceCaptain, cardID: cards[0].id)
+        XCTAssertNil(store.squadRoleCardID(.viceCaptain))
+        store.setSquadRole(.viceCaptain, cardID: cards[1].id)
+        store.setSquadRole(.leftCorner, cardID: cards[1].id)
+        XCTAssertEqual(store.squadRoleCardID(.viceCaptain), cards[1].id)
+        store.swapSquadSlots(.xi(2), .bench(0))
+        XCTAssertNil(store.squadRoleCardID(.viceCaptain))
+        XCTAssertNil(store.profile.squadRoleAssignments["leftCorner"])
+        store.setSquadRole(.penalties, cardID: cards[1].id)
+        XCTAssertNil(store.squadRoleCardID(.penalties))
+    }
+
     func testSigningCardActivatesItsAgingClock() async {
         let store = await freshStore()
         let card = LegendsCardDatabase.all.first { store.profile.ownedCardIDs.contains($0.id) }!
