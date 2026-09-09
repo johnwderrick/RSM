@@ -263,5 +263,18 @@ extension LegendsStore {
         profile.seasonReports = [:]
         persist()
     }
+
+    /// Deterministic UI-test fixture with a complete, signed Starting XI.
+    /// Resetting the whole profile prevents state left by an earlier UI test
+    /// from sending the pre-kickoff flow to its "squad not ready" screen.
+    func prepareMatchReadyFixtureForDebug() {
+        profile = .starter()
+        profile.managerProfile = LegendsManagerProfile(
+            firstName: "Test", surname: "Manager", nationalityCode: "GB",
+            dateOfBirth: Date(timeIntervalSince1970: 315_532_800), archetype: .architect
+        )
+        migrateOwnedPlayerRecords()
+        persist()
+    }
     #endif
 }

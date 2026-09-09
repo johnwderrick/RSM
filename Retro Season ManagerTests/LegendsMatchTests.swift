@@ -73,6 +73,16 @@ final class LegendsStoreMatchTests: XCTestCase {
         return store
     }
 
+    func testMatchReadyUITestFixtureCreatesValidStartingXI() async {
+        let store = await freshStore()
+        store.prepareMatchReadyFixtureForDebug()
+
+        XCTAssertNil(LegendsMatchLaunchValidator.issue(in: store))
+        XCTAssertEqual(store.profile.startingXICardIDs.compactMap { $0 }.count,
+                       store.startingXISlots.count)
+        XCTAssertNotNil(store.profile.managerProfile)
+    }
+
     /// Fills the Starting XI with the highest-overall owned cards
     /// (icons/legends), giving a near-certain win against a Division 10
     /// opponent so promotion tests converge reliably without needing a

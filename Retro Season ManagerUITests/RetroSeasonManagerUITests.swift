@@ -166,9 +166,13 @@ final class RetroSeasonManagerUITests: XCTestCase {
     func testLegendsPreKickoffScreenIsCenteredAndKickoffReachable() throws {
         XCUIDevice.shared.orientation = .landscapeLeft
         let app = XCUIApplication()
-        app.launchArguments = ["UITEST_RESET_LEGENDS_MANAGER"]
+        app.launchArguments = ["UITEST_LEGENDS_MATCH_READY"]
         app.launch()
-        completeOnboarding(app)
+
+        let legendsButton = app.buttons["experience.legends"]
+        XCTAssertTrue(legendsButton.waitForExistence(timeout: 8),
+                      "Expected the RSM Legends entry button on the experience selector")
+        legendsButton.tap()
 
         let playMatch = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "PLAY MATCH")).firstMatch
         XCTAssertTrue(playMatch.waitForExistence(timeout: 8),

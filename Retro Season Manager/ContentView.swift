@@ -27,6 +27,9 @@ struct ContentView: View {
         if ProcessInfo.processInfo.arguments.contains("UITEST_LEGENDS_TRAINING") {
             legends.prepareTrainingFixtureForDebug()
         }
+        if ProcessInfo.processInfo.arguments.contains("UITEST_LEGENDS_MATCH_READY") {
+            legends.prepareMatchReadyFixtureForDebug()
+        }
         #endif
         _legendsStore = State(initialValue: legends)
     }
