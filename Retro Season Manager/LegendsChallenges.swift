@@ -35,7 +35,7 @@ enum LegendsChallengeKind: Codable, Equatable {
     /// Win a match against an opponent rated at or above the user's own
     /// current team rating at kickoff.
     case beatStrongerOpponent
-    /// Win with an active Manager set — directly rewards actually using
+    /// Win with an active Assistant set — directly rewards actually using
     /// the Managers system, which now has a real effect on live matches
     /// (see `LegendsLiveMatch.strengthBonus`).
     case winWithManager
@@ -112,7 +112,7 @@ enum LegendsChallengeDatabase {
 
         LegendsChallenge(id: "giant-killer", title: "Giant Killer", description: "Beat an opponent rated as strong as or stronger than your own team.",
                           cadence: .permanent, kind: .beatStrongerOpponent, coinReward: 200, tokenReward: 2),
-        LegendsChallenge(id: "tactical-edge", title: "Tactical Edge", description: "Win a match with an active Manager set.",
+        LegendsChallenge(id: "tactical-edge", title: "Tactical Edge", description: "Win a match with an active Assistant set.",
                           cadence: .permanent, kind: .winWithManager, coinReward: 100, tokenReward: 1),
         LegendsChallenge(id: "home-advantage", title: "Home Advantage", description: "Win a match with an active Stadium set.",
                           cadence: .permanent, kind: .winWithStadium, coinReward: 100, tokenReward: 1),

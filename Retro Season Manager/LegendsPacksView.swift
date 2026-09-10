@@ -25,7 +25,7 @@ struct LegendsPacksView: View {
                         pendingBanner(pendingPack)
                     }
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                        ForEach(LegendsPackDatabase.all) { pack in
+                        ForEach(displayedPacks) { pack in
                             packTile(pack)
                         }
                     }
@@ -35,6 +35,16 @@ struct LegendsPacksView: View {
         }
         .sheet(item: $openingPack) { pack in
             LegendsPackOpeningView(store: store, pack: pack) { openingPack = nil }
+        }
+    }
+
+    /// The free Starter Pack leaves the shelf once claimed — no permanent
+    /// CLAIMED tile. It stays visible while its own three-card decision is
+    /// still pending so the player can finish choosing before it hides.
+    private var displayedPacks: [LegendsPack] {
+        LegendsPackDatabase.all.filter { pack in
+            guard pack.id == "starter" else { return true }
+            return !(store.profile.hasClaimedStarterPack && store.profile.pendingPackID != "starter")
         }
     }
 

@@ -1628,7 +1628,7 @@ struct LegendsClubHubView: View {
         LegendsMenuShell(store: store, title: "CLUB", subtitle: "STADIUM & STAFF", icon: "building.columns.fill", accent: LegendsPalette.blue, onBack: onBack, currentNav: .club, onNavigate: onNavigate, scrollContent: false) {
             VStack(spacing: 14) {
                 HStack(spacing: 12) {
-                    clubDestination(title: "MANAGERS", subtitle: "HIRE STAFF FOR THE SIDELINE", icon: "person.crop.rectangle.stack.fill", color: LegendsPalette.green,
+                    clubDestination(title: "ASSISTANTS", subtitle: "HIRE STAFF FOR THE SIDELINE", icon: "person.crop.rectangle.stack.fill", color: LegendsPalette.green,
                                     value: "\(store.profile.ownedManagerIDs.count) / \(LegendsManagerDatabase.all.count) OWNED", action: onOpenManagers)
                     clubDestination(title: "STADIUMS", subtitle: "GROW YOUR HOME ADVANTAGE", icon: "building.2.fill", color: LegendsPalette.blue,
                                     value: "\(store.profile.ownedStadiumIDs.count) / \(LegendsStadiumDatabase.all.count) OWNED", action: onOpenStadiums)

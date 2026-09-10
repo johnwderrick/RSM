@@ -162,4 +162,53 @@ final class LegendsStorePackOpeningTests: XCTestCase {
         _ = try store.openPack(starter)
         XCTAssertNoThrow(try store.openPack(bronze))
     }
+
+    // MARK: Starter Pack shelf visibility
+
+    /// Mirrors LegendsPacksView.displayedPacks so the UI rule is contract-
+    /// tested without instantiating SwiftUI views.
+    private func displayedPacks(for store: LegendsStore) -> [LegendsPack] {
+        LegendsPackDatabase.all.filter { pack in
+            guard pack.id == "starter" else { return true }
+            return !(store.profile.hasClaimedStarterPack && store.profile.pendingPackID != "starter")
+        }
+    }
+
+    func testNewProfileSeesTheStarterPack() async {
+        let store = await freshStore()
+        XCTAssertFalse(store.profile.hasClaimedStarterPack)
+        XCTAssertTrue(displayedPacks(for: store).contains { $0.id == "starter" })
+    }
+
+    func testClaimedStarterPackIsRemovedFromTheDisplayedPacks() async throws {
+        let store = await freshStore()
+        let starter = LegendsPackDatabase.all.first { $0.id == "starter" }!
+        _ = try store.openPack(starter)
+        XCTAssertTrue(store.profile.hasClaimedStarterPack)
+        XCTAssertFalse(displayedPacks(for: store).contains { $0.id == "starter" })
+        XCTAssertEqual(displayedPacks(for: store).count, LegendsPackDatabase.all.count - 1,
+                       "Only the Starter Pack should disappear; every other pack stays")
+    }
+
+    func testStarterPackStaysVisibleWhileItsDecisionIsPending() async throws {
+        let store = await freshStore()
+        let starter = LegendsPackDatabase.all.first { $0.id == "starter" }!
+        _ = try store.preparePack(starter)
+        XCTAssertTrue(displayedPacks(for: store).contains { $0.id == "starter" },
+                      "The pack must remain visible until the player finishes choosing a card")
+        _ = try store.claimPreparedPack(at: 0)
+        XCTAssertFalse(displayedPacks(for: store).contains { $0.id == "starter" })
+    }
+
+    func testStarterPackHiddenStateRoundTripsThroughSaveEncodeDecode() throws {
+        let store = LegendsStore()
+        store.profile.hasClaimedStarterPack = true
+        store.profile.pendingPackID = nil
+        store.profile.pendingPackCardIDs = []
+
+        let data = try JSONEncoder().encode(store.profile)
+        let decoded = try JSONDecoder().decode(LegendsProfile.self, from: data)
+
+        XCTAssertTrue(decoded.hasClaimedStarterPack, "A loaded save must keep hiding the claimed Starter Pack")
+    }
 }

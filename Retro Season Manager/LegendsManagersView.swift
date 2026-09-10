@@ -2,8 +2,9 @@
 //  LegendsManagersView.swift
 //  Retro Season Manager
 //
-//  Managers (Phase 9) — collect and assign a single active manager for
-//  their tactical bonus and club-affinity chemistry link.
+//  Assistants (Phase 9) — collect and assign a single active assistant
+//  for their tactical bonus and club-affinity chemistry link. (Collectible
+//  cards keep the internal `manager` naming for save compatibility.)
 //
 
 import SwiftUI
@@ -14,7 +15,7 @@ struct LegendsManagersView: View {
     var onBack: () -> Void
 
     var body: some View {
-        LegendsMenuShell(store: store, title: "MANAGERS", subtitle: "\(store.profile.ownedManagerIDs.count) / \(LegendsManagerDatabase.all.count) OWNED", icon: "person.crop.rectangle.stack.fill", accent: LegendsPalette.green, onBack: onBack, currentNav: .club, onNavigate: onNavigate, scrollContent: false) {
+        LegendsMenuShell(store: store, title: "ASSISTANTS", subtitle: "\(store.profile.ownedManagerIDs.count) / \(LegendsManagerDatabase.all.count) OWNED", icon: "person.crop.rectangle.stack.fill", accent: LegendsPalette.green, onBack: onBack, currentNav: .club, onNavigate: onNavigate, scrollContent: false) {
             ScrollView {
                 VStack(spacing: 10) {
                     ForEach(LegendsManagerDatabase.all) { manager in
@@ -57,7 +58,7 @@ struct LegendsManagersView: View {
                                 .foregroundStyle(Retro.highlight)
                         }
                     } else {
-                        Text("Win matches for a chance to unlock a manager.")
+                        Text("Win matches for a chance to unlock an assistant.")
                             .font(.system(.caption2, design: .monospaced))
                             .foregroundStyle(Retro.text.opacity(0.4))
                     }

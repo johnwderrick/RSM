@@ -350,7 +350,7 @@ struct LegendsMatchView: View {
             }
 
             if let newManager = summary.newManager {
-                Text("NEW MANAGER: \(newManager.name.uppercased())")
+                Text("NEW ASSISTANT: \(newManager.name.uppercased())")
                     .font(.system(.caption, design: .monospaced).bold())
                     .foregroundStyle(Retro.gold)
             }
