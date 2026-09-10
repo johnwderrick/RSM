@@ -200,8 +200,8 @@ final class LegendsStorePackOpeningTests: XCTestCase {
         XCTAssertFalse(displayedPacks(for: store).contains { $0.id == "starter" })
     }
 
-    func testStarterPackHiddenStateRoundTripsThroughSaveEncodeDecode() throws {
-        let store = LegendsStore()
+    func testStarterPackHiddenStateRoundTripsThroughSaveEncodeDecode() async throws {
+        let store = await freshStore()
         store.profile.hasClaimedStarterPack = true
         store.profile.pendingPackID = nil
         store.profile.pendingPackCardIDs = []
