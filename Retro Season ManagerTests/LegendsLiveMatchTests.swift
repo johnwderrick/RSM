@@ -589,8 +589,138 @@ final class LegendsLiveMatchTests: XCTestCase {
                              "A stronger defence should convert the same attacker less often")
     }
 
-    /// Regression guard: opponent goals used to have no named scorer at
-    /// all (`scoreGoal(forUser: false)` never set one) — the fix pulls a
+    func testSavedSetPieceAssignmentsNameTheActualTakersAndPreserveLeadership() async {
+        let store = await freshStore()
+        strongestXI(store)
+        let xiIDs = store.profile.startingXICardIDs.compactMap { $0 }
+        guard xiIDs.count >= 6 else {
+            return XCTFail("Expected a complete XI for set-piece role coverage")
+        }
+
+        let penaltyID = xiIDs[0]
+        let freeKickID = xiIDs[1]
+        let leftCornerID = xiIDs[2]
+        let rightCornerID = xiIDs[3]
+        let captainID = xiIDs[4]
+        let viceCaptainID = xiIDs[5]
+        store.setSquadRole(.penalties, cardID: penaltyID)
+        store.setSquadRole(.freeKicks, cardID: freeKickID)
+        store.setSquadRole(.leftCorner, cardID: leftCornerID)
+        store.setSquadRole(.rightCorner, cardID: rightCornerID)
+        store.setCaptain(cardID: captainID)
+        store.setSquadRole(.viceCaptain, cardID: viceCaptainID)
+
+        let live = LegendsLiveMatch(store: store, opponent: LegendsOpponent(name: "Role Rivals", rating: 60))
+        XCTAssertEqual(live.setPieceTaker(for: .penalty)?.id, penaltyID)
+        XCTAssertEqual(live.setPieceTaker(for: .directFreeKick)?.id, freeKickID)
+        XCTAssertEqual(live.setPieceTaker(for: .leftCorner)?.id, leftCornerID)
+        XCTAssertEqual(live.setPieceTaker(for: .rightCorner)?.id, rightCornerID)
+        XCTAssertEqual(live.effectiveCaptainCardID, captainID)
+        XCTAssertEqual(live.activeViceCaptainCardID, viceCaptainID)
+
+        let penaltyName = LegendsCardDatabase.all.first { $0.id == penaltyID }!.name
+        let freeKickName = LegendsCardDatabase.all.first { $0.id == freeKickID }!.name
+        let penaltyEvent = LegendsMatchEvent(
+            id: "assigned-penalty", minute: 21, side: .home,
+            outcome: .saved, channel: .left, attackPattern: .centralCombination,
+            creatorID: xiIDs[4], creatorName: LegendsCardDatabase.all.first { $0.id == xiIDs[4] }?.name,
+            shooterID: penaltyID, shooterName: penaltyName,
+            markerID: "marker", markerName: "Marker",
+            goalkeeperID: "keeper", goalkeeperName: "Keeper",
+            expectedGoals: 0.4,
+            setPiece: .penalty, setPieceTakerID: penaltyID, setPieceTakerName: penaltyName
+        )
+        let penaltyScript = penaltyEvent.presentationScript
+        XCTAssertEqual(penaltyScript.setPieceTakerID, penaltyID)
+        XCTAssertEqual(penaltyScript.beats.first?.action, .shoot,
+                       "A penalty must begin with the assigned taker at the spot, without an open-play build-up")
+        XCTAssertFalse(penaltyScript.beats.contains { [.pass, .cross, .cutback, .throughBall].contains($0.action) })
+        XCTAssertTrue(penaltyScript.beats.contains { $0.action == .shoot && $0.actorID == penaltyID && $0.text.contains(penaltyName) })
+
+        XCTAssertEqual(LegendsLiveMatch.setPieceKind(for: .goal, channel: .left, penaltyAwarded: true), .penalty)
+        XCTAssertEqual(LegendsLiveMatch.setPieceKind(for: .saved, channel: .right, penaltyAwarded: true), .penalty)
+        XCTAssertEqual(LegendsLiveMatch.setPieceKind(for: .blocked, channel: .left), .leftCorner)
+        XCTAssertEqual(LegendsLiveMatch.setPieceKind(for: .foul, channel: .right), .directFreeKick)
+
+        let freeKickEvent = LegendsMatchEvent(
+            id: "assigned-free-kick", minute: 37, side: .home,
+            outcome: .foul, channel: .right,
+            creatorID: xiIDs[4], creatorName: LegendsCardDatabase.all.first { $0.id == xiIDs[4] }?.name,
+            shooterID: xiIDs[4], shooterName: LegendsCardDatabase.all.first { $0.id == xiIDs[4] }!.name,
+            markerID: "marker", markerName: "Marker",
+            goalkeeperID: nil, goalkeeperName: nil,
+            expectedGoals: 0,
+            setPiece: .directFreeKick, setPieceTakerID: freeKickID, setPieceTakerName: freeKickName
+        )
+        XCTAssertEqual(freeKickEvent.presentationScript.restartTakerID, freeKickID)
+        live.presentRestart(freeKickEvent.presentationScript.restart,
+                            takerName: freeKickEvent.presentationScript.restartTakerName)
+        XCTAssertTrue(live.commentary.last?.text.contains(freeKickName) == true,
+                      "Restart commentary must name the structured free-kick taker")
+    }
+
+    func testUnavailableAssignedTakerFallsBackAndViceCaptainTakesTheArmband() async {
+        let store = await freshStore()
+        strongestXI(store)
+        let xiIDs = store.profile.startingXICardIDs.compactMap { $0 }
+        guard xiIDs.count >= 3, let benchID = store.profile.benchCardIDs.compactMap({ $0 }).first else {
+            return XCTFail("Expected a complete XI and bench for availability coverage")
+        }
+
+        let assignedTakerID = xiIDs[0]
+        let captainID = xiIDs[1]
+        let viceCaptainID = xiIDs[2]
+        store.setSquadRole(.penalties, cardID: assignedTakerID)
+        store.setCaptain(cardID: captainID)
+        store.setSquadRole(.viceCaptain, cardID: viceCaptainID)
+
+        let live = LegendsLiveMatch(store: store, opponent: LegendsOpponent(name: "Fallback Rivals", rating: 60))
+        XCTAssertEqual(live.setPieceTaker(for: .penalty)?.id, assignedTakerID)
+        XCTAssertEqual(live.effectiveCaptainCardID, captainID)
+
+        XCTAssertTrue(live.makeUserSub(offCardID: assignedTakerID, onCardID: benchID))
+        let fallbackTaker = live.setPieceTaker(for: .penalty)
+        XCTAssertNotNil(fallbackTaker)
+        XCTAssertNotEqual(fallbackTaker?.id, assignedTakerID,
+                          "A substituted-off assignment must not take a later set piece")
+        XCTAssertTrue(live.onPitchCardIDs.contains(fallbackTaker!.id),
+                      "Fallback selection must come from the current on-pitch XI")
+
+        XCTAssertTrue(live.makeUserSub(offCardID: captainID, onCardID: live.benchCardIDs[0]))
+        XCTAssertEqual(live.effectiveCaptainCardID, viceCaptainID,
+                       "The saved vice-captain must inherit the armband when the captain leaves")
+    }
+
+    func testLiveEngineRecordsAssignedPenaltyTakerAsAuthoritativeShooter() async {
+        let store = await freshStore()
+        strongestXI(store)
+        guard let assignedID = store.profile.startingXICardIDs.compactMap({ $0 }).first,
+              let assignedName = LegendsCardDatabase.all.first(where: { $0.id == assignedID })?.name else {
+            return XCTFail("Expected an assigned penalty taker in the Starting XI")
+        }
+        store.setSquadRole(.penalties, cardID: assignedID)
+
+        for seed in 1...80 {
+            let live = LegendsLiveMatch(
+                store: store,
+                opponent: LegendsOpponent(name: "Penalty Rivals", rating: 60),
+                rng: SeededGenerator(seed: "assigned-penalty-\(seed)")
+            )
+            live.skipToEnd()
+            guard let penalty = live.events.first(where: { $0.setPiece == .penalty }) else { continue }
+
+            XCTAssertEqual(penalty.setPieceTakerID, assignedID)
+            XCTAssertEqual(penalty.setPieceTakerName, assignedName)
+            XCTAssertEqual(penalty.shooterID, assignedID)
+            XCTAssertEqual(penalty.shooterName, assignedName)
+            XCTAssertNil(penalty.creatorID, "Penalty events must not retain an open-play assist")
+            XCTAssertEqual(penalty.presentationScript.beats.first?.action, .shoot)
+            return
+        }
+
+        XCTFail("Expected the deterministic match sample to contain a penalty event")
+    }
+
     /// real attacker from the opponent roster, so the commentary line
     /// should now name someone before the opponent's club name rather
     /// than jumping straight from "GOAL! " to the club name.

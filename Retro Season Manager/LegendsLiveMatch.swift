@@ -33,6 +33,37 @@
 import Foundation
 import Observation
 
+/// A saved set-piece role that can be resolved against the players who are
+/// actually available during a live match. The role assignment is a request;
+/// the taker ID/name captured on the event is the authoritative result.
+enum LegendsSetPiece: Equatable {
+    case penalty
+    case directFreeKick
+    case leftCorner
+    case rightCorner
+
+    var squadRole: LegendsSquadRole {
+        switch self {
+        case .penalty: return .penalties
+        case .directFreeKick: return .freeKicks
+        case .leftCorner: return .leftCorner
+        case .rightCorner: return .rightCorner
+        }
+    }
+
+    var usesRestartTaker: Bool {
+        switch self {
+        case .penalty: return false
+        case .directFreeKick, .leftCorner, .rightCorner: return true
+        }
+    }
+}
+
+struct LegendsSetPieceTaker: Equatable {
+    let id: String
+    let name: String
+}
+
 /// One authoritative attacking event produced by the match engine. Score,
 /// commentary, career statistics and the 2D renderer all consume this exact
 /// record; none of those layers is allowed to select participants again.
@@ -73,6 +104,12 @@ struct LegendsMatchEvent: Identifiable, Equatable {
     let goalkeeperID: String?
     let goalkeeperName: String?
     let expectedGoals: Double
+    /// The set piece, when this event awards or takes one. This is captured
+    /// by the live engine so commentary and the pitch never select a second
+    /// taker after the event has been created.
+    let setPiece: LegendsSetPiece?
+    let setPieceTakerID: String?
+    let setPieceTakerName: String?
 
     /// Stable per-event phrase selector. It is derived from the event ID,
     /// never from process-randomized hashing or a UI animation, so replaying
@@ -88,7 +125,10 @@ struct LegendsMatchEvent: Identifiable, Equatable {
         attackPattern: AttackPattern = .wideCross,
         creatorID: String?, creatorName: String?, shooterID: String, shooterName: String,
         markerID: String?, markerName: String?, goalkeeperID: String?, goalkeeperName: String?,
-        expectedGoals: Double
+        expectedGoals: Double,
+        setPiece: LegendsSetPiece? = nil,
+        setPieceTakerID: String? = nil,
+        setPieceTakerName: String? = nil
     ) {
         self.id = id
         self.minute = minute
@@ -98,13 +138,18 @@ struct LegendsMatchEvent: Identifiable, Equatable {
         self.attackPattern = attackPattern
         self.creatorID = creatorID
         self.creatorName = creatorName
-        self.shooterID = shooterID
-        self.shooterName = shooterName
+        let resolvedShooterID = setPiece == .penalty ? (setPieceTakerID ?? shooterID) : shooterID
+        let resolvedShooterName = setPiece == .penalty ? (setPieceTakerName ?? shooterName) : shooterName
+        self.shooterID = resolvedShooterID
+        self.shooterName = resolvedShooterName
         self.markerID = markerID
         self.markerName = markerName
         self.goalkeeperID = goalkeeperID
         self.goalkeeperName = goalkeeperName
         self.expectedGoals = expectedGoals
+        self.setPiece = setPiece
+        self.setPieceTakerID = setPieceTakerID ?? (setPiece == .penalty ? resolvedShooterID : nil)
+        self.setPieceTakerName = setPieceTakerName ?? (setPiece == .penalty ? resolvedShooterName : nil)
     }
 
     var scored: Bool { outcome == .goal }
@@ -193,6 +238,14 @@ struct LegendsMatchPresentationScript: Equatable {
     let shooterID: String
     let markerID: String?
     let goalkeeperID: String?
+    let setPiece: LegendsSetPiece?
+    let setPieceTakerID: String?
+    let setPieceTakerName: String?
+    /// The taker is used when the final beat transitions into a direct
+    /// free-kick or corner restart. Penalties are resolved as shot events,
+    /// so their taker remains on the shooter beat instead.
+    let restartTakerID: String?
+    let restartTakerName: String?
     let beats: [LegendsPresentationBeat]
     let restart: LegendsMatchRestart
 
@@ -206,6 +259,11 @@ struct LegendsMatchPresentationScript: Equatable {
         shooterID = event.shooterID
         markerID = event.markerID
         goalkeeperID = event.goalkeeperID
+        setPiece = event.setPiece
+        setPieceTakerID = event.setPieceTakerID
+        setPieceTakerName = event.setPieceTakerName
+        restartTakerID = event.setPiece?.usesRestartTaker == true ? event.setPieceTakerID : nil
+        restartTakerName = event.setPiece?.usesRestartTaker == true ? event.setPieceTakerName : nil
 
         let beatCreatorID = event.creatorID ?? event.shooterID
         let creator = event.creatorName ?? event.shooterName
@@ -222,6 +280,7 @@ struct LegendsMatchPresentationScript: Equatable {
         default: receiverTouchText = "\(event.shooterName) takes a touch and looks up."
         }
 
+        if event.setPiece != .penalty {
         switch event.attackPattern {
         case .wideCross:
             let carryText: String
@@ -332,14 +391,19 @@ struct LegendsMatchPresentationScript: Equatable {
                                        receiverID: nil, receiverName: nil, zone: .edgeOfBox,
                                        text: receiverTouchText))
         }
+        }
 
         let pressure = event.markerName.map { " under pressure from \($0)" } ?? ""
         if event.isShotEvent {
             let shotText: String
-            switch event.commentaryVariant {
-            case 0: shotText = "\(event.shooterName) opens up for the shot\(pressure)."
-            case 1: shotText = "\(event.shooterName) has a sight of goal and gets it away\(pressure)."
-            default: shotText = "\(event.shooterName) pulls the trigger\(pressure)."
+            if event.setPiece == .penalty {
+                shotText = "\(event.shooterName) steps up to take the penalty."
+            } else {
+                switch event.commentaryVariant {
+                case 0: shotText = "\(event.shooterName) opens up for the shot\(pressure)."
+                case 1: shotText = "\(event.shooterName) has a sight of goal and gets it away\(pressure)."
+                default: shotText = "\(event.shooterName) pulls the trigger\(pressure)."
+                }
             }
             scriptedBeats.append(.init(action: .shoot, actorID: event.shooterID, actorName: event.shooterName,
                                        receiverID: nil, receiverName: nil,
@@ -517,6 +581,10 @@ final class LegendsLiveMatch {
     private var finishRequested = false
     private var presentedBeatKeys: Set<String> = []
     private var presentedAmbientActionIDs: Set<String> = []
+    /// Cards removed from the live XI are unavailable for the remainder of
+    /// this match, even if an older save or a UI callback still retains the
+    /// persisted role assignment.
+    private var unavailableUserCardIDs: Set<String> = []
     var isAwaiting2DPresentation: Bool {
         !presentationEventIDs.isEmpty || !unstartedPresentationEventIDs.isEmpty
     }
@@ -616,6 +684,130 @@ final class LegendsLiveMatch {
         benchCardIDs.compactMap { id in LegendsCardDatabase.all.first { $0.id == id } }
     }
 
+    /// The persisted captain remains authoritative when available. If the
+    /// captain is absent, substituted off or otherwise unavailable, the
+    /// saved vice-captain takes the armband before automatic leadership
+    /// selection is considered. The persisted assignments are never mutated.
+    var effectiveCaptainCardID: String? {
+        if let captain = activeUserCardID(for: .captain) { return captain }
+        if let viceCaptain = activeUserCardID(for: .viceCaptain) { return viceCaptain }
+        return automaticLeadershipCard()?.id
+    }
+
+    var activeViceCaptainCardID: String? {
+        activeUserCardID(for: .viceCaptain)
+    }
+
+    /// Resolves a saved set-piece assignment against the live availability
+    /// snapshot. A card on the bench, substituted off, missing from a legacy
+    /// XI or otherwise absent is never returned; the deterministic
+    /// attribute-based fallback is used instead.
+    func setPieceTaker(for setPiece: LegendsSetPiece, team: Side = .home) -> LegendsSetPieceTaker? {
+        guard team == .home else {
+            return automaticOpponentSetPieceTaker(for: setPiece)
+        }
+        if let assignedID = activeUserCardID(for: setPiece.squadRole),
+           let card = userCard(withID: assignedID) {
+            return LegendsSetPieceTaker(id: card.id, name: card.name)
+        }
+        return automaticUserSetPieceTaker(for: setPiece)
+    }
+
+    private func activeUserCardID(for role: LegendsSquadRole) -> String? {
+        let assignedID: String?
+        if role == .captain {
+            assignedID = store.profile.captainCardID
+        } else {
+            assignedID = store.profile.squadRoleAssignments[role.rawValue]
+        }
+        guard let assignedID,
+              !unavailableUserCardIDs.contains(assignedID),
+              onPitchCardIDs.contains(assignedID),
+              let card = LegendsCardDatabase.all.first(where: { $0.id == assignedID }),
+              store.isSigned(card),
+              !store.isRetired(card) else {
+            return nil
+        }
+        return assignedID
+    }
+
+    private func userCard(withID id: String) -> LegendsCard? {
+        guard !unavailableUserCardIDs.contains(id), onPitchCardIDs.contains(id),
+              let card = LegendsCardDatabase.all.first(where: { $0.id == id }),
+              store.isSigned(card), !store.isRetired(card) else { return nil }
+        return card
+    }
+
+    private func automaticLeadershipCard() -> LegendsCard? {
+        onPitchCardIDs.compactMap { $0 }
+            .filter { !unavailableUserCardIDs.contains($0) }
+            .compactMap { id in LegendsCardDatabase.all.first(where: { $0.id == id }) }
+            .filter { $0.position != .goalkeeper && store.isSigned($0) && !store.isRetired($0) }
+            .max {
+                let lhsAttributes = store.effectiveDetailedAttributes(for: $0)
+                let rhsAttributes = store.effectiveDetailedAttributes(for: $1)
+                let lhs = LegendsMatchSelectors.bounded(Double(lhsAttributes.leadership) * 0.7
+                    + Double(lhsAttributes.composure) * 0.2 + Double(store.effectiveOverall(for: $0)) * 0.1)
+                let rhs = LegendsMatchSelectors.bounded(Double(rhsAttributes.leadership) * 0.7
+                    + Double(rhsAttributes.composure) * 0.2 + Double(store.effectiveOverall(for: $1)) * 0.1)
+                return lhs == rhs ? $0.id > $1.id : lhs < rhs
+            }
+    }
+
+    private func automaticUserSetPieceTaker(for setPiece: LegendsSetPiece) -> LegendsSetPieceTaker? {
+        let candidates = onPitchCardIDs.compactMap { id -> LegendsCard? in
+            guard let id, !unavailableUserCardIDs.contains(id),
+                  let card = LegendsCardDatabase.all.first(where: { $0.id == id }),
+                  card.position != .goalkeeper, store.isSigned(card), !store.isRetired(card) else { return nil }
+            return card
+        }
+        guard let selected = candidates.max(by: { lhs, rhs in
+            let left = userSetPieceScore(lhs, for: setPiece)
+            let right = userSetPieceScore(rhs, for: setPiece)
+            return left == right ? lhs.id > rhs.id : left < right
+        }) else { return nil }
+        return LegendsSetPieceTaker(id: selected.id, name: selected.name)
+    }
+
+    private func userSetPieceScore(_ card: LegendsCard, for setPiece: LegendsSetPiece) -> Int {
+        let attributes = store.effectiveDetailedAttributes(for: card)
+        switch setPiece {
+        case .penalty:
+            return LegendsMatchSelectors.shooting(attributes) * 2
+                + attributes.setPieces * 2 + attributes.composure + store.effectiveOverall(for: card)
+        case .directFreeKick:
+            return attributes.setPieces * 3 + attributes.longShots * 2
+                + attributes.passing + attributes.composure
+        case .leftCorner, .rightCorner:
+            return attributes.crossing * 3 + attributes.setPieces * 2
+                + attributes.vision + attributes.passing
+        }
+    }
+
+    private func automaticOpponentSetPieceTaker(for setPiece: LegendsSetPiece) -> LegendsSetPieceTaker? {
+        let candidates = opponentRoster.players.filter { $0.position != .goalkeeper }
+        guard let selected = candidates.max(by: { lhs, rhs in
+            let left = opponentSetPieceScore(lhs, for: setPiece)
+            let right = opponentSetPieceScore(rhs, for: setPiece)
+            return left == right ? lhs.id > rhs.id : left < right
+        }) else { return nil }
+        return LegendsSetPieceTaker(id: selected.id, name: selected.name)
+    }
+
+    private func opponentSetPieceScore(_ player: SyntheticOpponentPlayer, for setPiece: LegendsSetPiece) -> Int {
+        switch setPiece {
+        case .penalty:
+            return player.shooting * 2 + LegendsMatchSelectors.shooting(player.detailed) * 2
+                + player.overall
+        case .directFreeKick:
+            return LegendsMatchSelectors.shooting(player.detailed) * 2
+                + LegendsMatchSelectors.passing(player.detailed) + player.shooting
+        case .leftCorner, .rightCorner:
+            return player.passing * 2 + LegendsMatchSelectors.passing(player.detailed) * 2
+                + player.overall
+        }
+    }
+
     // MARK: - Playback controls
 
     func start() {
@@ -671,7 +863,7 @@ final class LegendsLiveMatch {
         say(event.text, side: event.team)
     }
 
-    func presentRestart(_ restart: LegendsMatchRestart) {
+    func presentRestart(_ restart: LegendsMatchRestart, takerName: String? = nil) {
         let text: String
         let side: Side
         switch restart {
@@ -684,11 +876,14 @@ final class LegendsLiveMatch {
         case .goalKick(let team):
             text = "Play restarts with a goal kick."
             side = team
-        case .corner(let team, _):
-            text = "The attacking side prepare to take the corner."
+        case .corner(let team, let channel):
+            let corner = channel == .left ? "left corner" : "right corner"
+            text = takerName.map { "\($0) will take the \(corner)." }
+                ?? "The attacking side prepare to take the corner."
             side = team
         case .freeKick(let team, _):
-            text = "Play restarts with the free kick."
+            text = takerName.map { "\($0) stands over the free kick." }
+                ?? "Play restarts with the free kick."
             side = team
         case .throwIn(let team, _):
             text = "Play restarts with the throw-in."
@@ -916,6 +1111,20 @@ final class LegendsLiveMatch {
     /// coin flip. The attacker who takes the shot is credited as scorer
     /// directly — no second, unrelated dice roll the way the old
     /// `weightedScorer()` ran *after* the goal was already decided.
+    static func setPieceKind(for outcome: LegendsMatchEvent.Outcome,
+                             channel: LegendsMatchEvent.Channel,
+                             penaltyAwarded: Bool = false) -> LegendsSetPiece? {
+        if penaltyAwarded { return .penalty }
+        switch outcome {
+        case .blocked:
+            return channel == .left ? .leftCorner : .rightCorner
+        case .foul:
+            return .directFreeKick
+        default:
+            return nil
+        }
+    }
+
     private func resolveChance(forUser: Bool) {
         let attacker: ShotContestant
         let energyFactor: Double
@@ -936,20 +1145,35 @@ final class LegendsLiveMatch {
         let pConvert = conversionProbability(attacker: attacker, defense: defense.contestant, energyFactor: energyFactor)
         let scored = Double.random(in: 0..<1, using: &rng) < pConvert
         eventSequence += 1
-        let outcome: LegendsMatchEvent.Outcome = scored
+        let resolvedOutcome: LegendsMatchEvent.Outcome = scored
             ? .goal
             : nonScoringOutcome(attacker: attacker, defense: defense.contestant)
+        let channel: LegendsMatchEvent.Channel = eventSequence.isMultiple(of: 2) ? .right : .left
+        let side: Side = forUser ? .home : .away
+        // Reclassify a small deterministic share of already-resolved chances
+        // as penalties. This consumes no RNG and never changes whether the
+        // chance scored, preserving the established score/outcome model.
+        let penaltyAwarded = (minute + eventSequence * 13 + incidentScheduleOffset).isMultiple(of: 29)
+        let outcome: LegendsMatchEvent.Outcome = penaltyAwarded && resolvedOutcome == .blocked
+            ? .saved
+            : resolvedOutcome
+        let setPiece = Self.setPieceKind(for: outcome, channel: channel, penaltyAwarded: penaltyAwarded)
+        let selectedSetPieceTaker = setPiece.flatMap { self.setPieceTaker(for: $0, team: side) }
         let event = LegendsMatchEvent(
             id: "M\(minute)-E\(eventSequence)", minute: minute,
-            side: forUser ? .home : .away,
+            side: side,
             outcome: outcome,
-            channel: eventSequence.isMultiple(of: 2) ? .right : .left,
+            channel: channel,
             attackPattern: attackPattern(forUser: forUser, shooterID: attacker.id, creatorID: creator?.id),
-            creatorID: creator?.id, creatorName: creator?.name,
+            creatorID: penaltyAwarded ? nil : creator?.id,
+            creatorName: penaltyAwarded ? nil : creator?.name,
             shooterID: attacker.id, shooterName: attacker.name,
             markerID: defense.markerID, markerName: defense.markerName,
             goalkeeperID: defense.goalkeeperID, goalkeeperName: defense.goalkeeperName,
-            expectedGoals: pConvert
+            expectedGoals: pConvert,
+            setPiece: setPiece,
+            setPieceTakerID: selectedSetPieceTaker?.id,
+            setPieceTakerName: selectedSetPieceTaker?.name
         )
         appendAuthoritativeEvent(event)
         if scored {
@@ -1012,16 +1236,22 @@ final class LegendsLiveMatch {
         let channel: LegendsMatchEvent.Channel = minute.isMultiple(of: 2) ? .right : .left
 
         eventSequence += 1
+        let side: Side = forUser ? .home : .away
+        let setPiece = Self.setPieceKind(for: outcome, channel: channel)
+        let selectedSetPieceTaker = setPiece.flatMap { self.setPieceTaker(for: $0, team: side) }
         let event = LegendsMatchEvent(
             id: "M\(minute)-E\(eventSequence)", minute: minute,
-            side: forUser ? .home : .away,
+            side: side,
             outcome: outcome, channel: channel,
             attackPattern: outcome == .offside ? .counterAttack : .wideCross,
             creatorID: supporting.id, creatorName: supporting.name,
             shooterID: actor.id, shooterName: actor.name,
             markerID: defender.id, markerName: defender.name,
             goalkeeperID: nil, goalkeeperName: nil,
-            expectedGoals: 0
+            expectedGoals: 0,
+            setPiece: setPiece,
+            setPieceTakerID: selectedSetPieceTaker?.id,
+            setPieceTakerName: selectedSetPieceTaker?.name
         )
         appendAuthoritativeEvent(event)
         if !uses2DPresentation {
@@ -1294,6 +1524,7 @@ final class LegendsLiveMatch {
         let onName = LegendsCardDatabase.all.first { $0.id == onCardID }?.name ?? ""
 
         onPitchCardIDs[slotIndex] = onCardID
+        unavailableUserCardIDs.insert(offCardID)
         minutesPlayedByCardID[onCardID, default: 0] = 0
         energyBySlot[slotIndex] = 100
         benchCardIDs.remove(at: benchIndex)

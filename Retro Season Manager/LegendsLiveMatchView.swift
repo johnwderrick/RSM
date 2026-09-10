@@ -148,8 +148,8 @@ struct LegendsLiveMatchView: View {
             simulation.onAmbientAction = { event in
                 live.presentAmbientAction(event)
             }
-            simulation.onRestartPresentation = { restart in
-                live.presentRestart(restart)
+            simulation.onRestartPresentation = { restart, takerName in
+                live.presentRestart(restart, takerName: takerName)
             }
             live.start()
             simulation.speedMultiplier = live.isPaused ? 0 : live.speed

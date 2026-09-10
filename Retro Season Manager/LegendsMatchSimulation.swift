@@ -378,8 +378,9 @@ final class LegendsMatchSimulation {
     var onAmbientAction: ((LegendsAmbientActionEvent) -> Void)?
     /// Fired when a direct restart state is installed. The restart is already
     /// at its authoritative location; this callback only narrates that same
-    /// state in the live commentary feed.
-    var onRestartPresentation: ((LegendsMatchRestart) -> Void)?
+    /// state in the live commentary feed. The optional name is the structured
+    /// taker selected for a corner or direct free kick.
+    var onRestartPresentation: ((LegendsMatchRestart, String?) -> Void)?
     /// Called only after the final visual waypoint for an authoritative
     /// event resolves. The live engine uses this acknowledgement to release
     /// its presentation hold and advance to the next minute/commentary line.
@@ -1035,7 +1036,7 @@ final class LegendsMatchSimulation {
         }
     }
 
-    private func restartCommentary(for restart: LegendsMatchRestart) -> String {
+    private func restartCommentary(for restart: LegendsMatchRestart, takerName: String? = nil) -> String {
         switch restart {
         case .kickoff:
             return "The conceding team restart from the centre spot."
@@ -1043,10 +1044,13 @@ final class LegendsMatchSimulation {
             return "The goalkeeper gathers the ball and restarts play."
         case .goalKick:
             return "Play restarts with a goal kick."
-        case .corner:
-            return "The attacking side prepare to take the corner."
+        case .corner(_, let channel):
+            let corner = channel == .left ? "left corner" : "right corner"
+            return takerName.map { "\($0) will take the \(corner)." }
+                ?? "The attacking side prepare to take the corner."
         case .freeKick:
-            return "Play restarts with the free kick."
+            return takerName.map { "\($0) stands over the free kick." }
+                ?? "Play restarts with the free kick."
         case .throwIn:
             return "Play restarts with the throw-in."
         case .openPlay:
@@ -2089,11 +2093,17 @@ final class LegendsMatchSimulation {
     private func beginDirectRestartPresentation() {
         guard let currentAttack = activeAttack else { return }
         let restart: LegendsMatchRestart
+        let restartTakerID: String?
+        let restartTakerName: String?
         if let authoritativeEvent = currentAttack.event {
             restart = authoritativeEvent.presentationScript.restart
+            restartTakerID = authoritativeEvent.presentationScript.restartTakerID
+            restartTakerName = authoritativeEvent.presentationScript.restartTakerName
         } else {
             let team: Side = currentAttack.forUser ? .away : .home
             restart = currentAttack.scored ? .kickoff(team: team) : .openPlay(team: team, channel: .left)
+            restartTakerID = nil
+            restartTakerName = nil
         }
 
         placeBallForDirectRestart(restart)
@@ -2126,10 +2136,19 @@ final class LegendsMatchSimulation {
                 }
                 scriptedPossessorID = taker.id
             }
+        } else if let restartTakerID,
+                  let takerIndex = players.firstIndex(where: { $0.id == restartTakerID && $0.team == restartTeam }) {
+            let restartPoint = restartPosition(for: restart)
+            restartSetupTargets[restartTakerID] = restartPoint
+            players[takerIndex].position = restartPoint
+            players[takerIndex].homeAnchor = restartPoint
+            players[takerIndex].velocity = .zero
+            scriptedPossessorID = restartTakerID
         }
 
         for index in players.indices {
             guard players[index].id != kickoffTakerID,
+                  players[index].id != restartTakerID,
                   let target = restartSetupTargets[players[index].id] else { continue }
             players[index].position = target
             players[index].homeAnchor = target
@@ -2143,9 +2162,9 @@ final class LegendsMatchSimulation {
         restartPresentationElapsed = 0
         isPresentingRestart = true
         currentPresentationSide = restartTeam
-        currentPresentationText = restartCommentary(for: restart)
+        currentPresentationText = restartCommentary(for: restart, takerName: restartTakerName)
         currentPresentationAction = nil
-        onRestartPresentation?(restart)
+        onRestartPresentation?(restart, restartTakerName)
     }
 
     private func finishActiveAttackAfterRestart() {
@@ -2166,10 +2185,11 @@ final class LegendsMatchSimulation {
                 preferredRestartPlayerID = presentation.goalkeeperID
             case .corner(let team, _):
                 possessionTeam = team
-                preferredRestartPlayerID = presentation.creatorID
+                preferredRestartPlayerID = presentation.restartTakerID ?? presentation.creatorID
             case .freeKick(let team, _):
                 possessionTeam = team
-                preferredRestartPlayerID = team == event.side ? presentation.shooterID : presentation.markerID
+                preferredRestartPlayerID = presentation.restartTakerID
+                    ?? (team == event.side ? presentation.shooterID : presentation.markerID)
             case .throwIn(let team, _):
                 possessionTeam = team
                 preferredRestartPlayerID = presentation.creatorID
