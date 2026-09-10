@@ -196,6 +196,7 @@ struct SettingsMenuView: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 10)
+            .frame(minHeight: 44)
             .background(Retro.panel.opacity(0.6))
             .clipShape(RoundedRectangle(cornerRadius: 8))
         }
@@ -233,6 +234,7 @@ struct SettingsDetailView: View {
                     .foregroundStyle(Retro.accent)
                 }
                 .buttonStyle(.plain)
+                .frame(minHeight: 44)
 
                 content
             }
@@ -565,4 +567,3 @@ struct SettingsDetailView: View {
         }
     }
 }
-

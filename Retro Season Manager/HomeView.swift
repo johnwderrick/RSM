@@ -881,7 +881,7 @@ struct MedicalCentreSheet: View {
                 Circle()
                     .fill(severe ? Color(red: 0.95, green: 0.4, blue: 0.35) : Retro.highlight)
                     .frame(width: 8, height: 8)
-                Text(player.position.rawValue)
+                Text(player.careerPositionLabel)
                     .font(.system(.caption2, design: .monospaced).bold())
                     .foregroundStyle(Retro.background)
                     .padding(.horizontal, 6).padding(.vertical, 2)
@@ -1132,4 +1132,3 @@ struct FixturesMiniPanel: View {
         }
     }
 }
-

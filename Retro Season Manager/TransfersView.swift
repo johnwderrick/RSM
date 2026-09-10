@@ -512,7 +512,7 @@ struct TransfersView: View {
         VStack(spacing: 4) {
             ForEach(sortedSquad) { player in
                 Button { profile = .squad(player) } label: {
-                    TransferRow(position: player.position.rawValue,
+                    TransferRow(position: player.careerPositionLabel,
                                 name: player.name,
                                 subtitle: "Age \(player.age) · \(player.rating) OVR\(player.isTransferListed ? " · LISTED" : "")",
                                 trailing: formatMoney(player.value),
@@ -556,7 +556,7 @@ struct TransfersView: View {
                     : store.userClub.transferBudget >= target.askingPrice
                         && store.userClub.wageBill + target.player.wage <= store.userClub.wageBudget
                 Button { profile = .market(target) } label: {
-                    TransferRow(position: target.player.position.rawValue,
+                    TransferRow(position: target.player.careerPositionLabel,
                                 name: target.player.name,
                                 subtitle: sellerName(target) + " · \(target.player.rating) OVR" + scoutTag(target),
                                 trailing: priceLabel(for: target),
@@ -717,4 +717,3 @@ struct ConfidenceBar: View {
 
     private var color: Color { confidenceColor(value) }
 }
-

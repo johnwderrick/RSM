@@ -202,7 +202,7 @@ struct SeasonReviewView: View {
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
                 ForEach(xi) { player in
                     HStack(spacing: 6) {
-                        Text(player.position.rawValue)
+                        Text(player.careerPositionLabel)
                             .font(.system(size: 9, weight: .bold, design: .monospaced))
                             .foregroundStyle(Retro.highlight)
                             .frame(width: 30, alignment: .leading)
@@ -309,4 +309,3 @@ struct CareerEndView: View {
         }
     }
 }
-

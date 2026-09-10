@@ -437,6 +437,12 @@ struct Player: Identifiable, Codable {
         }
     }
 
+    /// The authoritative specific position label used by Career Mode lists,
+    /// match preparation and match-day player rows. The broad `position`
+    /// remains useful for squad rules; presentation should prefer this
+    /// detailed role whenever it is available.
+    var careerPositionLabel: String { detailedPosition.rawValue }
+
     /// A short read on match fitness, for the squad screen.
     var fitnessLabel: String {
         switch fitness {

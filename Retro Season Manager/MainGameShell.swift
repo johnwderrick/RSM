@@ -71,7 +71,7 @@ enum GameSection: CaseIterable {
         case .home:      return "HOME"
         case .squad:     return "SQUAD"
         case .table:     return "TABLE"
-        case .fixtures:  return "FIXTURES"
+        case .fixtures:  return "CALENDAR"
         case .search:    return "SCOUT"
         case .transfers: return "TRANSFERS"
         case .inbox:     return "INBOX"
@@ -123,7 +123,11 @@ struct MainGameView: View {
                         .frame(height: 1)
                     content
                 }
-                .background(CareerPalette.canvas)
+                // Most Career destinations use the established light-on-dark
+                // palette. Home supplies its own light canvas, so keeping the
+                // shell dark prevents transparent destination views from
+                // rendering pale text on a pale surface.
+                .background(Retro.background)
                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                 .padding(8)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -212,7 +216,7 @@ struct SidebarView: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                 }
-                .frame(maxWidth: .infinity, minHeight: compact ? 44 : 52)
+                .frame(maxWidth: .infinity, minHeight: compact ? 46 : 52)
                 if item == .inbox && unreadCount > 0 {
                     Text(unreadCount > 9 ? "9+" : "\(unreadCount)")
                         .font(.system(size: 8, weight: .bold, design: .monospaced))
@@ -225,6 +229,7 @@ struct SidebarView: View {
             }
         }
         .buttonStyle(PressableButtonStyle())
+        .accessibilityIdentifier("career.nav.\(item.navLabel.lowercased())")
     }
 
     /// One sidebar icon: the hand-painted pixel-art asset, dimmed when not
@@ -331,6 +336,9 @@ struct TopBar: View {
 struct ContinueButton: View {
     let store: GameStore
 
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    private var compact: Bool { verticalSizeClass == .compact }
+
     var body: some View {
         Button {
             Haptics.impact()
@@ -351,8 +359,9 @@ struct ContinueButton: View {
         } label: {
             Text(label)
                 .font(.system(.callout, design: .monospaced).bold())
-                .padding(.horizontal, 18)
-                .padding(.vertical, 10)
+                .padding(.horizontal, compact ? 12 : 18)
+                .padding(.vertical, compact ? 8 : 10)
+                .frame(minHeight: compact ? 40 : 44)
                 .background(
                     LinearGradient(colors: [store.isUserMatchToday ? Retro.highlight : Retro.emerald,
                                              (store.isUserMatchToday ? Retro.highlight : Retro.forest)],
@@ -363,6 +372,7 @@ struct ContinueButton: View {
                 .shadow(color: (store.isUserMatchToday ? Retro.highlight : Retro.emerald).opacity(0.45), radius: 6, y: 3)
         }
         .buttonStyle(PressableButtonStyle())
+        .accessibilityIdentifier("career.continue")
     }
 
     private var label: String {
@@ -371,4 +381,3 @@ struct ContinueButton: View {
         return "CONTINUE ▸"
     }
 }
-

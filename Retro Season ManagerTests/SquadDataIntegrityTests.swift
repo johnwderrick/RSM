@@ -15,6 +15,24 @@ import XCTest
 
 @MainActor
 final class SquadDataIntegrityTests: XCTestCase {
+    func testCareerNavigationNamesFixturesAsCalendar() {
+        XCTAssertEqual(GameSection.fixtures.navLabel, "CALENDAR")
+        XCTAssertEqual(GameSection.fixtures.title, "Calendar")
+    }
+
+    func testCareerPositionLabelKeepsSpecificDefensiveRole() {
+        let leftBack = Player(name: "Left Back", position: .defender,
+                              detailedPosition: .leftBack, age: 24, rating: 72)
+        let centreBack = Player(name: "Centre Back", position: .defender,
+                                detailedPosition: .centreBack, age: 25, rating: 74)
+        let rightBack = Player(name: "Right Back", position: .defender,
+                               detailedPosition: .rightBack, age: 23, rating: 71)
+
+        XCTAssertEqual(leftBack.careerPositionLabel, "LB")
+        XCTAssertEqual(centreBack.careerPositionLabel, "CB")
+        XCTAssertEqual(rightBack.careerPositionLabel, "RB")
+    }
+
     func testEveryHistoricalClubHasEighteenPlayers() {
         for (year, book) in GameStore.historicalEras {
             for (club, roster) in book {

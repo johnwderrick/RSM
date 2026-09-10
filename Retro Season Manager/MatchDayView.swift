@@ -205,7 +205,7 @@ struct PreMatchHubView: View {
                 .foregroundStyle(Retro.accent)
             ForEach(xi) { player in
                 HStack(spacing: 6) {
-                    Text(player.position.rawValue)
+                    Text(player.careerPositionLabel)
                         .font(.system(size: 9, weight: .bold, design: .monospaced))
                         .frame(width: 28, alignment: .leading)
                         .foregroundStyle(Retro.highlight)
@@ -1065,12 +1065,14 @@ struct MatchView: View {
                 Text("CONTINUE ▸")
                     .font(.system(.body, design: .monospaced).bold())
                     .frame(maxWidth: .infinity)
+                    .frame(minHeight: 44)
                     .padding(.vertical, 12)
                     .background(Retro.accent)
                     .foregroundStyle(Retro.background)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier("career.postMatch.continue")
         }
         .padding(24)
         .frame(maxWidth: 420)
@@ -1190,7 +1192,7 @@ struct SubsSheet: View {
                             onSelect(player.id)
                         } label: {
                             HStack(spacing: 6) {
-                                Text(player.position.rawValue)
+                                Text(player.careerPositionLabel)
                                     .font(.system(size: 9, weight: .bold, design: .monospaced))
                                     .frame(width: 30)
                                     .foregroundStyle(Retro.highlight)
@@ -1221,4 +1223,3 @@ struct SubsSheet: View {
         .frame(maxWidth: .infinity)
     }
 }
-

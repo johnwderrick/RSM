@@ -620,7 +620,7 @@ struct SquadListRow: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Text(player.position.rawValue)
+            Text(player.careerPositionLabel)
                 .font(.system(size: 9, weight: .bold, design: .monospaced))
                 .foregroundStyle(Retro.background)
                 .frame(width: 32)
@@ -698,5 +698,4 @@ struct SquadListRow: View {
         }
     }
 }
-
 
