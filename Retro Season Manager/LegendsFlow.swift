@@ -447,83 +447,74 @@ struct LegendsHomeView: View {
             ZStack {
                 LegendsPalette.contentBackground.ignoresSafeArea()
 
-                // Destinations render in place; tab switches crossfade
-                // quickly instead of sliding like a modal.
+                // Destinations render in place and swap instantly. No
+                // screen-level transition: the outgoing and incoming views
+                // each draw their own sidebar, so any crossfade here flashes
+                // and double-renders the whole chrome during the swap.
                 switch screen {
                 case .squad:
                     LegendsSquadView(store: store, onNavigate: { item in
                         navigateFromDestination(item, current: .squad)
                     }) { requestExit() }
-                    .transition(.opacity)
                 case .training:
                     LegendsTrainingView(store: store, onNavigate: { item in
                         navigateFromDestination(item, current: .training)
                     }) { requestExit() }
-                    .transition(.opacity)
                 case .packs:
                     LegendsPacksView(store: store, onNavigate: { item in
                         navigateFromDestination(item, current: .packs)
                     }) { requestExit() }
-                    .transition(.opacity)
                 case .collection:
                     LegendsCollectionView(store: store, onNavigate: { item in
                         navigateFromDestination(item, current: .collection)
                     }) { requestExit() }
-                    .transition(.opacity)
                 case .match:
                     LegendsMatchView(store: store, onNavigate: { item in
                         if item == .home { screen = nil; selectedNav = .home }
                         else { navigateFromDestination(item, current: .home) }
                     }) { requestExit() }
-                    .transition(.opacity)
                 case .challenges:
                     LegendsChallengesView(store: store, onNavigate: { item in
                         navigateFromDestination(item, current: .challenges)
                     }) { requestExit() }
-                    .transition(.opacity)
                 case .table:
                     LegendsDivisionTableView(store: store, onNavigate: { item in
                         navigateFromDestination(item, current: .table)
                     }) { requestExit() }
-                    .transition(.opacity)
                 case .club:
                     LegendsClubHubView(store: store, onNavigate: { item in
                         navigateFromDestination(item, current: .club)
                     }, onOpenManagers: { screen = .managers }, onOpenStadiums: { screen = .stadiums }) { requestExit() }
-                    .transition(.opacity)
                 case .managers:
                     LegendsManagersView(store: store, onNavigate: { item in
                         if item == .club { screen = .club }
                         else { navigateFromDestination(item, current: .club) }
                     }) { requestExit() }
-                    .transition(.opacity)
                 case .stadiums:
                     LegendsStadiumsView(store: store, onNavigate: { item in
                         if item == .club { screen = .club }
                         else { navigateFromDestination(item, current: .club) }
                     }) { requestExit() }
-                    .transition(.opacity)
                 case .hall:
                     LegendsHallView(store: store, onNavigate: { item in
                         navigateFromDestination(item, current: .hall)
                     }) { requestExit() }
-                    .transition(.opacity)
                 case .planning:
-                    LegendsCareerPlanningView(store: store, onBack: { screen = nil })
-                        .transition(.opacity)
+                    LegendsCareerPlanningView(store: store, onNavigate: { item in
+                        navigateFromDestination(item, current: .planning)
+                    }, onBack: { screen = nil; selectedNav = .home })
                 case .reports:
-                    LegendsSeasonReportsView(store: store, onBack: { screen = nil })
-                        .transition(.opacity)
+                    LegendsSeasonReportsView(store: store, onNavigate: { item in
+                        navigateFromDestination(item, current: .reports)
+                    }, onBack: { screen = nil; selectedNav = .home })
                 case .profile:
                     LegendsManagerProfileView(store: store, onNavigate: { item in
                         navigateFromDestination(item, current: .profile)
                     }) { requestExit() }
-                    .transition(.opacity)
                 case .settings:
                     LegendsSettingsView(store: store, onNavigate: { item in
                         navigateFromDestination(item, current: .settings)
                     }) { requestExit() }
-                    .transition(.opacity)
                 case nil:
                     HStack(spacing: 0) {
                         LegendsSidebar(selected: $selectedNav, compact: isCompact) { item in
@@ -549,10 +540,8 @@ struct LegendsHomeView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
-                    .transition(.opacity)
                 }
             }
-            .animation(.easeOut(duration: 0.15), value: screen)
             .frame(width: geo.size.width, height: geo.size.height)
         }
         .onAppear {
@@ -1038,6 +1027,10 @@ struct LegendsMenuShell<Content: View>: View {
                         .foregroundStyle(.white)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
+                        // Lets XCUITest assert which destination is actually
+                        // on screen after a sidebar tap. Lives on a real
+                        // element no destination overrides.
+                        .accessibilityIdentifier("legends.shell.\(currentNav.rawValue.lowercased())")
                     Text(subtitle.uppercased())
                         .font(.system(size: 8, weight: .bold, design: .monospaced))
                         .foregroundStyle(.white.opacity(0.62))
@@ -1095,30 +1088,40 @@ struct LegendsSidebar: View {
 
             // The item list scrolls so every tab stays reachable on short
             // landscape screens instead of clipping the bottom entries.
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 6) {
-                    ForEach(LegendsNavItem.allCases) { item in
-                        Button {
-                            onSelect(item)
-                        } label: {
-                            VStack(spacing: 3) {
-                                LegendsNavIcon(item: item, size: compact ? 17 : 21)
-                                Text(item.rawValue)
-                                    .font(.system(size: compact ? 7 : 8, weight: .bold, design: .monospaced))
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.6)
+            ScrollViewReader { proxy in
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 6) {
+                        ForEach(LegendsNavItem.allCases) { item in
+                            Button {
+                                onSelect(item)
+                            } label: {
+                                VStack(spacing: 3) {
+                                    LegendsNavIcon(item: item, size: compact ? 17 : 21)
+                                    Text(item.rawValue)
+                                        .font(.system(size: compact ? 7 : 8, weight: .bold, design: .monospaced))
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(0.6)
+                                }
+                                .foregroundStyle(selected == item ? .white : .white.opacity(0.68))
+                                .frame(maxWidth: .infinity, minHeight: compact ? 40 : 52)
+                                .background(selected == item ? LegendsPalette.green : .clear)
+                                .clipShape(RoundedRectangle(cornerRadius: 9))
                             }
-                            .foregroundStyle(selected == item ? .white : .white.opacity(0.68))
-                            .frame(maxWidth: .infinity, minHeight: compact ? 40 : 52)
-                            .background(selected == item ? LegendsPalette.green : .clear)
-                            .clipShape(RoundedRectangle(cornerRadius: 9))
+                            .id(item.id)
+                            .accessibilityLabel(item.rawValue.capitalized)
+                            .accessibilityIdentifier("legends.nav.\(item.rawValue.lowercased())")
+                            .accessibilityAddTraits(selected == item ? [.isSelected] : [])
+                            .buttonStyle(PressableButtonStyle())
                         }
-                        .accessibilityLabel(item.rawValue.capitalized)
-                        .accessibilityIdentifier("legends.nav.\(item.rawValue.lowercased())")
-                        .buttonStyle(PressableButtonStyle())
                     }
+                    .padding(.bottom, 8)
                 }
-                .padding(.bottom, 8)
+                .onAppear {
+                    proxy.scrollTo(selected.id, anchor: .center)
+                }
+                .onChange(of: selected) { _, item in
+                    proxy.scrollTo(item.id, anchor: .center)
+                }
             }
         }
         .padding(.horizontal, 7)

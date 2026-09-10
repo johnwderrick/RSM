@@ -2,11 +2,12 @@ import SwiftUI
 
 struct LegendsCareerPlanningView: View {
     let store: LegendsStore
+    var onNavigate: ((LegendsNavItem) -> Void)? = nil
     let onBack: () -> Void
     private var plan: LegendsSquadCareerPlan { store.squadCareerPlan() }
 
     var body: some View {
-        LegendsMenuShell(store: store, title: "CAREER PLANNING", subtitle: "PLAN THE NEXT GENERATION", icon: "chart.bar.xaxis", accent: LegendsPalette.cyan, onBack: onBack, currentNav: .planning) {
+        LegendsMenuShell(store: store, title: "CAREER PLANNING", subtitle: "PLAN THE NEXT GENERATION", icon: "chart.bar.xaxis", accent: LegendsPalette.cyan, onBack: onBack, currentNav: .planning, onNavigate: onNavigate) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     metrics

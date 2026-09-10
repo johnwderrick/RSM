@@ -2,11 +2,12 @@ import SwiftUI
 
 struct LegendsSeasonReportsView: View {
     let store: LegendsStore
+    var onNavigate: ((LegendsNavItem) -> Void)? = nil
     let onBack: () -> Void
     @State private var selectedReport: LegendsSeasonDevelopmentReport?
 
     var body: some View {
-        LegendsMenuShell(store: store, title: "SEASON REPORTS", subtitle: "PLAYER DEVELOPMENT HISTORY", icon: "chart.line.uptrend.xyaxis", accent: LegendsPalette.blue, onBack: onBack, currentNav: .planning) {
+        LegendsMenuShell(store: store, title: "SEASON REPORTS", subtitle: "PLAYER DEVELOPMENT HISTORY", icon: "chart.line.uptrend.xyaxis", accent: LegendsPalette.blue, onBack: onBack, currentNav: .reports, onNavigate: onNavigate) {
             VStack(alignment: .leading, spacing: 12) {
                 if store.profile.seasonReports.isEmpty {
                     Text("No completed season reports yet.").font(.system(size: 12, design: .monospaced)).foregroundStyle(LegendsPalette.navy.opacity(0.65)).frame(maxWidth: .infinity, minHeight: 140)

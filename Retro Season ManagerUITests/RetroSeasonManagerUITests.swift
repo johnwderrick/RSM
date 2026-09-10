@@ -245,6 +245,103 @@ final class RetroSeasonManagerUITests: XCTestCase {
         XCTAssertTrue(app.buttons["legends.training.focusPicker"].label.contains("PASSING"))
     }
 
+    /// Regression coverage for the sidebar navigation cleanup: every
+    /// sidebar destination is reachable, Planning and Reports keep the
+    /// sidebar live (their shared chrome renders through LegendsMenuShell
+    /// with onNavigate), each highlights its own sidebar item, and rapid
+    /// switching never leaves stale or blank content. The selected sidebar
+    /// item is exposed to XCUITest via the `.isSelected` trait.
+    func testSidebarDestinationsSwitchCleanlyIncludingPlanningAndReports() throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_RESET_LEGENDS_MANAGER"]
+        app.launch()
+        completeOnboarding(app)
+
+        func assertLands(_ tabLabel: String, screenID: String) {
+            let tab = app.buttons[tabLabel]
+            XCTAssertTrue(tab.waitForExistence(timeout: 8), "Expected sidebar item \(tabLabel)")
+            // XCTest centers each tapped sidebar item, leaving the list
+            // decelerating; a touch during deceleration stops the scroll
+            // instead of activating the button. Let it settle, and retry
+            // once if a tap was swallowed that way.
+            for attempt in 1...2 {
+                Thread.sleep(forTimeInterval: attempt == 1 ? 0.5 : 0.8)
+                tab.tap()
+                let found = app.otherElements[screenID].waitForExistence(timeout: 8)
+                              || app.descendants(matching: .any)[screenID].waitForExistence(timeout: 2)
+                if found { return }
+                if attempt == 2 {
+                    let dump = XCTAttachment(uniformTypeIdentifier: "public.plain-text",
+                                             name: "tree-after-\(tabLabel).txt",
+                                             payload: app.debugDescription.data(using: .utf8)!)
+                    dump.lifetime = .keepAlways
+                    add(dump)
+                    XCTFail("Tapping \(tabLabel) should show \(screenID)")
+                }
+            }
+        }
+
+        func assertHighlights(_ tabLabel: String) {
+            let tab = app.buttons["legends.nav.\(tabLabel.lowercased())"]
+            XCTAssertTrue(tab.waitForExistence(timeout: 6), "Sidebar item \(tabLabel) should stay reachable")
+            if !tab.isSelected {
+                let dump = XCTAttachment(uniformTypeIdentifier: "public.plain-text",
+                                         name: "tree-highlight-\(tabLabel).txt",
+                                         payload: app.debugDescription.data(using: .utf8)!)
+                dump.lifetime = .keepAlways
+                add(dump)
+            }
+            XCTAssertTrue(tab.isSelected,
+                          "\(tabLabel) should carry the selected trait while its screen is open")
+            XCTAssertTrue(tab.isHittable,
+                          "\(tabLabel) should remain visible instead of the sidebar resetting to the top")
+        }
+
+        // The full destination sweep — every sidebar item must remain
+        // reachable, including Planning and Reports from their own screens.
+        // Anchors: screens that already publish their own identifier use it;
+        // the rest assert on the shell's derived header identifier.
+        let destinations: [(tab: String, screenID: String)] = [
+            ("Squad", "legends.shell.squad"), ("Training", "legends.training.screen"), ("Packs", "legends.shell.packs"),
+            ("Players", "legends.library"), ("Challenges", "legends.shell.challenges"),
+            ("Division", "legends.shell.division"), ("Club", "legends.shell.club"),
+            ("Planning", "legends.careerPlanning"), ("Reports", "legends.seasonReports"),
+            ("Manager", "legends.shell.manager"), ("Settings", "legends.shell.settings"),
+        ]
+        for destination in destinations {
+            assertLands(destination.tab, screenID: destination.screenID)
+        }
+
+        // From Reports: the sidebar must be live and each item must highlight
+        // itself — the old Reports screen highlighted PLANNING.
+        assertLands("Reports", screenID: "legends.seasonReports")
+        assertHighlights("Reports")
+        assertLands("Planning", screenID: "legends.careerPlanning")
+        assertHighlights("Planning")
+        XCTAssertFalse(app.buttons["legends.nav.reports"].isSelected,
+                       "Planning must not highlight the Reports item")
+
+        // Direct sidebar routing from Planning to another destination.
+        assertLands("Squad", screenID: "legends.shell.squad")
+        // Rapid switching must not wedge or blank the app.
+        for tab in ["Packs", "Division", "Home", "Hall", "Home"] {
+            let tabButton = app.buttons[tab]
+            XCTAssertTrue(tabButton.waitForExistence(timeout: 6))
+            tabButton.tap()
+        }
+        let homeTab = app.buttons["legends.nav.home"]
+        XCTAssertTrue(homeTab.waitForExistence(timeout: 8),
+                      "Rapid switching should settle back on a live Home dashboard")
+        XCTAssertTrue(homeTab.isSelected, "Home should be highlighted after returning")
+
+        let screenshot = XCUIScreen.main.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = "Legends navigation sweep"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
     /// Shared onboarding flow: pick an archetype, scroll to and tap SELECT
     /// MANAGER, fill in a name, tap REVIEW PROFILE, then BEGIN YOUR LEGEND.
     /// Real XCUITest hit-testing (not raw screen coordinates) is what makes
