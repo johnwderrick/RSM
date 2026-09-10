@@ -707,7 +707,9 @@ final class LegendsLiveMatchTests: XCTestCase {
                 rng: SeededGenerator(seed: "assigned-penalty-\(seed)")
             )
             live.skipToEnd()
-            guard let penalty = live.events.first(where: { $0.setPiece == .penalty }) else { continue }
+            guard let penalty = live.events.first(where: {
+                $0.setPiece == .penalty && $0.side == .home
+            }) else { continue }
 
             XCTAssertEqual(penalty.setPieceTakerID, assignedID)
             XCTAssertEqual(penalty.setPieceTakerName, assignedName)
