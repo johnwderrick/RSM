@@ -365,6 +365,28 @@ extension LegendsStore {
         persist()
     }
 
+    /// Deterministic UI-test fixture for the redesigned Packs shelf: a
+    /// fully onboarded profile with real balances so the shelf shows both
+    /// affordable and unaffordable packs, and a mid-open Starter Pack
+    /// decision so the pending banner is present. No cards are awarded —
+    /// claiming stays a real UI action. Presentation only.
+    func preparePacksFixtureForDebug() {
+        profile = .starter()
+        profile.managerProfile = LegendsManagerProfile(
+            firstName: "Test", surname: "Manager", nationalityCode: "GB",
+            dateOfBirth: Date(timeIntervalSince1970: 315_532_800), archetype: .architect
+        )
+        // Balances chosen to make specific shelf states deterministic:
+        // bronze/silver/gold affordable while the premium packs are not.
+        // The club balance is intentionally unrelated to pack access.
+        profile.coins = 300
+        profile.packTokens = 3
+        profile.pendingPackID = "starter"
+        profile.pendingPackCardIDs = ["miessi-0506", "maldinho-9596", "batigora-9596"]
+        profile.hasClaimedStarterPack = false
+        persist()
+    }
+
     /// Deterministic UI-test fixture for the redesigned Training centre: the
     /// starter squad with seeded careers so the summary band, training-plan
     /// block and player rows show real development state — one prospect

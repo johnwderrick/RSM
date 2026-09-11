@@ -257,7 +257,7 @@ struct LegendsMatchView: View {
 
             Panel(title: "REWARDS") {
                 VStack(alignment: .leading, spacing: 6) {
-                    rewardRow("Coins", "+\(summary.coinsEarned)")
+                    rewardRow("Balance", "+\(summary.coinsEarned)")
                     if summary.tokensEarned > 0 { rewardRow("Pack Tokens", "+\(summary.tokensEarned)") }
                     rewardRow("Manager XP", "+\(summary.xpEarned)")
                 }
@@ -375,7 +375,7 @@ struct LegendsMatchView: View {
                         Text("Finished \(divisionResult.finalRank)/\(divisionResult.totalTeams) in Season \(divisionResult.season).")
                             .font(.system(.footnote, design: .monospaced))
                             .foregroundStyle(Retro.text.opacity(0.85))
-                        rewardRow("Season coins", "+\(divisionResult.reward.coins)")
+                        rewardRow("Season balance", "+\(divisionResult.reward.coins)")
                         rewardRow("Season tokens", "+\(divisionResult.reward.tokens)")
                         rewardRow("Season XP", "+\(divisionResult.reward.managerXP)")
                         Text("Next: \(divisionResult.newDivision.displayName)")
@@ -408,7 +408,7 @@ struct LegendsMatchView: View {
     /// screen actually matches what the player's balance just gained.
     private func challengeRewardText(_ challenge: LegendsChallenge) -> String {
         var parts: [String] = []
-        if challenge.coinReward > 0 { parts.append("+\(challenge.coinReward) coins") }
+        if challenge.coinReward > 0 { parts.append("+\(challenge.coinReward) balance") }
         if challenge.tokenReward > 0 { parts.append("+\(challenge.tokenReward) tokens") }
         return parts.joined(separator: ", ")
     }

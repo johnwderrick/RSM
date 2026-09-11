@@ -3,7 +3,7 @@ import XCTest
 
 /// Playability simulation (not a pass/fail gate). Models a realistic long-run
 /// Legends save using the live division-schedule path (14-fixture campaigns),
-/// rebuilding the squad each season and spending earned coins/tokens on packs,
+/// rebuilding the squad each season and spending earned pack tokens on packs,
 /// so the trajectory reveals pacing, economy, difficulty and retirement-turnover
 /// problems. Prints a per-campaign log plus a summary for human review.
 @MainActor
@@ -27,12 +27,11 @@ final class LegendsPlayabilitySimulationTests: XCTestCase {
         var lines: [String] = []
         var totalRetirements = 0
         var packsBought = 0
-        var coinPacks = 0
         var tokenPacks = 0
         var deadEndReason: String? = nil
 
-        // Column header: campaign | division | rating | vsDifficult | coins | tokens | owned | retired
-        lines.append("campaign | div        | rat | dif | coins | tokens | owned/\(LegendsCardDatabase.all.count) | ret")
+        // Column header: campaign | division | rating | vsDifficult | balance | tokens | owned | retired
+        lines.append("campaign | div        | rat | dif | balance | tokens | owned/\(LegendsCardDatabase.all.count) | ret")
         for campaign in 1...45 {
             // Season start: field the strongest available XI. A retirement at
             // the previous season's boundary may have opened slots; refill now.
@@ -56,7 +55,7 @@ final class LegendsPlayabilitySimulationTests: XCTestCase {
 
             // Off-season economy: spend on the best affordable packs and sign
             // the strongest unsigned cards from the library.
-            spendOnPacks(store, coins: &coinPacks, tokens: &tokenPacks, total: &packsBought)
+            spendOnPacks(store, tokens: &tokenPacks, total: &packsBought)
             signBestAvailable(store)
 
 
@@ -85,9 +84,9 @@ final class LegendsPlayabilitySimulationTests: XCTestCase {
         RATING vs DIFFICULTY note: opponent base rating in a division = 90 - division*4.
         \(lines.joined(separator: "\n"))
         ---- totals ----
-        packs opened (coin / token): \(packsBought) (\(coinPacks) / \(tokenPacks))
+        packs opened with tokens: \(packsBought) (\(tokenPacks))
         total retirements: \(totalRetirements)
-        final: div \(store.profile.division.displayName) rat \(store.currentTeamRating) coins \(store.profile.coins) tokens \(store.profile.packTokens) owned \(store.profile.ownedCardIDs.count)/\(LegendsCardDatabase.all.count)
+        final: div \(store.profile.division.displayName) rat \(store.currentTeamRating) balance \(store.profile.coins) tokens \(store.profile.packTokens) owned \(store.profile.ownedCardIDs.count)/\(LegendsCardDatabase.all.count)
         dead end: \(deadEndReason ?? "none")
         ==========================================================
         """)
@@ -156,16 +155,10 @@ final class LegendsPlayabilitySimulationTests: XCTestCase {
         }
     }
 
-    private func spendOnPacks(_ store: LegendsStore, coins: inout Int, tokens: inout Int, total: inout Int) {
-        // Spend coins upward: keep buying the best affine pack the balance allows.
+    private func spendOnPacks(_ store: LegendsStore, tokens: inout Int, total: inout Int) {
+        // Packs use tokens only; the club balance is reserved for facilities.
         while let pack = LegendsPackDatabase.all
-            .filter({ $0.currency == .coins && $0.cost > 0 && store.profile.coins >= $0.cost })
-            .max(by: { $0.cost < $1.cost }) {
-            if (try? store.openPack(pack)) != nil { total += 1; coins += 1 } else { break }
-        }
-        // Spend tokens on the best affine token pack.
-        while let pack = LegendsPackDatabase.all
-            .filter({ $0.currency == .tokens && $0.cost > 0 && store.profile.packTokens >= $0.cost })
+            .filter({ $0.cost > 0 && store.profile.packTokens >= $0.cost })
             .max(by: { $0.cost < $1.cost }) {
             if (try? store.openPack(pack)) != nil { total += 1; tokens += 1 } else { break }
         }

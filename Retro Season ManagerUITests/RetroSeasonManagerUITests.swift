@@ -303,7 +303,7 @@ final class RetroSeasonManagerUITests: XCTestCase {
         // Anchors: screens that already publish their own identifier use it;
         // the rest assert on the shell's derived header identifier.
         let destinations: [(tab: String, screenID: String)] = [
-            ("Squad", "legends.shell.squad"), ("Training", "legends.training.screen"), ("Packs", "legends.shell.packs"),
+            ("Squad", "legends.shell.squad"), ("Training", "legends.training.screen"), ("Packs", "legends.packs.screen"),
             ("Players", "legends.library"), ("Challenges", "legends.shell.challenges"),
             ("Division", "legends.shell.division"), ("Club", "legends.shell.club"),
             ("Planning", "legends.careerPlanning"), ("Reports", "legends.seasonReports"),
@@ -580,6 +580,133 @@ final class RetroSeasonManagerUITests: XCTestCase {
         let screenshot = XCUIScreen.main.screenshot()
         let attachment = XCTAttachment(screenshot: screenshot)
         attachment.name = "Legends Training redesign (compact landscape)"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    /// The redesigned Packs shelf and opening flow, driven by deterministic
+    /// fixture data (`UITEST_LEGENDS_PACKS`): real balances, an affordable and
+    /// an unaffordable tile, the pending Starter Pack banner, opening a pack,
+    /// revealing and selecting one of three candidates, claiming it into the
+    /// library, and scroll stability on compact landscape.
+    func testPacksScreenShowsBalancesOpensPackAndAwardsOneCandidate() throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_LEGENDS_PACKS"]
+        app.launch()
+
+        // The fixture profile is already onboarded, so tapping Legends goes
+        // straight to the dashboard (no onboarding flow).
+        let legendsButton = app.buttons["experience.legends"]
+        XCTAssertTrue(legendsButton.waitForExistence(timeout: 8),
+                      "Expected the RSM Legends entry button on the experience selector")
+        legendsButton.tap()
+
+        // Dashboard → Packs via the sidebar.
+        let packsTab = app.buttons["legends.nav.packs"]
+        XCTAssertTrue(packsTab.waitForExistence(timeout: 10),
+                      "Expected the Legends dashboard sidebar after entering Legends mode")
+        Thread.sleep(forTimeInterval: 0.5)
+        packsTab.tap()
+
+        let packsScreen = app.descendants(matching: .any)["legends.packs.screen"]
+        XCTAssertTrue(packsScreen.waitForExistence(timeout: 8), "Expected the Packs shelf")
+
+        // Resources mirror the fixture profile (300 club balance, 3 tokens).
+        XCTAssertTrue(app.descendants(matching: .any)["legends.packs.summary.balance"].waitForExistence(timeout: 6),
+                      "Expected the club balance stat")
+        XCTAssertTrue(app.descendants(matching: .any)["legends.packs.summary.tokens"].exists,
+                      "Expected the pack-token balance stat")
+
+        // Pending Starter Pack decision: highly visible and resumable.
+        let pendingBanner = app.descendants(matching: .any)["legends.packs.pending"]
+        XCTAssertTrue(pendingBanner.waitForExistence(timeout: 6),
+                      "The unfinished Starter Pack decision must be visible")
+
+        // Affordable and unaffordable tiles both exist with their stable ids.
+        let bronzeTile = app.descendants(matching: .any)["legends.packs.pack.bronze"]
+        XCTAssertTrue(bronzeTile.waitForExistence(timeout: 6), "Expected the Bronze Pack tile")
+        let iconsTile = app.descendants(matching: .any)["legends.packs.pack.icons"]
+        XCTAssertTrue(iconsTile.waitForExistence(timeout: 6), "Expected the Icons Pack tile")
+        // With the Starter Pack decision still open, every other pack must
+        // explain that it is blocked by the pending decision.
+        let finishFirstText = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'FINISH OTHER DECISION'")).firstMatch
+        let blockedByDecision = iconsTile.label.lowercased().contains("finish")
+            || finishFirstText.waitForExistence(timeout: 4)
+        XCTAssertTrue(blockedByDecision,
+                      "While a decision is pending, other packs must say to finish it first")
+
+        // Scroll stability: one stable scroll container must retain its
+        // position after a drag (the old nested-scroll shelf snapped back).
+        let initialTileY = bronzeTile.frame.minY
+        let dragStart = app.coordinate(withNormalizedOffset: CGVector(dx: 0.72, dy: 0.72))
+        let dragEnd = app.coordinate(withNormalizedOffset: CGVector(dx: 0.72, dy: 0.45))
+        dragStart.press(forDuration: 0.05, thenDragTo: dragEnd)
+        Thread.sleep(forTimeInterval: 0.8)
+        XCTAssertLessThanOrEqual(bronzeTile.frame.minY, initialTileY + 20,
+                                 "Packs should retain its scrolled position instead of jumping back")
+
+        // Resume the pending decision — the shelf must open straight into
+        // the three-card choice with the prepared candidates.
+        pendingBanner.tap()
+        let candidates = (0..<3).map { index in
+            app.descendants(matching: .any)["legends.packopening.candidate.\(index)"]
+        }
+        XCTAssertTrue(candidates[0].waitForExistence(timeout: 8),
+                      "Expected three candidate cards for the pending decision")
+        XCTAssertTrue(candidates[1].exists && candidates[2].exists,
+                      "All three candidate choices must be reachable")
+
+        // Reveal all three cards, then select exactly one.
+        for candidate in candidates { candidate.tap(); Thread.sleep(forTimeInterval: 0.3) }
+        Thread.sleep(forTimeInterval: 0.6)
+        let chosen = candidates[1]
+        chosen.tap()
+        let claimButton = app.buttons["ADD PLAYER TO LIBRARY"]
+        XCTAssertTrue(claimButton.waitForExistence(timeout: 6),
+                      "Selecting a candidate must surface the add-to-library action")
+
+        // Claim it: the alert offers the existing add/sign flows.
+        claimButton.tap()
+        let addButton = app.buttons["ADD TO COLLECTION"]
+        XCTAssertTrue(addButton.waitForExistence(timeout: 8),
+                      "Expected the PLAYER ACQUIRED alert with the existing flows")
+        addButton.tap()
+
+        // Back on the shelf, the decision is finished: no pending banner,
+        // and the claimed Starter Pack is gone (no permanent CLAIMED tile).
+        XCTAssertTrue(app.descendants(matching: .any)["legends.packs.summary"].waitForExistence(timeout: 8))
+        XCTAssertFalse(app.descendants(matching: .any)["legends.packs.pending"].waitForExistence(timeout: 3),
+                       "The pending banner must disappear once the decision is claimed")
+        XCTAssertFalse(app.descendants(matching: .any)["legends.packs.pack.starter"].exists,
+                       "The claimed Starter Pack must disappear from the shelf")
+        XCTAssertTrue(bronzeTile.waitForExistence(timeout: 6), "Other packs remain on the shelf")
+
+        // With no decision pending any more, the unaffordable Icons Pack
+        // (6 tokens vs the fixture's 3) must now present its real reason.
+        let needMoreText = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'NEED 3 MORE'")).firstMatch
+        let explainsCost = iconsTile.waitForExistence(timeout: 4)
+            && (iconsTile.label.lowercased().contains("need 3 more") || needMoreText.exists)
+        XCTAssertTrue(explainsCost,
+                      "After the decision clears, the unaffordable Icons Pack must explain the missing tokens")
+
+        // Sidebar stays usable after the pack flow.
+        let homeNav = app.buttons["legends.nav.home"]
+        XCTAssertTrue(homeNav.waitForExistence(timeout: 6), "Sidebar must stay reachable on Packs")
+        Thread.sleep(forTimeInterval: 0.5)
+        homeNav.tap()
+        let homeTab = app.buttons["legends.nav.home"]
+        XCTAssertTrue(homeTab.waitForExistence(timeout: 8))
+        XCTAssertTrue(homeTab.isSelected, "HOME should be highlighted after leaving Packs")
+
+        // Capture the Packs shelf.
+        Thread.sleep(forTimeInterval: 0.5)
+        packsTab.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["legends.packs.screen"].waitForExistence(timeout: 8))
+        Thread.sleep(forTimeInterval: 0.8)
+        let screenshot = XCUIScreen.main.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = "Legends Packs redesign (landscape)"
         attachment.lifetime = .keepAlways
         add(attachment)
     }

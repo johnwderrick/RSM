@@ -39,10 +39,7 @@ extension LegendsStore {
         if pack.id == "starter" {
             guard !profile.hasClaimedStarterPack else { throw LegendsPackError.alreadyClaimed }
         }
-        switch pack.currency {
-        case .coins: guard profile.coins >= pack.cost else { throw LegendsPackError.insufficientFunds }
-        case .tokens: guard profile.packTokens >= pack.cost else { throw LegendsPackError.insufficientFunds }
-        }
+        guard profile.packTokens >= pack.cost else { throw LegendsPackError.insufficientFunds }
         let eligible = LegendsCardDatabase.all.filter(pack.pool)
         guard !eligible.isEmpty else { throw LegendsPackError.emptyPool }
         let newEligibleIDs = Set(eligible.map(\.id)).subtracting(profile.ownedCardIDs)
@@ -70,10 +67,7 @@ extension LegendsStore {
                 pulls[weakest] = boost
             }
         }
-        switch pack.currency {
-        case .coins: profile.coins -= pack.cost
-        case .tokens: profile.packTokens -= pack.cost
-        }
+        profile.packTokens -= pack.cost
         profile.pendingPackID = pack.id
         profile.pendingPackCardIDs = pulls.map(\.id)
         persist()
@@ -138,12 +132,7 @@ extension LegendsStore {
             guard !profile.hasClaimedStarterPack else { throw LegendsPackError.alreadyClaimed }
         }
 
-        switch pack.currency {
-        case .coins:
-            guard profile.coins >= pack.cost else { throw LegendsPackError.insufficientFunds }
-        case .tokens:
-            guard profile.packTokens >= pack.cost else { throw LegendsPackError.insufficientFunds }
-        }
+        guard profile.packTokens >= pack.cost else { throw LegendsPackError.insufficientFunds }
 
         let eligible = LegendsCardDatabase.all.filter(pack.pool)
         guard !eligible.isEmpty else { throw LegendsPackError.emptyPool }
@@ -162,10 +151,7 @@ extension LegendsStore {
             }
         }
 
-        switch pack.currency {
-        case .coins: profile.coins -= pack.cost
-        case .tokens: profile.packTokens -= pack.cost
-        }
+        profile.packTokens -= pack.cost
 
         let results = pulls.map { card -> LegendsPackPullResult in
             if profile.ownedCardIDs.contains(card.id) {

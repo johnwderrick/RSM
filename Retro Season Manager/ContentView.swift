@@ -33,6 +33,9 @@ struct ContentView: View {
         if ProcessInfo.processInfo.arguments.contains("UITEST_LEGENDS_DIVISION") {
             legends.prepareDivisionFixtureForDebug()
         }
+        if ProcessInfo.processInfo.arguments.contains("UITEST_LEGENDS_PACKS") {
+            legends.preparePacksFixtureForDebug()
+        }
         if ProcessInfo.processInfo.arguments.contains("UITEST_LEGENDS_TRAINING_CENTRE") {
             legends.prepareTrainingCentreFixtureForDebug()
         }

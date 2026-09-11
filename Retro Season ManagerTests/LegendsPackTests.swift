@@ -79,9 +79,12 @@ final class LegendsStorePackOpeningTests: XCTestCase {
     func testOpeningAPackDeductsItsCost() async throws {
         let store = await freshStore()
         let pack = LegendsPackDatabase.all.first { $0.id == "bronze" }!
-        let before = store.profile.coins
+        let tokenBalanceBefore = store.profile.packTokens
+        let clubBalanceBefore = store.profile.coins
         _ = try store.openPack(pack)
-        XCTAssertEqual(store.profile.coins, before - pack.cost)
+        XCTAssertEqual(store.profile.packTokens, tokenBalanceBefore - pack.cost)
+        XCTAssertEqual(store.profile.coins, clubBalanceBefore,
+                       "Opening packs must never spend the club facilities balance")
     }
 
     func testOpeningAPackWithInsufficientFundsThrows() async {
@@ -210,5 +213,57 @@ final class LegendsStorePackOpeningTests: XCTestCase {
         let decoded = try JSONDecoder().decode(LegendsProfile.self, from: data)
 
         XCTAssertTrue(decoded.hasClaimedStarterPack, "A loaded save must keep hiding the claimed Starter Pack")
+    }
+
+    // MARK: Shelf availability states (redesigned presentation contract)
+
+    private var bronze: LegendsPack { LegendsPackDatabase.all.first { $0.id == "bronze" }! }
+    private var gold: LegendsPack { LegendsPackDatabase.all.first { $0.id == "gold" }! }
+    private var starter: LegendsPack { LegendsPackDatabase.all.first { $0.id == "starter" }! }
+
+    func testNewProfileSeesStarterAndAffordablePacksAsReady() async {
+        let store = await freshStore()
+        XCTAssertEqual(LegendsPackAvailability(pack: starter, profile: store.profile), .ready)
+        XCTAssertEqual(LegendsPackAvailability(pack: bronze, profile: store.profile), .ready)
+    }
+
+    func testInsufficientTokensExplainsTheMissingAmount() async {
+        let store = await freshStore()
+        store.profile.packTokens = 1
+        XCTAssertEqual(LegendsPackAvailability(pack: gold, profile: store.profile),
+                       .needsTokens(missing: 2),
+                       "The unaffordable state must name how much is missing so the shelf can explain itself")
+        XCTAssertFalse(LegendsPackAvailability(pack: gold, profile: store.profile).isInteractive)
+    }
+
+    func testPendingDecisionIsResumableAndBlocksOtherPacks() async throws {
+        let store = await freshStore()
+        _ = try store.preparePack(bronze)
+        XCTAssertEqual(LegendsPackAvailability(pack: bronze, profile: store.profile), .decisionPendingThisPack)
+        XCTAssertTrue(LegendsPackAvailability(pack: bronze, profile: store.profile).isInteractive)
+        XCTAssertEqual(LegendsPackAvailability(pack: gold, profile: store.profile), .decisionPendingElsewhere)
+        XCTAssertFalse(LegendsPackAvailability(pack: gold, profile: store.profile).isInteractive)
+    }
+
+    func testClaimedStarterPackIsNotInteractive() async {
+        let store = await freshStore()
+        store.profile.hasClaimedStarterPack = true
+        XCTAssertEqual(LegendsPackAvailability(pack: starter, profile: store.profile), .claimed)
+        XCTAssertFalse(LegendsPackAvailability(pack: starter, profile: store.profile).isInteractive)
+    }
+
+    func testSelectingOneCandidateAwardsExactlyThatCandidateOnce() async throws {
+        let store = await freshStore()
+        let candidates = try store.preparePack(bronze)
+        let chosen = try store.claimPreparedPack(at: 2)
+        XCTAssertEqual(store.profile.ownedCardIDs, [chosen.card.id])
+        XCTAssertEqual(chosen.card.id, store.profile.ownedCardIDs.first)
+        XCTAssertTrue(candidates.contains { $0.card.id == chosen.card.id })
+        XCTAssertNil(store.profile.pendingPackID, "Claiming must clear the pending decision")
+        XCTAssertTrue(store.profile.pendingPackCardIDs.isEmpty)
+        // The other two candidates were NOT awarded.
+        for candidate in candidates where candidate.card.id != chosen.card.id {
+            XCTAssertFalse(store.profile.ownedCardIDs.contains(candidate.card.id))
+        }
     }
 }

@@ -59,7 +59,7 @@ struct LegendsChallengesView: View {
                 Text("\(completedCount) COMPLETED · \(activeCount) ACTIVE")
                     .font(.system(size: 11, weight: .bold, design: .monospaced))
                     .foregroundStyle(LegendsPalette.cyan)
-                Text("Win matches, build your collection and earn coins and tokens.")
+                Text("Win matches, build your club and earn balance and pack tokens.")
                     .font(.system(size: 9, design: .monospaced))
                     .foregroundStyle(LegendsPalette.navy.opacity(0.6))
                     .lineLimit(2)

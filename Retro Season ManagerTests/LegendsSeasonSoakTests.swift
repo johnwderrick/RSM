@@ -72,7 +72,7 @@ final class LegendsSeasonSoakTests: XCTestCase {
             }
             matchesPlayed += 1
 
-            XCTAssertGreaterThanOrEqual(store.profile.coins, coinsBefore, "Coins should never decrease from playing a match")
+            XCTAssertGreaterThanOrEqual(store.profile.coins, coinsBefore, "Club balance should never decrease from playing a match")
             XCTAssertGreaterThanOrEqual(store.profile.packTokens, tokensBefore, "Tokens should never decrease from playing a match")
             XCTAssertGreaterThanOrEqual(summary.coinsEarned, 0)
             XCTAssertGreaterThanOrEqual(summary.xpEarned, 0)
@@ -108,8 +108,7 @@ final class LegendsSeasonSoakTests: XCTestCase {
             // player spending earned currency as they go.
             if i % 4 == 0 {
                 let affordable = LegendsPackDatabase.all.filter { pack in
-                    (pack.currency == .coins && store.profile.coins >= pack.cost && pack.cost > 0) ||
-                    (pack.currency == .tokens && store.profile.packTokens >= pack.cost && pack.cost > 0)
+                    store.profile.packTokens >= pack.cost && pack.cost > 0
                 }
                 if let pack = affordable.max(by: { $0.cost < $1.cost }) {
                     let ownedBefore = store.profile.ownedCardIDs.count
