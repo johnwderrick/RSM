@@ -82,6 +82,15 @@ struct LegendsDivisionSeasonResult: Codable, Hashable {
     let reward: LegendsSeasonReward
 }
 
+/// League-table zone markers for the Division screen. Promotion/relegation
+/// eligibility still comes from `seasonOutcome` — this only drives row and
+/// key colouring.
+enum LegendsDivisionZone {
+    case promotion
+    case relegation
+    case none
+}
+
 enum LegendsDivisionTable {
     private static let clubNames = [
         "RSM Legends FC", "Northstar Athletic", "Neon Borough", "Crown City",
@@ -632,6 +641,28 @@ final class LegendsStore {
         return profile.divisionSchedule.first { fixture in
             !fixture.isPlayed && (fixture.homeTeamID == profile.clubName || fixture.awayTeamID == profile.clubName)
         }
+    }
+
+    /// The user's league fixtures split for the Division screen's fixture
+    /// centre. Read-only presentation shaping: the stored schedule itself is
+    /// never reordered, regenerated or filtered out — upcoming keeps the
+    /// authoritative `nextDivisionFixture` order and results are simply the
+    /// played fixtures newest-first for display.
+    func userDivisionFixtureView() -> (upcoming: [LegendsFixture], recentResults: [LegendsFixture], nextFixture: LegendsFixture?) {
+        ensureDivisionSchedule()
+        let mine = profile.divisionSchedule.filter { $0.homeTeamID == profile.clubName || $0.awayTeamID == profile.clubName }
+        let upcoming = mine.filter { !$0.isPlayed }
+        let recentResults = mine.filter { $0.isPlayed }.sorted { $0.round > $1.round }
+        return (upcoming, recentResults, upcoming.first)
+    }
+
+    /// Which end of the table a rank sits in, respecting the real division
+    /// boundaries used by `seasonOutcome`: the World League has no promotion
+    /// and Division 10 has no relegation. Presentation-only.
+    func divisionZone(forRank rank: Int, totalTeams: Int) -> LegendsDivisionZone {
+        if rank <= 2 && profile.division != .worldLeague { return .promotion }
+        if rank > totalTeams - 2 && profile.division != .division10 { return .relegation }
+        return .none
     }
 
     var divisionFixturesRemaining: Int {

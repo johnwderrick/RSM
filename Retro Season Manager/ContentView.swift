@@ -30,6 +30,9 @@ struct ContentView: View {
         if ProcessInfo.processInfo.arguments.contains("UITEST_LEGENDS_MATCH_READY") {
             legends.prepareMatchReadyFixtureForDebug()
         }
+        if ProcessInfo.processInfo.arguments.contains("UITEST_LEGENDS_DIVISION") {
+            legends.prepareDivisionFixtureForDebug()
+        }
         #endif
         _legendsStore = State(initialValue: legends)
     }

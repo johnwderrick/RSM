@@ -342,6 +342,113 @@ final class RetroSeasonManagerUITests: XCTestCase {
         add(attachment)
     }
 
+    /// The redesigned Division screen, driven through deterministic fixture
+    /// data (`UITEST_LEGENDS_DIVISION`): table visible, user row identifiable,
+    /// fixture centre populated with a next fixture, upcoming fixtures and
+    /// recent results — and the screen still usable on compact landscape.
+    func testDivisionScreenShowsTableUserRowFixturesAndResults() throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_LEGENDS_DIVISION"]
+        app.launch()
+
+        // The fixture profile is already onboarded, so tapping Legends goes
+        // straight to the dashboard (no onboarding flow).
+        let legendsButton = app.buttons["experience.legends"]
+        XCTAssertTrue(legendsButton.waitForExistence(timeout: 8),
+                      "Expected the RSM Legends entry button on the experience selector")
+        legendsButton.tap()
+
+        // The dashboard renders its own sidebar (no shell header), so the
+        // first anchor is the sidebar item itself.
+        let divisionTab = app.buttons["legends.nav.division"]
+        XCTAssertTrue(divisionTab.waitForExistence(timeout: 10),
+                      "Expected the Legends dashboard sidebar after entering Legends mode")
+        Thread.sleep(forTimeInterval: 0.5)
+        divisionTab.tap()
+
+        // The Division destination's shell header identifies the screen.
+        let divisionShell = app.descendants(matching: .any)["legends.shell.division"]
+        XCTAssertTrue(divisionShell.waitForExistence(timeout: 8),
+                      "Tapping DIVISION should show the Division screen")
+        XCTAssertTrue(divisionTab.isSelected, "DIVISION should be highlighted while its screen is open")
+
+        // The league table renders all eight clubs, with the user's row
+        // individually identifiable. (Match any element type — combined
+        // accessibility elements can surface as different types.)
+        let table = app.descendants(matching: .any)["legends.division.table"]
+        XCTAssertTrue(table.waitForExistence(timeout: 8), "Expected the league table panel")
+        let userRow = app.descendants(matching: .any)["legends.division.userRow"]
+        XCTAssertTrue(userRow.waitForExistence(timeout: 6), "Expected the highlighted user-club row")
+        XCTAssertTrue(userRow.label.contains("Your club"), "User row should be announced as the user's club")
+        XCTAssertTrue(userRow.label.contains("Promotion zone"),
+                      "After a win the user sits in the promotion zone and the row says so")
+        for name in ["Neon Borough", "Crown City", "Harbour Rovers", "Atlas Town"] {
+            XCTAssertTrue(app.staticTexts[name].waitForExistence(timeout: 4),
+                          "Expected club \(name) in the table")
+        }
+
+        // Zone key spells the colours out in text, not colour alone.
+        XCTAssertTrue(app.descendants(matching: .any)["legends.division.zoneKey"].waitForExistence(timeout: 4),
+                      "Expected the promotion/relegation zone key")
+
+        // Fixture centre: next fixture prominently marked.
+        let nextFixture = app.descendants(matching: .any)["legends.division.nextFixture"]
+        XCTAssertTrue(nextFixture.waitForExistence(timeout: 6), "Expected the next-fixture card")
+        XCTAssertTrue(nextFixture.label.contains("Next fixture"),
+                      "Next fixture card should be announced as such")
+
+        // Upcoming section with the remaining fixtures after the next one.
+        let upcoming = app.descendants(matching: .any)["legends.division.upcoming"]
+        XCTAssertTrue(upcoming.waitForExistence(timeout: 6), "Expected the upcoming fixtures panel")
+        XCTAssertTrue(app.staticTexts["UPCOMING"].exists,
+                      "Expected the UPCOMING section header")
+
+        // Recent results exist and carry their W/D/L meaning in text.
+        let results = app.descendants(matching: .any)["legends.division.results"]
+        XCTAssertTrue(results.waitForExistence(timeout: 6), "Expected the recent results panel")
+        XCTAssertTrue(app.staticTexts["RECENT RESULTS"].exists,
+                      "Expected the RECENT RESULTS section header")
+        XCTAssertTrue(app.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS %@", "won")).firstMatch.exists,
+            "Result rows should describe the outcome in words")
+
+        // The user's known results are part of the results panel.
+        XCTAssertTrue(app.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS %@", "Harbour Rovers")).firstMatch.exists,
+            "Recent results should name the played opponents")
+
+        // The screen remains usable on compact landscape: the fixture centre
+        // is hittable (nothing clipped behind the sidebar/safe area). The
+        // sidebar stays live — with 13 items XCTest's tap on DIVISION leaves
+        // HOME scrolled out of the viewport, so liveness is proven by
+        // navigating with it rather than by raw hittability.
+        Thread.sleep(forTimeInterval: 0.6)
+        XCTAssertTrue(nextFixture.isHittable, "Next fixture card must be reachable on compact landscape")
+        let homeNav = app.buttons["legends.nav.home"]
+        XCTAssertTrue(homeNav.waitForExistence(timeout: 6),
+                      "Sidebar must stay reachable on the Division screen")
+
+        // Capture the Division screen itself before navigating away.
+        let screenshot = XCUIScreen.main.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = "Legends Division redesign (compact landscape)"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+
+        // Navigation away and back still works with the redesigned layout.
+        for attempt in 1...2 {
+            Thread.sleep(forTimeInterval: attempt == 1 ? 0.5 : 0.8)
+            homeNav.tap()
+            if app.buttons["legends.shell.home"].waitForExistence(timeout: 8)
+                || !divisionShell.exists { break }
+        }
+        let homeTab = app.buttons["legends.nav.home"]
+        XCTAssertTrue(homeTab.waitForExistence(timeout: 8))
+        XCTAssertTrue(homeTab.isSelected, "HOME should be highlighted after returning to the dashboard")
+        XCTAssertFalse(divisionShell.exists, "Division content should be gone after navigating home")
+    }
+
     /// Shared onboarding flow: pick an archetype, scroll to and tap SELECT
     /// MANAGER, fill in a name, tap REVIEW PROFILE, then BEGIN YOUR LEGEND.
     /// Real XCUITest hit-testing (not raw screen coordinates) is what makes

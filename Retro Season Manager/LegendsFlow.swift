@@ -1435,160 +1435,78 @@ struct LegendsDivisionTableView: View {
     var onNavigate: ((LegendsNavItem) -> Void)? = nil
     let onBack: () -> Void
 
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    private var compactHeight: Bool { verticalSizeClass == .compact }
+
     var body: some View {
         LegendsMenuShell(store: store, title: "DIVISION TABLE", subtitle: store.profile.division.displayName,
                          icon: "trophy.fill", accent: LegendsPalette.gold, onBack: onBack,
                          currentNav: .table, onNavigate: onNavigate) {
-            VStack(alignment: .leading, spacing: 12) {
-                pressureBanner
-                if let result = store.profile.lastDivisionSeasonResult {
-                    seasonResultCard(result)
-                }
-                fixturesPanel
-
-                VStack(spacing: 0) {
-                    tableHeader
-                    ForEach(Array(store.divisionStandings().enumerated()), id: \.element.id) { index, club in
-                        tableRow(index: index, club: club)
+            GeometryReader { geo in
+                let wide = geo.size.width >= 860
+                Group {
+                    if wide {
+                        // League table as the main panel, fixture centre beside it.
+                        HStack(alignment: .top, spacing: 14) {
+                            leagueTablePanel
+                                .frame(maxWidth: .infinity)
+                            VStack(spacing: 12) {
+                                seasonContextPanel
+                                fixtureCentre
+                            }
+                            .frame(width: 330)
+                        }
+                    } else {
+                        VStack(spacing: 12) {
+                            seasonContextPanel
+                            fixtureCentre
+                            leagueTablePanel
+                        }
                     }
                 }
-                .background(.white)
-                .clipShape(RoundedRectangle(cornerRadius: 14))
-                .overlay(RoundedRectangle(cornerRadius: 14).stroke(LegendsPalette.gold.opacity(0.25), lineWidth: 1))
+                .frame(maxWidth: .infinity, alignment: .top)
             }
+            .frame(minHeight: wideMinHeight, alignment: .top)
         }
     }
 
-    private var pressureBanner: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("SEASON \(store.profile.divisionSeason) · PROMOTION PRESSURE")
-                    .font(.system(size: 12, weight: .black, design: .monospaced))
-                    .foregroundStyle(LegendsPalette.navy)
-                Text("Top two promote · bottom two face relegation · every fixture counts.")
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(LegendsPalette.navy.opacity(0.62))
-            }
-            Spacer()
-            VStack(alignment: .trailing, spacing: 3) {
-                Text("\(store.divisionMatchesPlayed) / \(store.divisionMatchCount) PLAYED")
-                    .font(.system(size: 9, weight: .black, design: .monospaced))
-                    .foregroundStyle(LegendsPalette.blue)
-                Text(pressureLabel)
-                    .font(.system(size: 10, weight: .black, design: .monospaced))
-                    .foregroundStyle(pressureColor)
-            }
-        }
-        .padding(12)
-        .background(LegendsPalette.goldWash)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-    }
+    // On compact heights (landscape iPhones) the shell's ScrollView provides
+    // scrolling; the next fixture still anchors to the top so it's visible
+    // without scrolling. On regular heights, fill the panel vertically so
+    // upcoming/results get room to breathe.
+    private var wideMinHeight: CGFloat { compactHeight ? 0 : 560 }
 
-    private var pressureLabel: String {
-        let rank = (store.divisionStandings().firstIndex { $0.id == store.profile.clubName } ?? 0) + 1
-        let total = store.divisionStandings().count
-        if rank <= 2 { return "PROMOTION ZONE" }
-        if rank > total - 2 { return "RELEGATION ZONE" }
-        return "MID-TABLE PRESSURE \(Int(store.divisionPressure * 100))%"
-    }
+    // MARK: - League table
 
-    private var pressureColor: Color {
-        let rank = (store.divisionStandings().firstIndex { $0.id == store.profile.clubName } ?? 0) + 1
-        let total = store.divisionStandings().count
-        if rank <= 2 { return LegendsPalette.green }
-        if rank > total - 2 { return LegendsPalette.orange }
-        return LegendsPalette.blue
-    }
-
-    private func seasonResultCard(_ result: LegendsDivisionSeasonResult) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: result.outcome == .relegated ? "arrow.down.circle.fill" : "trophy.circle.fill")
-                .font(.system(size: 24, weight: .bold))
-                .foregroundStyle(result.outcome == .relegated ? LegendsPalette.orange : LegendsPalette.gold)
-            VStack(alignment: .leading, spacing: 3) {
-                Text("SEASON \(result.season) · \(result.outcome.displayName)")
-                    .font(.system(size: 11, weight: .black, design: .monospaced))
-                    .foregroundStyle(LegendsPalette.navy)
-                Text("Finished \(result.finalRank)/\(result.totalTeams) · \(result.reward.coins) coins · \(result.reward.tokens) tokens · \(result.reward.managerXP) XP")
-                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                    .foregroundStyle(LegendsPalette.navy.opacity(0.62))
+    private var leagueTablePanel: some View {
+        VStack(spacing: 0) {
+            tableHeader
+            ForEach(Array(store.divisionStandings().enumerated()), id: \.element.id) { index, club in
+                tableRow(index: index, club: club)
             }
-            Spacer()
+            zoneKey
         }
-        .padding(12)
-        .background(result.outcome == .relegated ? LegendsPalette.orange.opacity(0.13) : LegendsPalette.greenWash)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-    }
-
-    private var fixturesPanel: some View {
-        let club = store.profile.clubName
-        let fixtures = store.profile.divisionSchedule.filter {
-            $0.homeTeamID == club || $0.awayTeamID == club
-        }
-        let remaining = fixtures.filter { !$0.isPlayed }.count
-        return LegendsDashboardPanel(title: "FIXTURES · \(remaining) REMAINING", icon: "calendar", color: LegendsPalette.blue) {
-            if fixtures.isEmpty {
-                Text("Your next schedule will appear here.")
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(LegendsPalette.navy.opacity(0.62))
-            } else {
-                ForEach(fixtures) { fixture in
-                    fixtureRow(fixture)
-                }
-            }
-        }
-    }
-
-    private func fixtureRow(_ fixture: LegendsFixture) -> some View {
-        let isHome = fixture.homeTeamID == store.profile.clubName
-        let opponent = isHome ? fixture.awayTeamID : fixture.homeTeamID
-        let isNext = store.nextDivisionFixture?.id == fixture.id
-        return HStack(spacing: 8) {
-            Text("R\(fixture.round)")
-                .font(.system(size: 9, weight: .black, design: .monospaced))
-                .foregroundStyle(isNext ? LegendsPalette.green : LegendsPalette.navy.opacity(0.48))
-                .frame(width: 28, alignment: .leading)
-            Text(isHome ? "H" : "A")
-                .font(.system(size: 9, weight: .black, design: .monospaced))
-                .foregroundStyle(isHome ? LegendsPalette.blue : LegendsPalette.orange)
-                .frame(width: 14)
-            Text(opponent)
-                .font(.system(size: 10, weight: isNext ? .black : .bold, design: .rounded))
-                .foregroundStyle(LegendsPalette.navy)
-                .lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            if let homeGoals = fixture.homeGoals, let awayGoals = fixture.awayGoals {
-                Text("\(homeGoals)-\(awayGoals)")
-                    .font(.system(size: 10, weight: .black, design: .monospaced))
-                    .foregroundStyle(LegendsPalette.navy.opacity(0.62))
-            } else if isNext {
-                Text("NEXT")
-                    .font(.system(size: 9, weight: .black, design: .monospaced))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 4)
-                    .background(LegendsPalette.green)
-                    .clipShape(Capsule())
-            } else {
-                Text("R\(fixture.round)")
-                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                    .foregroundStyle(LegendsPalette.navy.opacity(0.42))
-            }
-        }
-        .padding(.vertical, 7)
-        .overlay(alignment: .bottom) { Rectangle().fill(LegendsPalette.navy.opacity(0.06)).frame(height: 1) }
+        .background(.white)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(LegendsPalette.gold.opacity(0.25), lineWidth: 1))
+        .shadow(color: LegendsPalette.navy.opacity(0.09), radius: 8, y: 4)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("legends.division.table")
     }
 
     private var tableHeader: some View {
         HStack(spacing: 6) {
-            Text("POS").frame(width: 30, alignment: .leading)
+            Text("POS").frame(width: 26, alignment: .leading)
             Text("CLUB").frame(maxWidth: .infinity, alignment: .leading)
-            Text("P").frame(width: 24)
-            Text("GD").frame(width: 30)
-            Text("PTS").frame(width: 34)
+            Text("P").frame(width: 22)
+            Text("W").frame(width: 22)
+            Text("D").frame(width: 22)
+            Text("L").frame(width: 22)
+            Text("GD").frame(width: 32)
+            Text("PTS").frame(width: 36)
         }
         .font(.system(size: 9, weight: .black, design: .monospaced))
-        .foregroundStyle(LegendsPalette.navy.opacity(0.52))
+        .foregroundStyle(LegendsPalette.navy.opacity(0.62))
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
         .background(LegendsPalette.contentBackground)
@@ -1596,29 +1514,308 @@ struct LegendsDivisionTableView: View {
 
     private func tableRow(index: Int, club: LegendsDivisionRecord) -> some View {
         let isUser = club.id == store.profile.clubName
+        let zone = store.divisionZone(forRank: index + 1, totalTeams: store.divisionStandings().count)
         return HStack(spacing: 6) {
+            // Zone marker: colour plus shape, so the meaning is never
+            // colour-alone (the key text spells it out too).
+            RoundedRectangle(cornerRadius: 2)
+                .fill(zoneColor(zone))
+                .frame(width: 4, height: 18)
+                .accessibilityHidden(true)
             Text("\(index + 1)")
                 .font(.system(size: 11, weight: .black, design: .monospaced))
-                .foregroundStyle(index < 2 ? LegendsPalette.green : LegendsPalette.navy.opacity(0.58))
-                .frame(width: 30, alignment: .leading)
+                .foregroundStyle(isUser ? LegendsPalette.navy : LegendsPalette.navy.opacity(0.72))
+                .frame(width: 22, alignment: .leading)
             Text(club.name)
                 .font(.system(size: 11, weight: isUser ? .black : .bold, design: .rounded))
                 .foregroundStyle(LegendsPalette.navy)
                 .lineLimit(1)
                 .minimumScaleFactor(0.65)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            Text("\(club.played)").frame(width: 24)
-            Text(club.goalDifference > 0 ? "+\(club.goalDifference)" : "\(club.goalDifference)").frame(width: 30)
-            Text("\(club.points)").frame(width: 34)
+            Text("\(club.played)").frame(width: 22)
+            Text("\(club.won)").frame(width: 22)
+            Text("\(club.drawn)").frame(width: 22)
+            Text("\(club.lost)").frame(width: 22)
+            Text(club.goalDifference > 0 ? "+\(club.goalDifference)" : "\(club.goalDifference)").frame(width: 32)
+            Text("\(club.points)")
+                .font(.system(size: 11, weight: isUser ? .black : .bold, design: .monospaced))
+                .frame(width: 36)
         }
         .font(.system(size: 10, weight: .bold, design: .monospaced))
-        .foregroundStyle(LegendsPalette.navy.opacity(0.72))
-        .padding(.horizontal, 12)
+        .monospacedDigit()
+        .foregroundStyle(LegendsPalette.navy.opacity(0.78))
+        .padding(.horizontal, 10)
         .padding(.vertical, 11)
         .background(isUser ? LegendsPalette.greenWash : .white)
+        .overlay(alignment: .leading) {
+            if isUser {
+                Rectangle().fill(LegendsPalette.green).frame(width: 3)
+            }
+        }
         .overlay(alignment: .bottom) { Rectangle().fill(LegendsPalette.navy.opacity(0.06)).frame(height: 1) }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier(isUser ? "legends.division.userRow" : "legends.division.row.\(club.id)")
+        .accessibilityLabel(accessibilityText(index: index, club: club, zone: zone))
     }
-}
+
+    private func zoneColor(_ zone: LegendsDivisionZone) -> Color {
+        switch zone {
+        case .promotion: return LegendsPalette.green
+        case .relegation: return LegendsPalette.orange
+        case .none: return LegendsPalette.navy.opacity(0.14)
+        }
+    }
+
+    private func accessibilityText(index: Int, club: LegendsDivisionRecord, zone: LegendsDivisionZone) -> String {
+        var text = "Position \(index + 1), \(club.name), \(club.played) played, " +
+            "\(club.won) won, \(club.drawn) drawn, \(club.lost) lost, " +
+            "goal difference \(club.goalDifference), \(club.points) points"
+        if club.id == store.profile.clubName { text += ". Your club" }
+        switch zone {
+        case .promotion: text += ". Promotion zone"
+        case .relegation: text += ". Relegation zone"
+        case .none: break
+        }
+        return text
+    }
+
+    /// Restrained key explaining the zone colours in words.
+    private var zoneKey: some View {
+        HStack(spacing: 12) {
+            if store.profile.division != .worldLeague {
+                keyDot(color: LegendsPalette.green, text: "Promotion")
+            }
+            if store.profile.division != .division10 {
+                keyDot(color: LegendsPalette.orange, text: "Relegation")
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(LegendsPalette.contentBackground.opacity(0.6))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("legends.division.zoneKey")
+    }
+
+    private func keyDot(color: Color, text: String) -> some View {
+        HStack(spacing: 5) {
+            RoundedRectangle(cornerRadius: 2).fill(color).frame(width: 8, height: 8)
+            Text(text)
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .foregroundStyle(LegendsPalette.navy.opacity(0.72))
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(text) positions are marked in \(text == "Promotion" ? "green" : "orange")")
+    }
+
+    // MARK: - Season context
+
+    private var seasonContextPanel: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack {
+                Text("SEASON \(store.profile.divisionSeason)")
+                    .font(.system(size: 11, weight: .black, design: .monospaced))
+                    .foregroundStyle(LegendsPalette.navy)
+                Spacer()
+                Text("\(store.divisionMatchesPlayed) / \(store.divisionMatchCount) PLAYED")
+                    .font(.system(size: 9, weight: .black, design: .monospaced))
+                    .foregroundStyle(LegendsPalette.blue)
+            }
+            Text(statusLine)
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .foregroundStyle(LegendsPalette.navy.opacity(0.66))
+                .lineLimit(2)
+            if let result = store.profile.lastDivisionSeasonResult {
+                Divider()
+                seasonResultRow(result)
+            }
+        }
+        .padding(12)
+        .background(.white)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(LegendsPalette.gold.opacity(0.25), lineWidth: 1))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("legends.division.seasonContext")
+    }
+
+    private var statusLine: String {
+        let standings = store.divisionStandings()
+        let total = standings.count
+        let rank = (standings.firstIndex { $0.id == store.profile.clubName } ?? 0) + 1
+        switch store.divisionZone(forRank: rank, totalTeams: total) {
+        case .promotion: return "PROMOTION ZONE — WIN AND YOU GO UP."
+        case .relegation: return "RELEGATION ZONE — EVERY POINT COUNTS."
+        case .none:
+            let pressure = Int((store.divisionPressure * 100).rounded())
+            return "MID-TABLE · SEASON PRESSURE \(pressure)%"
+        }
+    }
+
+    private func seasonResultRow(_ result: LegendsDivisionSeasonResult) -> some View {
+        let promoted = result.outcome != .relegated
+        return HStack(spacing: 8) {
+            Image(systemName: promoted ? "arrow.up.circle.fill" : "arrow.down.circle.fill")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(promoted ? LegendsPalette.green : LegendsPalette.orange)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("SEASON \(result.season) · \(result.outcome.displayName)")
+                    .font(.system(size: 9, weight: .black, design: .monospaced))
+                    .foregroundStyle(LegendsPalette.navy)
+                Text("Finished \(result.finalRank)/\(result.totalTeams)")
+                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                    .foregroundStyle(LegendsPalette.navy.opacity(0.66))
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    // MARK: - Fixture centre
+
+    private var fixtureCentre: some View {
+        let view = store.userDivisionFixtureView()
+        return VStack(spacing: 10) {
+            if let next = view.nextFixture {
+                nextFixtureCard(next)
+            }
+            upcomingSection(view.upcoming, resultCount: view.recentResults.count)
+            resultsSection(view.recentResults)
+        }
+    }
+
+    private func nextFixtureCard(_ fixture: LegendsFixture) -> some View {
+        let isHome = fixture.homeTeamID == store.profile.clubName
+        let opponent = isHome ? fixture.awayTeamID : fixture.homeTeamID
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("NEXT")
+                    .font(.system(size: 9, weight: .black, design: .monospaced))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(LegendsPalette.green)
+                    .clipShape(Capsule())
+                Spacer()
+                Text("ROUND \(fixture.round)")
+                    .font(.system(size: 9, weight: .black, design: .monospaced))
+                    .foregroundStyle(LegendsPalette.navy.opacity(0.62))
+            }
+            Text(opponent)
+                .font(.system(size: 14, weight: .black, design: .rounded))
+                .foregroundStyle(LegendsPalette.navy)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text("\(isHome ? "HOME" : "AWAY") FIXTURE · \(store.profile.division.displayName.uppercased())")
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .foregroundStyle(isHome ? LegendsPalette.blue : LegendsPalette.orange)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(LegendsPalette.greenWash)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(LegendsPalette.green.opacity(0.35), lineWidth: 1))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("legends.division.nextFixture")
+        .accessibilityLabel("Next fixture: round \(fixture.round), \(isHome ? "home" : "away") against \(opponent)")
+    }
+
+    private func upcomingSection(_ upcoming: [LegendsFixture], resultCount: Int) -> some View {
+        let following = upcoming.dropFirst().prefix(4)
+        return LegendsDashboardPanel(title: "UPCOMING", icon: "calendar", color: LegendsPalette.blue) {
+            if following.isEmpty {
+                Text(resultCount > 0 ? "Season complete — every fixture played."
+                                     : "Your season opener is up next.")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(LegendsPalette.navy.opacity(0.66))
+            } else {
+                ForEach(Array(following), id: \.id) { fixture in
+                    upcomingRow(fixture)
+                }
+            }
+        }
+        .accessibilityIdentifier("legends.division.upcoming")
+    }
+
+    private func upcomingRow(_ fixture: LegendsFixture) -> some View {
+        let isHome = fixture.homeTeamID == store.profile.clubName
+        let opponent = isHome ? fixture.awayTeamID : fixture.homeTeamID
+        return HStack(spacing: 8) {
+            Text("R\(fixture.round)")
+                .font(.system(size: 9, weight: .black, design: .monospaced))
+                .foregroundStyle(LegendsPalette.navy.opacity(0.55))
+                .frame(width: 26, alignment: .leading)
+            Text(isHome ? "H" : "A")
+                .font(.system(size: 9, weight: .black, design: .monospaced))
+                .foregroundStyle(isHome ? LegendsPalette.blue : LegendsPalette.orange)
+                .frame(width: 12)
+            Text(opponent)
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .foregroundStyle(LegendsPalette.navy)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.vertical, 6)
+        .overlay(alignment: .bottom) { Rectangle().fill(LegendsPalette.navy.opacity(0.06)).frame(height: 1) }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Round \(fixture.round), \(isHome ? "home" : "away") against \(opponent)")
+    }
+
+    private func resultsSection(_ results: [LegendsFixture]) -> some View {
+        LegendsDashboardPanel(title: "RECENT RESULTS", icon: "clock.arrow.circlepath", color: LegendsPalette.purple) {
+            if results.isEmpty {
+                Text("No matches played yet this season.")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(LegendsPalette.navy.opacity(0.66))
+            } else {
+                ForEach(results.prefix(5)) { fixture in
+                    resultRow(fixture)
+                }
+            }
+        }
+        .accessibilityIdentifier("legends.division.results")
+    }
+
+    private func resultRow(_ fixture: LegendsFixture) -> some View {
+        let isHome = fixture.homeTeamID == store.profile.clubName
+        let opponent = isHome ? fixture.awayTeamID : fixture.homeTeamID
+        let teamGoals = isHome ? (fixture.homeGoals ?? 0) : (fixture.awayGoals ?? 0)
+        let opponentGoals = isHome ? (fixture.awayGoals ?? 0) : (fixture.homeGoals ?? 0)
+        let outcome: LegendsMatchOutcome = teamGoals > opponentGoals ? .win : (teamGoals == opponentGoals ? .draw : .loss)
+        let badge = outcome == .win ? "W" : (outcome == .draw ? "D" : "L")
+        let badgeColor = outcome == .win ? LegendsPalette.green : (outcome == .draw ? LegendsPalette.blue : LegendsPalette.orange)
+        return HStack(spacing: 8) {
+            Text("R\(fixture.round)")
+                .font(.system(size: 9, weight: .black, design: .monospaced))
+                .foregroundStyle(LegendsPalette.navy.opacity(0.55))
+                .frame(width: 26, alignment: .leading)
+            Text(isHome ? "H" : "A")
+                .font(.system(size: 9, weight: .black, design: .monospaced))
+                .foregroundStyle(isHome ? LegendsPalette.blue : LegendsPalette.orange)
+                .frame(width: 12)
+            Text(opponent)
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .foregroundStyle(LegendsPalette.navy)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text("\(teamGoals)-\(opponentGoals)")
+                .font(.system(size: 10, weight: .black, design: .monospaced))
+                .monospacedDigit()
+                .foregroundStyle(LegendsPalette.navy)
+            Text(badge)
+                .font(.system(size: 9, weight: .black, design: .monospaced))
+                .foregroundStyle(.white)
+                .frame(width: 18, height: 18)
+                .background(badgeColor)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+                .accessibilityHidden(true)
+        }
+        .padding(.vertical, 6)
+        .overlay(alignment: .bottom) { Rectangle().fill(LegendsPalette.navy.opacity(0.06)).frame(height: 1) }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Round \(fixture.round), \(isHome ? "home" : "away") against \(opponent), \(teamGoals)-\(opponentGoals), " +
+                            (outcome == .win ? "won" : (outcome == .draw ? "drew" : "lost")))
+    }    }
 
 struct LegendsClubHubView: View {
     let store: LegendsStore

@@ -275,5 +275,46 @@ extension LegendsStore {
         )
         migrateOwnedPlayerRecords()
     }
+
+    /// Deterministic UI-test fixture for the redesigned Division screen: a
+    /// fresh starter profile whose first three league rounds are already
+    /// played with fixed scores, giving the fixture centre a next fixture,
+    /// further upcoming fixtures and win/draw/loss recent results without
+    /// playing any matches. The schedule scores are also applied to the
+    /// standings ledger through the store's real `recordDivisionMatch`
+    /// recording path, so the table is consistent with the results (4
+    /// points from three games puts the user top, in the promotion zone).
+    /// Presentation only — round resolution and season logic are not run.
+    func prepareDivisionFixtureForDebug() {
+        profile = .starter()
+        profile.managerProfile = LegendsManagerProfile(
+            firstName: "Test", surname: "Manager", nationalityCode: "GB",
+            dateOfBirth: Date(timeIntervalSince1970: 315_532_800), archetype: .architect
+        )
+        migrateOwnedPlayerRecords()
+        ensureDivisionSchedule()
+        let club = profile.clubName
+        // (round, user's goals, opponent's goals)
+        let scores: [(round: Int, teamGoals: Int, opponentGoals: Int)] = [
+            (1, 3, 1), // win
+            (2, 1, 1), // draw
+            (3, 0, 2), // loss
+        ]
+        for score in scores {
+            guard let index = profile.divisionSchedule.firstIndex(where: { fixture in
+                fixture.round == score.round
+                    && (fixture.homeTeamID == club || fixture.awayTeamID == club)
+            }) else { continue }
+            let userIsHome = profile.divisionSchedule[index].homeTeamID == club
+            profile.divisionSchedule[index].homeGoals = userIsHome ? score.teamGoals : score.opponentGoals
+            profile.divisionSchedule[index].awayGoals = userIsHome ? score.opponentGoals : score.teamGoals
+            let opponent = userIsHome
+                ? profile.divisionSchedule[index].awayTeamID
+                : profile.divisionSchedule[index].homeTeamID
+            recordDivisionMatch(teamGoals: score.teamGoals, opponentGoals: score.opponentGoals,
+                                opponentName: opponent)
+        }
+        persist()
+    }
     #endif
 }

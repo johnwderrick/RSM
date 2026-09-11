@@ -204,6 +204,55 @@ final class LegendsStoreMatchTests: XCTestCase {
         XCTAssertEqual(LegendsStore.previousDivision(after: .division10), .division10)
     }
 
+    /// The Division screen's read-only fixture-view shaping: upcoming keeps
+    /// the stored schedule order with the next fixture first, recent results
+    /// are newest-round-first, and calling the view leaves the stored
+    /// schedule byte-for-byte untouched.
+    func testUserDivisionFixtureViewSplitsUpcomingAndResultsWithoutTouchingTheSchedule() async {
+        let store = await freshStore()
+        store.ensureDivisionSchedule()
+
+        // Play round 1 through the authoritative path so one result exists.
+        let next = store.nextDivisionFixture!
+        let opponent = LegendsOpponent(name: next.homeTeamID == store.profile.clubName ? next.awayTeamID : next.homeTeamID,
+                                       rating: 40, fixtureID: next.id)
+        _ = store.applyMatchOutcome(opponent: opponent, result: LegendsMatchEngine.Result(teamGoals: 2, opponentGoals: 0))
+
+        let before = store.profile.divisionSchedule
+        let view = store.userDivisionFixtureView()
+        _ = store.userDivisionFixtureView() // repeated calls stay read-only
+
+        XCTAssertEqual(store.profile.divisionSchedule, before,
+                       "Fixture-view shaping must not mutate the stored schedule")
+        XCTAssertEqual(view.nextFixture?.id, store.nextDivisionFixture?.id)
+        XCTAssertEqual(view.upcoming.first?.id, store.nextDivisionFixture?.id,
+                       "Upcoming must start with the authoritative next fixture")
+        XCTAssertEqual(view.recentResults.first?.round, 1, "Results are newest-first")
+        XCTAssertEqual(view.upcoming.count + view.recentResults.count, store.divisionMatchCount)
+        XCTAssertEqual(view.recentResults.count, 1)
+    }
+
+    /// Zone markers respect the real division boundaries: no promotion from
+    /// the World League, no relegation out of Division 10.
+    func testDivisionZoneRespectsPromotionAndRelegationBoundaries() async {
+        let store = await freshStore()
+        let total = store.divisionStandings().count
+
+        store.profile.division = .worldLeague
+        XCTAssertEqual(store.divisionZone(forRank: 1, totalTeams: total), .none)
+        XCTAssertEqual(store.divisionZone(forRank: 2, totalTeams: total), .none)
+        XCTAssertEqual(store.divisionZone(forRank: total, totalTeams: total), .relegation)
+
+        store.profile.division = .division10
+        XCTAssertEqual(store.divisionZone(forRank: 1, totalTeams: total), .promotion)
+        XCTAssertEqual(store.divisionZone(forRank: total, totalTeams: total), .none)
+        XCTAssertEqual(store.divisionZone(forRank: total - 2, totalTeams: total), .none)
+
+        store.profile.division = .division5
+        XCTAssertEqual(store.divisionZone(forRank: 1, totalTeams: total), .promotion)
+        XCTAssertEqual(store.divisionZone(forRank: total, totalTeams: total), .relegation)
+    }
+
     func testDivisionTableRecordsTheUserMatch() async {
         let store = await freshStore()
         let before = store.divisionStandings().first { $0.id == store.profile.clubName }!
