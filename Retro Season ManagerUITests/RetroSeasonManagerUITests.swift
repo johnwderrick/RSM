@@ -449,6 +449,141 @@ final class RetroSeasonManagerUITests: XCTestCase {
         XCTAssertFalse(divisionShell.exists, "Division content should be gone after navigating home")
     }
 
+    /// The redesigned Training development centre, driven by deterministic
+    /// fixture data (`UITEST_LEGENDS_TRAINING_CENTRE`): summary band, training
+    /// plan, scannable player rows, working filters, player detail round trip
+    /// and compact-landscape reachability.
+    func testTrainingScreenShowsSummaryPlanPlayersAndStaysUsable() throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_LEGENDS_TRAINING_CENTRE"]
+        app.launch()
+
+        // The fixture profile is already onboarded, so tapping Legends goes
+        // straight to the dashboard (no onboarding flow).
+        let legendsButton = app.buttons["experience.legends"]
+        XCTAssertTrue(legendsButton.waitForExistence(timeout: 8),
+                      "Expected the RSM Legends entry button on the experience selector")
+        legendsButton.tap()
+
+        // Dashboard → Training via the sidebar.
+        let trainingTab = app.buttons["legends.nav.training"]
+        XCTAssertTrue(trainingTab.waitForExistence(timeout: 10),
+                      "Expected the Legends dashboard sidebar after entering Legends mode")
+        Thread.sleep(forTimeInterval: 0.5)
+        trainingTab.tap()
+
+        // Summary band with squad-level training facts.
+        let summary = app.descendants(matching: .any)["legends.training.summary"]
+        XCTAssertTrue(summary.waitForExistence(timeout: 8), "Expected the training summary band")
+        XCTAssertTrue(app.descendants(matching: .any)["legends.training.summary.signed"].waitForExistence(timeout: 4),
+                      "Expected the signed-players stat")
+        let sessionsStat = app.descendants(matching: .any)["legends.training.summary.sessions"]
+        XCTAssertTrue(sessionsStat.waitForExistence(timeout: 4), "Expected the sessions-remaining stat")
+
+        // Training-plan block derived from the saved plans.
+        let plan = app.descendants(matching: .any)["legends.training.plan"]
+        XCTAssertTrue(plan.waitForExistence(timeout: 6), "Expected the training-plan panel")
+        XCTAssertTrue(app.staticTexts["TRAINING PLAN"].exists, "Expected the plan panel header")
+
+        // The two anchor players are present, individually identifiable,
+        // with their sessions remaining and progress exposed.
+        let prospect = app.descendants(matching: .any)["legends.training.player.miessi-0506"]
+        XCTAssertTrue(prospect.waitForExistence(timeout: 6), "Expected the seeded prospect player card")
+        XCTAssertTrue(app.descendants(matching: .any)["legends.training.player.miessi-1112"].waitForExistence(timeout: 4),
+                      "Expected the seeded capped player card")
+        XCTAssertTrue(app.descendants(matching: .any)["legends.training.sessions.miessi-0506"].exists,
+                      "Expected sessions-remaining text on the player row")
+        XCTAssertTrue(app.descendants(matching: .any)["legends.training.progress.miessi-0506"].exists,
+                      "Expected a season-progress indicator on the player row")
+
+        // Search and filters: prove reachability by using them. XCTest
+        // auto-scrolls to a control before tapping, so a successful menu
+        // interaction is stronger evidence than a raw isHittable check that
+        // fails for controls below the initial fold of a scrollable screen.
+        let search = app.descendants(matching: .any)["legends.training.search"]
+        XCTAssertTrue(search.waitForExistence(timeout: 4), "Expected the search field")
+
+        // Regression: Training owns one stable scroll container. The prior
+        // GeometryReader nested inside the shell scroll snapped back to the
+        // summary after every drag, making these controls effectively hidden.
+        let initialSummaryY = summary.frame.minY
+        let dragStart = app.coordinate(withNormalizedOffset: CGVector(dx: 0.72, dy: 0.72))
+        let dragEnd = app.coordinate(withNormalizedOffset: CGVector(dx: 0.72, dy: 0.48))
+        dragStart.press(forDuration: 0.05, thenDragTo: dragEnd)
+        Thread.sleep(forTimeInterval: 0.8)
+        XCTAssertLessThan(summary.frame.minY, initialSummaryY - 20,
+                          "Training should retain its moved scroll position instead of jumping back to the top")
+
+        for filter in ["position", "stage", "focus"] {
+            XCTAssertTrue(app.buttons["legends.training.filter.\(filter)"].waitForExistence(timeout: 4),
+                          "Expected the \(filter) filter")
+        }
+        XCTAssertTrue(app.buttons["legends.training.sort"].exists, "Expected the sort control")
+
+        // Open the position menu and pick GK: the list narrows and the
+        // filter reflects the new value.
+        let positionFilter = app.buttons["legends.training.filter.position"]
+        positionFilter.tap()
+        let gkOption = app.buttons["GK"]
+        XCTAssertTrue(gkOption.waitForExistence(timeout: 4),
+                      "Tapping POSITION should open its menu — the control is reachable")
+        gkOption.tap()
+        XCTAssertTrue(positionFilter.label.contains("GK"),
+                      "Selecting GK should be reflected in the position filter")
+        XCTAssertFalse(prospect.waitForExistence(timeout: 2),
+                       "An RW player should be filtered out under the GK position filter")
+
+        // Reset back to ALL so later steps see the full squad.
+        positionFilter.tap()
+        let allOption = app.buttons["ALL"]
+        XCTAssertTrue(allOption.waitForExistence(timeout: 4))
+        allOption.tap()
+        XCTAssertTrue(prospect.waitForExistence(timeout: 4), "Resetting to ALL should restore the full list")
+
+        // Filtering by search narrows the list but keeps controls usable.
+        search.tap()
+        app.typeText("miessi")
+        Thread.sleep(forTimeInterval: 0.4)
+        XCTAssertTrue(prospect.exists, "The prospect should match 'miessi'")
+
+        // A player card opens the existing detail flow. The capped player
+        // sorts to the top of the list, so no scrolling is involved.
+        Thread.sleep(forTimeInterval: 0.4)
+        let topCard = app.buttons["legends.training.player.miessi-1112"]
+        XCTAssertTrue(topCard.waitForExistence(timeout: 6))
+        topCard.tap()
+        let focusPicker = app.buttons["legends.training.focusPicker"]
+        XCTAssertTrue(focusPicker.waitForExistence(timeout: 8),
+                      "Opening a player card should show the existing training detail flow")
+        XCTAssertTrue(app.buttons["Close player details"].waitForExistence(timeout: 4))
+        app.buttons["Close player details"].tap()
+
+        // Navigation away and back still works with the redesigned layout.
+        let homeNav = app.buttons["legends.nav.home"]
+        XCTAssertTrue(homeNav.waitForExistence(timeout: 6), "Sidebar must stay reachable on Training")
+        for attempt in 1...2 {
+            Thread.sleep(forTimeInterval: attempt == 1 ? 0.5 : 0.8)
+            homeNav.tap()
+            if app.buttons["legends.nav.home"].isSelected || !trainingTab.exists { break }
+        }
+        let homeTab = app.buttons["legends.nav.home"]
+        XCTAssertTrue(homeTab.waitForExistence(timeout: 8))
+        XCTAssertTrue(homeTab.isSelected, "HOME should be highlighted after returning to the dashboard")
+        XCTAssertTrue(trainingTab.waitForExistence(timeout: 8))
+        Thread.sleep(forTimeInterval: 0.5)
+        trainingTab.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["legends.training.summary"].waitForExistence(timeout: 8),
+                      "Training should reopen cleanly after navigating away and back")
+
+        // Capture the Training screen itself.
+        let screenshot = XCUIScreen.main.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = "Legends Training redesign (compact landscape)"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
     /// Shared onboarding flow: pick an archetype, scroll to and tap SELECT
     /// MANAGER, fill in a name, tap REVIEW PROFILE, then BEGIN YOUR LEGEND.
     /// Real XCUITest hit-testing (not raw screen coordinates) is what makes

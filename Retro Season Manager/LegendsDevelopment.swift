@@ -145,7 +145,55 @@ extension LegendsDetailedAttributes {
     }
 }
 
+/// Read-only, view-facing summary for the redesigned Training screen.
+/// Every value is derived from the existing career/training models — no
+/// new progression data, no mutation of the store.
+struct LegendsTrainingCentreSummary: Equatable {
+    let signedPlayers: Int
+    let sessionsRemaining: Int
+    let totalSessionAllowance: Int
+    let playersAtSessionLimit: Int
+    let prospectsAndDeveloping: Int
+    let finalSeasonPlayers: Int
+    let focusCounts: [LegendsDevelopmentFocus: Int]
+    let intensityCounts: [LegendsTrainingIntensity: Int]
+}
+
 extension LegendsStore {
+    /// Aggregates the active signed squad's training state for the
+    /// Training centre's summary band and plan block. Read-only.
+    func trainingCentreSummary() -> LegendsTrainingCentreSummary {
+        let players = activeClubPlayers
+        let allowance = Self.maxTrainingSessionsPerSeason
+        var remaining = 0
+        var atLimit = 0
+        var developing = 0
+        var finalSeason = 0
+        var focusCounts: [LegendsDevelopmentFocus: Int] = [:]
+        var intensityCounts: [LegendsTrainingIntensity: Int] = [:]
+        for card in players {
+            let career = careerState(for: card)
+            let left = max(0, allowance - (career?.trainingSessionsThisSeason ?? 0))
+            remaining += left
+            if left == 0 { atLimit += 1 }
+            let stage = playerCareerStage(for: card)
+            if stage == "PROSPECT" || stage == "DEVELOPING" { developing += 1 }
+            if isFinalSeason(card) { finalSeason += 1 }
+            let plan = career?.trainingPlan ?? LegendsTrainingPlan()
+            focusCounts[plan.focus, default: 0] += 1
+            intensityCounts[plan.intensity, default: 0] += 1
+        }
+        return LegendsTrainingCentreSummary(
+            signedPlayers: players.count,
+            sessionsRemaining: remaining,
+            totalSessionAllowance: allowance * players.count,
+            playersAtSessionLimit: atLimit,
+            prospectsAndDeveloping: developing,
+            finalSeasonPlayers: finalSeason,
+            focusCounts: focusCounts,
+            intensityCounts: intensityCounts)
+    }
+
     func trainingPlan(for card: LegendsCard) -> LegendsTrainingPlan? {
         profile.playerCareers[card.id]?.trainingPlan
     }
@@ -313,6 +361,49 @@ extension LegendsStore {
                 : profile.divisionSchedule[index].homeTeamID
             recordDivisionMatch(teamGoals: score.teamGoals, opponentGoals: score.opponentGoals,
                                 opponentName: opponent)
+        }
+        persist()
+    }
+
+    /// Deterministic UI-test fixture for the redesigned Training centre: the
+    /// starter squad with seeded careers so the summary band, training-plan
+    /// block and player rows show real development state — one prospect
+    /// mid-plan with a session used, one player at the seasonal session
+    /// limit. Presentation only; no training sessions are actually run.
+    func prepareTrainingCentreFixtureForDebug() {
+        profile = .starter()
+        profile.managerProfile = LegendsManagerProfile(
+            firstName: "Test", surname: "Manager", nationalityCode: "GB",
+            dateOfBirth: Date(timeIntervalSince1970: 315_532_800), archetype: .architect
+        )
+        migrateOwnedPlayerRecords()
+        // Two known anchor cards so UI tests can address specific rows. The
+        // store's own migration registers them as signed — no bespoke
+        // record bookkeeping here.
+        for id in ["miessi-0506", "miessi-1112"] {
+            profile.ownedCardIDs.insert(id)
+            profile.activatedCardIDs.insert(id)
+        }
+        migrateOwnedPlayerRecords()
+        // Every signed player gets a real career record so rows show plans
+        // rather than blanks.
+        for card in activeClubPlayers where profile.playerCareers[card.id] == nil {
+            profile.playerCareers[card.id] = Self.makeCareerState(for: card, signedSeason: profile.currentSeason)
+        }
+        if var prospect = profile.playerCareers["miessi-0506"] {
+            prospect.trainingSessionsThisSeason = 1
+            prospect.trainingPlan.focus = .passing
+            prospect.trainingPlan.seasonProgress = 45
+            prospect.trainingPlan.lastExplanation = "Training focus improved passing, vision."
+            prospect.trainingPlan.seasonAttributeGains = ["Passing": 1, "Vision": 1]
+            profile.playerCareers["miessi-0506"] = prospect
+        }
+        if var capped = profile.playerCareers["miessi-1112"] {
+            capped.trainingSessionsThisSeason = Self.maxTrainingSessionsPerSeason
+            capped.trainingPlan.focus = .shooting
+            capped.trainingPlan.seasonProgress = 78
+            capped.trainingPlan.lastExplanation = "Progress slowed near current ceiling."
+            profile.playerCareers["miessi-1112"] = capped
         }
         persist()
     }
