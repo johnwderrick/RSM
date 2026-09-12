@@ -944,6 +944,8 @@ struct LegendsMenuShell<Content: View>: View {
     let onBack: () -> Void
     let currentNav: LegendsNavItem
     let onNavigate: ((LegendsNavItem) -> Void)?
+    let headerBackTitle: String?
+    let onHeaderBack: (() -> Void)?
     let scrollContent: Bool
     let centerContent: Bool
     var squadPresentation = false
@@ -954,7 +956,9 @@ struct LegendsMenuShell<Content: View>: View {
 
     init(store: LegendsStore, title: String, subtitle: String = "RSM LEGENDS", icon: String,
          accent: Color, onBack: @escaping () -> Void, currentNav: LegendsNavItem = .home,
-         onNavigate: ((LegendsNavItem) -> Void)? = nil, scrollContent: Bool = true, centerContent: Bool = false, squadPresentation: Bool = false,
+         onNavigate: ((LegendsNavItem) -> Void)? = nil,
+         headerBackTitle: String? = nil, onHeaderBack: (() -> Void)? = nil,
+         scrollContent: Bool = true, centerContent: Bool = false, squadPresentation: Bool = false,
          @ViewBuilder content: @escaping () -> Content) {
         self.store = store
         self.title = title
@@ -964,6 +968,8 @@ struct LegendsMenuShell<Content: View>: View {
         self.onBack = onBack
         self.currentNav = currentNav
         self.onNavigate = onNavigate
+        self.headerBackTitle = headerBackTitle
+        self.onHeaderBack = onHeaderBack
         self.scrollContent = scrollContent
         self.centerContent = centerContent
         self.squadPresentation = squadPresentation
@@ -1019,6 +1025,23 @@ struct LegendsMenuShell<Content: View>: View {
     private var header: some View {
         VStack(spacing: compactHeight ? 8 : 12) {
             HStack(spacing: compactHeight ? 8 : 12) {
+                if let onHeaderBack {
+                    Button {
+                        Haptics.tap()
+                        onHeaderBack()
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: compactHeight ? 14 : 16, weight: .black))
+                            .foregroundStyle(.white)
+                            .frame(width: compactHeight ? 30 : 34, height: compactHeight ? 30 : 34)
+                            .background(.white.opacity(0.13))
+                            .clipShape(RoundedRectangle(cornerRadius: compactHeight ? 8 : 9))
+                    }
+                    .buttonStyle(PressableButtonStyle())
+                    .accessibilityLabel(headerBackTitle ?? "Back")
+                    .accessibilityIdentifier("legends.header.back")
+                }
+
                 Image(systemName: icon)
                     .font(.system(size: compactHeight ? 17 : 20, weight: .bold))
                     .foregroundStyle(accent)

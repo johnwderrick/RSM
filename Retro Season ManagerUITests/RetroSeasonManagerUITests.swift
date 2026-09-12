@@ -860,6 +860,233 @@ final class RetroSeasonManagerUITests: XCTestCase {
         let size = app.windows.firstMatch.frame.size
         let path = "/tmp/rsm_facilities_\(Int(size.width))x\(Int(size.height)).png"
         try? screenshot.pngRepresentation.write(to: URL(fileURLWithPath: path))
+
+        // Facilities uses the shell-owned vertical ScrollView; SwiftUI can
+        // cascade the content screen identifier onto header descendants in
+        // this layout, so anchor the real button by its explicit label.
+        let facilitiesBackButton = app.buttons["Back to Club"]
+        XCTAssertTrue(facilitiesBackButton.waitForExistence(timeout: 6),
+                      "Facilities should provide an explicit back button to the Club hub")
+        XCTAssertTrue(facilitiesBackButton.label.contains("Back to Club"))
+        Thread.sleep(forTimeInterval: 0.5)
+        facilitiesBackButton.tap()
+        XCTAssertTrue(app.buttons["legends.club.assistants"].waitForExistence(timeout: 6),
+                      "The Facilities back button should return to the Club hub")
+    }
+
+    /// The redesigned Assistants and Stadiums collections, driven by
+    /// deterministic fixture data (`UITEST_LEGENDS_CLUB_COLLECTION`):
+    /// Club-hub navigation, active Assistant selection, home Stadium
+    /// selection, ALL/OWNED filtering, locked-state presentation, and state
+    /// preservation after leaving and reopening each destination.
+    func testLegendsAssistantsAndStadiumsSelectionFilteringAndPersistence() throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_LEGENDS_CLUB_COLLECTION"]
+        app.launch()
+
+        let legendsButton = app.buttons["experience.legends"]
+        XCTAssertTrue(legendsButton.waitForExistence(timeout: 8),
+                      "Expected the RSM Legends entry button on the experience selector")
+        legendsButton.tap()
+
+        func scrollToClubAndTap() {
+            let clubTab = app.buttons["legends.nav.club"]
+            XCTAssertTrue(clubTab.waitForExistence(timeout: 10),
+                          "Expected the Club sidebar item after entering Legends mode")
+            let sidebarScroll = app.scrollViews.firstMatch
+            XCTAssertTrue(sidebarScroll.exists, "Expected the Legends sidebar scroll container")
+            sidebarScroll.swipeUp()
+            for _ in 0..<3 where !clubTab.isHittable {
+                sidebarScroll.swipeUp()
+            }
+            XCTAssertTrue(clubTab.isHittable,
+                          "The Club sidebar item should be reachable in compact landscape")
+            Thread.sleep(forTimeInterval: 0.5)
+            clubTab.tap()
+        }
+
+        func openClubTile(identifier: String, title: String) {
+            let byID = app.buttons[identifier]
+            let tile: XCUIElement
+            if byID.waitForExistence(timeout: 5) {
+                tile = byID
+            } else {
+                tile = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", title)).firstMatch
+                XCTAssertTrue(tile.waitForExistence(timeout: 5),
+                              "Expected the \(title) tile in the Club hub")
+            }
+            Thread.sleep(forTimeInterval: 0.4)
+            tile.tap()
+        }
+
+        // MARK: Assistants
+
+        scrollToClubAndTap()
+        openClubTile(identifier: "legends.club.assistants", title: "ASSISTANTS")
+
+        let assistantsScreen = app.descendants(matching: .any)["legends.assistants.screen"]
+        XCTAssertTrue(assistantsScreen.waitForExistence(timeout: 8),
+                      "Expected the redesigned Assistants destination")
+
+        let ownedStat = app.descendants(matching: .any)["legends.assistants.summary.owned"]
+        XCTAssertTrue(ownedStat.waitForExistence(timeout: 5), "Expected the owned-count summary")
+        XCTAssertTrue(ownedStat.label.contains("2 / 8"),
+                      "The fixture owns two assistants; got \(ownedStat.label)")
+        let activeStat = app.descendants(matching: .any)["legends.assistants.summary.active"]
+        XCTAssertTrue(activeStat.waitForExistence(timeout: 5), "Expected the active-assistant summary")
+        XCTAssertTrue(activeStat.label.contains("FERGUNSON"),
+                      "The fixture starts with Fergunson active; got \(activeStat.label)")
+
+        // Locked cards present themselves as locked, not as broken rows.
+        let lockedAssistant = app.descendants(matching: .any)["legends.assistants.card.sacchini"]
+        XCTAssertTrue(lockedAssistant.waitForExistence(timeout: 5),
+                      "Expected locked assistant cards in the ALL view")
+        XCTAssertTrue(lockedAssistant.label.contains("Locked"),
+                      "A locked assistant should announce its locked state; got \(lockedAssistant.label)")
+        XCTAssertFalse(lockedAssistant.isEnabled, "Locked assistants must not be selectable")
+
+        // Selecting the second owned assistant deactivates the first:
+        // exactly one active assistant at a time.
+        let guardiabloCard = app.descendants(matching: .any)["legends.assistants.card.guardiablo"]
+        let fergunsonCard = app.descendants(matching: .any)["legends.assistants.card.fergunson"]
+        XCTAssertTrue(guardiabloCard.waitForExistence(timeout: 5))
+        XCTAssertTrue(guardiabloCard.label.contains("Not active"),
+                      "Expected Guardiablo to start inactive; got \(guardiabloCard.label)")
+        Thread.sleep(forTimeInterval: 0.4)
+        guardiabloCard.tap()
+
+        XCTAssertTrue(guardiabloCard.waitForExistence(timeout: 5))
+        XCTAssertTrue(guardiabloCard.label.contains("Active assistant"),
+                      "Selecting Guardiablo should make him the active assistant; got \(guardiabloCard.label)")
+        XCTAssertTrue(fergunsonCard.waitForExistence(timeout: 5))
+        XCTAssertTrue(fergunsonCard.label.contains("Not active"),
+                      "Selecting a new assistant should deactivate the previous one")
+        XCTAssertTrue(activeStat.label.contains("GUARDIABLO"),
+                      "The summary should now name Guardiablo as active")
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "SET AS ACTIVE ASSISTANT")).firstMatch.waitForExistence(timeout: 5),
+                      "Selection should provide visible confirmation")
+
+        // OWNED filter hides locked cards while keeping owned ones.
+        let ownedFilter = app.buttons["legends.assistants.filter.owned"]
+        XCTAssertTrue(ownedFilter.waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 0.4)
+        ownedFilter.tap()
+        XCTAssertFalse(lockedAssistant.waitForExistence(timeout: 2),
+                       "OWNED filter must hide locked assistant cards")
+        XCTAssertTrue(guardiabloCard.exists, "OWNED filter must keep owned cards")
+
+        // Leave through the shared sidebar, then reopen: selection persists.
+        let homeTab = app.buttons["legends.nav.home"]
+        XCTAssertTrue(homeTab.waitForExistence(timeout: 6), "Sidebar must remain usable on Assistants")
+        Thread.sleep(forTimeInterval: 0.5)
+        homeTab.tap()
+        XCTAssertTrue(homeTab.waitForExistence(timeout: 8), "Expected to return to the Home dashboard")
+
+        scrollToClubAndTap()
+        openClubTile(identifier: "legends.club.assistants", title: "ASSISTANTS")
+        XCTAssertTrue(assistantsScreen.waitForExistence(timeout: 8),
+                      "Assistants should reopen cleanly after navigation away")
+        XCTAssertTrue(guardiabloCard.waitForExistence(timeout: 5))
+        XCTAssertTrue(guardiabloCard.label.contains("Active assistant"),
+                      "The active assistant must survive leaving and reopening the screen")
+        XCTAssertTrue(activeStat.waitForExistence(timeout: 5) && activeStat.label.contains("GUARDIABLO"),
+                      "The summary must reflect the persisted active assistant")
+
+        Thread.sleep(forTimeInterval: 0.6)
+        let assistantsShot = XCUIScreen.main.screenshot()
+        let assistantsAttachment = XCTAttachment(screenshot: assistantsShot)
+        assistantsAttachment.name = "Legends Assistants redesign (landscape)"
+        assistantsAttachment.lifetime = .keepAlways
+        add(assistantsAttachment)
+
+        // MARK: Stadiums (via the destination's explicit Club back button)
+
+        let assistantsBackButton = app.buttons["legends.header.back"]
+        XCTAssertTrue(assistantsBackButton.waitForExistence(timeout: 6),
+                      "Assistants should provide an explicit back button to the Club hub")
+        XCTAssertTrue(assistantsBackButton.label.contains("Back to Club"))
+        Thread.sleep(forTimeInterval: 0.5)
+        assistantsBackButton.tap()
+        openClubTile(identifier: "legends.club.stadiums", title: "STADIUMS")
+
+        let stadiumsScreen = app.descendants(matching: .any)["legends.stadiums.screen"]
+        XCTAssertTrue(stadiumsScreen.waitForExistence(timeout: 8),
+                      "Expected the redesigned Stadiums destination")
+
+        let homeStat = app.descendants(matching: .any)["legends.stadiums.summary.home"]
+        XCTAssertTrue(homeStat.waitForExistence(timeout: 5), "Expected the home-stadium summary")
+        XCTAssertTrue(homeStat.label.contains("FORTRESS"),
+                      "The fixture starts with Camp Nou Fortress as home; got \(homeStat.label)")
+
+        let lockedStadium = app.descendants(matching: .any)["legends.stadiums.card.bianconeri-arena"]
+        XCTAssertTrue(lockedStadium.waitForExistence(timeout: 5),
+                      "Expected locked stadium cards in the ALL view")
+        XCTAssertTrue(lockedStadium.label.contains("Locked"),
+                      "A locked stadium should announce its locked state; got \(lockedStadium.label)")
+        XCTAssertFalse(lockedStadium.isEnabled, "Locked stadiums must not be selectable")
+
+        // Switch the home ground to the other owned stadium.
+        let bernabeuCard = app.descendants(matching: .any)["legends.stadiums.card.bernabeu-bowl"]
+        let fortressCard = app.descendants(matching: .any)["legends.stadiums.card.camp-fortress"]
+        XCTAssertTrue(bernabeuCard.waitForExistence(timeout: 5))
+        XCTAssertTrue(bernabeuCard.label.contains("Not the home stadium"),
+                      "Expected the Bernabéu Bowl to start as not home; got \(bernabeuCard.label)")
+        Thread.sleep(forTimeInterval: 0.4)
+        bernabeuCard.tap()
+
+        XCTAssertTrue(bernabeuCard.waitForExistence(timeout: 5))
+        XCTAssertTrue(bernabeuCard.label.contains("Current home stadium"),
+                      "Selecting the Bernabéu Bowl should make it the home stadium; got \(bernabeuCard.label)")
+        XCTAssertTrue(fortressCard.waitForExistence(timeout: 5))
+        XCTAssertTrue(fortressCard.label.contains("Not the home stadium"),
+                      "Only one home stadium can be active at a time")
+        XCTAssertTrue(homeStat.label.contains("BERNABÉU"),
+                      "The summary should now name the Bernabéu Bowl as home")
+
+        let stadiumOwnedFilter = app.buttons["legends.stadiums.filter.owned"]
+        XCTAssertTrue(stadiumOwnedFilter.waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 0.4)
+        stadiumOwnedFilter.tap()
+        XCTAssertFalse(lockedStadium.waitForExistence(timeout: 2),
+                       "OWNED filter must hide locked stadium cards")
+        XCTAssertTrue(bernabeuCard.exists, "OWNED filter must keep owned stadiums")
+
+        // Leave and reopen: the home ground persists.
+        let homeTab2 = app.buttons["legends.nav.home"]
+        XCTAssertTrue(homeTab2.waitForExistence(timeout: 6), "Sidebar must remain usable on Stadiums")
+        Thread.sleep(forTimeInterval: 0.5)
+        homeTab2.tap()
+        XCTAssertTrue(homeTab2.waitForExistence(timeout: 8), "Expected to return to the Home dashboard")
+
+        scrollToClubAndTap()
+        openClubTile(identifier: "legends.club.stadiums", title: "STADIUMS")
+        XCTAssertTrue(stadiumsScreen.waitForExistence(timeout: 8),
+                      "Stadiums should reopen cleanly after navigation away")
+        XCTAssertTrue(bernabeuCard.waitForExistence(timeout: 5))
+        XCTAssertTrue(bernabeuCard.label.contains("Current home stadium"),
+                      "The home stadium must survive leaving and reopening the screen")
+        XCTAssertTrue(homeStat.waitForExistence(timeout: 5) && homeStat.label.contains("BERNABÉU"),
+                      "The summary must reflect the persisted home stadium")
+
+        Thread.sleep(forTimeInterval: 0.6)
+        let stadiumsShot = XCUIScreen.main.screenshot()
+        let stadiumsAttachment = XCTAttachment(screenshot: stadiumsShot)
+        stadiumsAttachment.name = "Legends Stadiums redesign (landscape)"
+        stadiumsAttachment.lifetime = .keepAlways
+        add(stadiumsAttachment)
+
+        let stadiumsBackButton = app.buttons["legends.header.back"]
+        XCTAssertTrue(stadiumsBackButton.waitForExistence(timeout: 6),
+                      "Stadiums should provide an explicit back button to the Club hub")
+        XCTAssertTrue(stadiumsBackButton.label.contains("Back to Club"))
+        Thread.sleep(forTimeInterval: 0.5)
+        stadiumsBackButton.tap()
+        XCTAssertTrue(app.buttons["legends.club.assistants"].waitForExistence(timeout: 6),
+                      "The Stadiums back button should return to the Club hub")
+
+        let size = app.windows.firstMatch.frame.size
+        try? stadiumsShot.pngRepresentation.write(to: URL(fileURLWithPath: "/tmp/rsm_collection_\(Int(size.width))x\(Int(size.height)).png"))
     }
 
     /// Shared onboarding flow: pick an archetype, scroll to and tap SELECT

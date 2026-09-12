@@ -111,7 +111,9 @@ struct LegendsFacilitiesView: View {
             accent: LegendsPalette.gold,
             onBack: onBack,
             currentNav: .club,
-            onNavigate: onNavigate
+            onNavigate: onNavigate,
+            headerBackTitle: "Back to Club",
+            onHeaderBack: { onNavigate?(.club) }
         ) {
             VStack(alignment: .leading, spacing: 14) {
                 balanceSummary

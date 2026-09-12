@@ -430,6 +430,26 @@ extension LegendsStore {
         persist()
     }
 
+    /// Deterministic UI-test fixture for the redesigned Assistants and
+    /// Stadiums collections: two owned assistants (first active, second
+    /// inactive) and two owned stadiums (second active as home), plus a
+    /// locked remainder so ALL/OWNED filtering and locked presentation are
+    /// all deterministic. Presentation only; no unlock rolls are run.
+    func prepareCollectionFixtureForDebug() {
+        profile = .starter()
+        profile.managerProfile = LegendsManagerProfile(
+            firstName: "Test", surname: "Manager", nationalityCode: "GB",
+            dateOfBirth: Date(timeIntervalSince1970: 315_532_800), archetype: .architect
+        )
+        profile.coins = 500
+        profile.packTokens = 7
+        profile.ownedManagerIDs = ["fergunson", "guardiablo"]
+        profile.activeManagerID = "fergunson"
+        profile.ownedStadiumIDs = ["bernabeu-bowl", "camp-fortress"]
+        profile.activeStadiumID = "camp-fortress"
+        persist()
+    }
+
     /// Deterministic UI-test fixture for the Club Facilities destination.
     /// It uses a fresh onboarded profile with enough Balance for a first
     /// Training Centre upgrade while retaining pack tokens to prove the two
