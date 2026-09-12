@@ -84,7 +84,7 @@ extension LegendsStore {
     func playMatch() -> LegendsMatchOutcomeSummary? {
         guard currentTeamRating > 0 else { return nil }
         let opponent = scheduledOpponentFixture == nil ? generateOpponent() : scheduledOpponent()
-        let chemistryBonus = Double(totalChemistry) * 0.3 + matchStrengthBonus
+        let chemistryBonus = matchChemistryBonus(for: opponent)
         let result = LegendsMatchEngine.simulate(teamRating: currentTeamRating, opponentRating: opponent.rating,
                                                    chemistryBonus: chemistryBonus)
         return applyMatchOutcome(opponent: opponent, result: result)

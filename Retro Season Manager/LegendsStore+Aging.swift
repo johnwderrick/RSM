@@ -639,7 +639,7 @@ extension LegendsStore {
         abs(value.unicodeScalars.reduce(23) { ($0 * 31 + Int($1.value)) & 0x7fffffff })
     }
 
-    static func makeCareerState(for card: LegendsCard, signedSeason: Int) -> LegendsPlayerCareer {
+    static func makeCareerState(for card: LegendsCard, signedSeason: Int, youthAcademyLevel: Int = 0) -> LegendsPlayerCareer {
         let lifecycleProfile = LegendsCareerLifecyclePolicy.profile(for: card.id)
         let lifecyclePolicy = LegendsCareerLifecyclePolicy.configuration(for: lifecycleProfile)
         let seed = stableSeed(card.id)
@@ -650,7 +650,7 @@ extension LegendsStore {
         case 24...27: gap = 3
         default: gap = 0
         }
-        let potential = min(99, card.overall + gap)
+        let potential = min(99, card.overall + gap + (card.age <= 23 ? max(0, youthAcademyLevel) : 0))
         let primeBase: Int
         switch card.position.broad {
         case .goalkeeper: primeBase = 29
@@ -737,7 +737,8 @@ extension LegendsStore {
     /// leave the XI does not reset their age, potential, or statistics.
     func startCareerIfNeeded(for card: LegendsCard) {
         guard profile.playerCareers[card.id] == nil else { return }
-        var state = Self.makeCareerState(for: card, signedSeason: profile.currentSeason)
+        var state = Self.makeCareerState(for: card, signedSeason: profile.currentSeason,
+                                          youthAcademyLevel: facilityLevel(.youthAcademy))
         // Baseline the season review from the OVR the player actually has
         // at signing (upgrades included), not the raw card rating.
         state.seasonStartOverall = effectiveOverall(for: card)
@@ -795,7 +796,8 @@ extension LegendsStore {
         let rawProgress = Double(state.developmentRate * 2)
             * ageFactor * minutesFactor * conditionFactor
             * lifecycle.growthMultiplier * state.developmentMultiplier
-            * state.trainingPlan.intensity.progressMultiplier * repeatedIntensiveFactor
+            * state.trainingPlan.intensity.progressMultiplier
+            * trainingCentreProgressMultiplier * repeatedIntensiveFactor
         let proposedProgress = max(1, Int(rawProgress.rounded()))
         let progressCeiling = max(0, state.potential - state.startingOverall) * 100
         let appliedProgress = min(proposedProgress, max(0, progressCeiling - state.developmentProgress))

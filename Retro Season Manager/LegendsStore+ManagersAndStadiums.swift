@@ -33,10 +33,31 @@ extension LegendsStore {
         persist()
     }
 
-    /// Combined flat bonus fed into LegendsMatchEngine's team strength —
-    /// the doc's "tactical bonuses" (Managers) and "small gameplay
-    /// bonus" (Stadiums).
+    /// The collectible Assistant and Stadium bonuses apply to every match.
+    /// The Club Stadium facility is deliberately resolved separately because
+    /// it is a home-ground benefit, not a generic team-strength modifier.
     var matchStrengthBonus: Double {
         Double((activeManager?.tacticalBonus ?? 0) + (activeStadium?.gameplayBonus ?? 0))
+    }
+
+    /// Resolves the complete pre-match strength bonus from the authoritative
+    /// scheduled fixture. Only a fixture whose stored home team is this club
+    /// receives the Club Stadium facility effect. Unscheduleable fallback
+    /// matches, away fixtures, and malformed/stale fixture IDs receive no
+    /// facility stadium bonus.
+    func matchStrengthBonus(for opponent: LegendsOpponent) -> Double {
+        let collectibleBonus = matchStrengthBonus
+        guard let fixtureID = opponent.fixtureID,
+              let fixture = profile.divisionSchedule.first(where: { $0.id == fixtureID }),
+              fixture.homeTeamID == profile.clubName else {
+            return collectibleBonus
+        }
+        return collectibleBonus + clubStadiumMatchStrengthBonus
+    }
+
+    /// Shared by the instant and live match paths so both use exactly the
+    /// same home/away and unscheduled-fixture rule.
+    func matchChemistryBonus(for opponent: LegendsOpponent) -> Double {
+        Double(totalChemistry) * 0.3 + matchStrengthBonus(for: opponent)
     }
 }

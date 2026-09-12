@@ -242,7 +242,7 @@ struct LegendsPlayerDetailView: View {
                 if career != nil {
                     statRow("POTENTIAL", store.potentialLabel(for: card))
                     statRow("FORM", event?.rawValue ?? "USUAL PACE")
-                    statRow("SCOUTING", store.potentialDescription(for: card))
+                    statRow("SCOUTING", store.scoutingReport(for: card))
                 }
                 Text("Base \(card.overall)\(upgradeText)\(agingText)\(formText) = \(effectiveOverall)")
                     .font(.system(.caption2, design: .monospaced))

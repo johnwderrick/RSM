@@ -429,5 +429,22 @@ extension LegendsStore {
         }
         persist()
     }
+
+    /// Deterministic UI-test fixture for the Club Facilities destination.
+    /// It uses a fresh onboarded profile with enough Balance for a first
+    /// Training Centre upgrade while retaining pack tokens to prove the two
+    /// currencies stay separate.
+    func prepareFacilitiesFixtureForDebug() {
+        profile = .starter()
+        profile.managerProfile = LegendsManagerProfile(
+            firstName: "Test", surname: "Manager", nationalityCode: "GB",
+            dateOfBirth: Date(timeIntervalSince1970: 315_532_800), archetype: .architect
+        )
+        profile.coins = 500
+        profile.packTokens = 7
+        profile.facilityLevels = [:]
+        persist()
+    }
+
     #endif
 }

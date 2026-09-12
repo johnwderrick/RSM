@@ -711,6 +711,157 @@ final class RetroSeasonManagerUITests: XCTestCase {
         add(attachment)
     }
 
+    /// The redesigned Club Facilities destination, driven by deterministic
+    /// fixture data (`UITEST_LEGENDS_CLUB_FACILITIES`): Club hub navigation,
+    /// Balance-only upgrade, exact balance update, and state preservation
+    /// after leaving and reopening the destination.
+    func testLegendsFacilitiesNavigationUpgradeAndPersistence() throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_LEGENDS_CLUB_FACILITIES"]
+        app.launch()
+
+        let legendsButton = app.buttons["experience.legends"]
+        XCTAssertTrue(legendsButton.waitForExistence(timeout: 8),
+                      "Expected the RSM Legends entry button on the experience selector")
+        legendsButton.tap()
+
+        let clubTab = app.buttons["legends.nav.club"]
+        XCTAssertTrue(clubTab.waitForExistence(timeout: 10),
+                      "Expected the Club sidebar item after entering Legends mode")
+        // The compact landscape sidebar is a real scroll container. Bring
+        // Club into the visible hit-test area before tapping it; merely
+        // finding an off-screen accessibility node does not perform a tap.
+        let sidebarScroll = app.scrollViews.firstMatch
+        XCTAssertTrue(sidebarScroll.exists, "Expected the Legends sidebar scroll container")
+        // XCUITest can report a materialized button as hittable even when its
+        // frame is just below the compact landscape viewport. One deliberate
+        // sidebar scroll makes the physical hit target visible before the tap.
+        sidebarScroll.swipeUp()
+        for _ in 0..<3 where !clubTab.isHittable {
+            sidebarScroll.swipeUp()
+        }
+        XCTAssertTrue(clubTab.isHittable,
+                      "The Club sidebar item should be reachable in compact landscape")
+        Thread.sleep(forTimeInterval: 0.5)
+        clubTab.tap()
+
+        // Club's destination content also scrolls on short landscape layouts.
+        // Keep the test tied to real hit-testing rather than treating an
+        // off-screen materialized tile as usable.
+        let destinationScroll = app.scrollViews.element(boundBy: max(0, app.scrollViews.count - 1))
+        for _ in 0..<4 {
+            if app.buttons["legends.club.facilities"].isHittable { break }
+            destinationScroll.swipeUp()
+        }
+
+        // The Club hub owns the Facilities route. Prefer the stable identifier,
+        // but keep the label fallback for SwiftUI containers that combine the
+        // tile's descendants into the button's accessible label.
+        let facilityByID = app.buttons["legends.club.facilities"]
+        let facilityButton: XCUIElement
+        if facilityByID.waitForExistence(timeout: 5) {
+            facilityButton = facilityByID
+        } else {
+            facilityButton = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "FACILITIES")).firstMatch
+            XCTAssertTrue(facilityButton.waitForExistence(timeout: 5),
+                          "Expected the Facilities tile in the Club hub")
+        }
+        facilityButton.tap()
+
+        let facilitiesScreen = app.descendants(matching: .any)["legends.facilities.screen"]
+        XCTAssertTrue(facilitiesScreen.waitForExistence(timeout: 8),
+                      "Expected the Facilities destination")
+        let balance = app.descendants(matching: .any)["legends.facilities.balance"]
+        XCTAssertTrue(balance.waitForExistence(timeout: 5), "Expected the Club Balance summary")
+        XCTAssertTrue(balance.label.contains("500"),
+                      "The fixture should expose the initial 500 Balance")
+
+        let trainingLevel = app.descendants(matching: .any)["legends.facilities.level.trainingCentre"]
+        XCTAssertTrue(trainingLevel.waitForExistence(timeout: 5),
+                      "Expected the Training Centre level")
+        XCTAssertTrue(trainingLevel.label.contains("LV 0/5"),
+                       "Facilities should start at level zero")
+        let scoutingLevel = app.descendants(matching: .any)["legends.facilities.level.scoutingNetwork"]
+        XCTAssertTrue(scoutingLevel.waitForExistence(timeout: 5),
+                      "Expected the Scouting Network level")
+        XCTAssertTrue(scoutingLevel.label.contains("LV 0/3"),
+                      "Scouting Network should use its meaningful three-level progression")
+
+
+        let upgradeByID = app.buttons["legends.facilities.upgrade.trainingCentre"]
+        let upgradeButton: XCUIElement
+        if upgradeByID.waitForExistence(timeout: 5) {
+            upgradeButton = upgradeByID
+        } else {
+            upgradeButton = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Upgrade Training Centre")).firstMatch
+            XCTAssertTrue(upgradeButton.waitForExistence(timeout: 5),
+                          "Expected the Training Centre upgrade action")
+        }
+        XCTAssertTrue(upgradeButton.isEnabled, "The first upgrade should be affordable")
+        upgradeButton.tap()
+
+        XCTAssertTrue(trainingLevel.waitForExistence(timeout: 5))
+        XCTAssertTrue(trainingLevel.label.contains("LV 1/5"),
+                      "A successful upgrade should advance the Training Centre to level one")
+        XCTAssertTrue(balance.waitForExistence(timeout: 5))
+        XCTAssertTrue(balance.label.contains("400"),
+                      "The exact 100 Balance upgrade cost should be deducted once")
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "UPGRADED TO LEVEL 1")).firstMatch.waitForExistence(timeout: 5),
+                      "A successful upgrade should provide visible confirmation")
+
+        // Leave through the shared sidebar, then return through Club and its
+        // Facilities tile. This proves the persisted store state survives
+        // destination replacement rather than only updating one rendered view.
+        let homeTab = app.buttons["legends.nav.home"]
+        XCTAssertTrue(homeTab.waitForExistence(timeout: 6), "Sidebar must remain usable on Facilities")
+        Thread.sleep(forTimeInterval: 0.5)
+        homeTab.tap()
+        XCTAssertTrue(homeTab.waitForExistence(timeout: 8), "Expected to return to the Home dashboard")
+        XCTAssertTrue(homeTab.isSelected, "Home should be highlighted after leaving Facilities")
+
+        let clubTabAgain = app.buttons["legends.nav.club"]
+        XCTAssertTrue(clubTabAgain.waitForExistence(timeout: 8))
+        // Returning to the dashboard resets the sidebar to its top position;
+        // scroll it again before asking XCUITest to tap the off-screen Club
+        // destination.
+        let sidebarScrollAgain = app.scrollViews.firstMatch
+        XCTAssertTrue(sidebarScrollAgain.exists, "Expected the dashboard sidebar scroll container")
+        sidebarScrollAgain.swipeUp()
+        for _ in 0..<3 where !clubTabAgain.isHittable {
+            sidebarScrollAgain.swipeUp()
+        }
+        XCTAssertTrue(clubTabAgain.isHittable,
+                      "The Club sidebar item should remain reachable after returning Home")
+        Thread.sleep(forTimeInterval: 0.5)
+        clubTabAgain.tap()
+        let facilityAgain = app.buttons["legends.club.facilities"]
+        let reopenedTile: XCUIElement
+        if facilityAgain.waitForExistence(timeout: 5) {
+            reopenedTile = facilityAgain
+        } else {
+            reopenedTile = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "FACILITIES")).firstMatch
+            XCTAssertTrue(reopenedTile.waitForExistence(timeout: 5))
+        }
+        reopenedTile.tap()
+
+        XCTAssertTrue(facilitiesScreen.waitForExistence(timeout: 8),
+                      "Facilities should reopen cleanly after navigation away")
+        XCTAssertTrue(balance.waitForExistence(timeout: 5) && balance.label.contains("400"),
+                      "The updated Balance should remain visible after reopening")
+        XCTAssertTrue(trainingLevel.waitForExistence(timeout: 5) && trainingLevel.label.contains("LV 1/5"),
+                      "The upgraded facility level should remain visible after reopening")
+
+        let screenshot = XCUIScreen.main.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = "Legends Facilities redesign (landscape)"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        let size = app.windows.firstMatch.frame.size
+        let path = "/tmp/rsm_facilities_\(Int(size.width))x\(Int(size.height)).png"
+        try? screenshot.pngRepresentation.write(to: URL(fileURLWithPath: path))
+    }
+
     /// Shared onboarding flow: pick an archetype, scroll to and tap SELECT
     /// MANAGER, fill in a name, tap REVIEW PROFILE, then BEGIN YOUR LEGEND.
     /// Real XCUITest hit-testing (not raw screen coordinates) is what makes

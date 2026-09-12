@@ -606,6 +606,10 @@ final class LegendsLiveMatch {
     /// either mid-match anyway).
     private let strengthBonus: Double
 
+    /// The exact bonus snapshot used by this live match, exposed read-only
+    /// for regression coverage of instant/live parity.
+    var appliedMatchStrengthBonus: Double { strengthBonus }
+
     /// Synthesized opponent XI (id/name/position + full attribute set),
     /// generated once at kickoff from the same deterministic roster the
     /// cosmetic 2D pitch already draws its 11 dots from
@@ -666,7 +670,7 @@ final class LegendsLiveMatch {
         }
 
         self.userMentality = store.profile.preferredMentality
-        self.strengthBonus = store.matchStrengthBonus + Double(store.totalChemistry) * 0.3
+        self.strengthBonus = store.matchChemistryBonus(for: opponent)
         self.opponentRoster = LegendsOpponentRoster.generateRoster(for: opponent)
         self.incidentScheduleOffset = opponent.name.utf8.reduce(0) { partial, byte in
             (partial &* 31 &+ Int(byte)) % 97

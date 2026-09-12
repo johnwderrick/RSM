@@ -425,7 +425,7 @@ enum LegendsNavItem: String, CaseIterable, Identifiable {
 /// the dashboard itself; the other cases are the full-screen menus that
 /// previously used modal covers.
 enum LegendsScreen {
-    case squad, training, packs, collection, match, challenges, table, club, managers, stadiums, hall, profile, settings, planning, reports
+    case squad, training, packs, collection, match, challenges, table, club, facilities, managers, stadiums, hall, profile, settings, planning, reports
 }
 
 /// The real RSM Legends home screen. All displayed progression values are
@@ -484,7 +484,12 @@ struct LegendsHomeView: View {
                 case .club:
                     LegendsClubHubView(store: store, onNavigate: { item in
                         navigateFromDestination(item, current: .club)
-                    }, onOpenManagers: { screen = .managers }, onOpenStadiums: { screen = .stadiums }) { requestExit() }
+                    }, onOpenManagers: { screen = .managers }, onOpenStadiums: { screen = .stadiums }, onOpenFacilities: { screen = .facilities }) { requestExit() }
+                case .facilities:
+                    LegendsFacilitiesView(store: store, onNavigate: { item in
+                        if item == .club { screen = .club }
+                        else { navigateFromDestination(item, current: .club) }
+                    }) { requestExit() }
                 case .managers:
                     LegendsManagersView(store: store, onNavigate: { item in
                         if item == .club { screen = .club }
@@ -1822,19 +1827,26 @@ struct LegendsClubHubView: View {
     var onNavigate: ((LegendsNavItem) -> Void)? = nil
     var onOpenManagers: () -> Void
     var onOpenStadiums: () -> Void
+    var onOpenFacilities: () -> Void
     let onBack: () -> Void
 
     var body: some View {
-        LegendsMenuShell(store: store, title: "CLUB", subtitle: "STADIUM & STAFF", icon: "building.columns.fill", accent: LegendsPalette.blue, onBack: onBack, currentNav: .club, onNavigate: onNavigate, scrollContent: false) {
-            VStack(spacing: 14) {
+        LegendsMenuShell(store: store, title: "CLUB", subtitle: "STADIUM, STAFF & FACILITIES", icon: "building.columns.fill", accent: LegendsPalette.blue, onBack: onBack, currentNav: .club, onNavigate: onNavigate) {
+            // Keep the Club tiles in a stable two-row layout. Unlike an adaptive
+            // grid or ViewThatFits, this guarantees that the third destination is
+            // materialized and reachable in iPad compatibility mode as well as
+            // on compact landscape phones.
+            VStack(spacing: 12) {
                 HStack(spacing: 12) {
                     clubDestination(title: "ASSISTANTS", subtitle: "HIRE STAFF FOR THE SIDELINE", icon: "person.crop.rectangle.stack.fill", color: LegendsPalette.green,
                                     value: "\(store.profile.ownedManagerIDs.count) / \(LegendsManagerDatabase.all.count) OWNED", action: onOpenManagers)
                     clubDestination(title: "STADIUMS", subtitle: "GROW YOUR HOME ADVANTAGE", icon: "building.2.fill", color: LegendsPalette.blue,
                                     value: "\(store.profile.ownedStadiumIDs.count) / \(LegendsStadiumDatabase.all.count) OWNED", action: onOpenStadiums)
                 }
+                clubDestination(title: "FACILITIES", subtitle: "UPGRADE THE CLUB WITH BALANCE", icon: "building.2.crop.circle.fill", color: LegendsPalette.goldDeep,
+                                value: "\(store.profile.coins) BALANCE", action: onOpenFacilities)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .frame(maxWidth: .infinity, alignment: .top)
         }
     }
 
@@ -1867,11 +1879,12 @@ struct LegendsClubHubView: View {
                 .padding(14)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 176)
+            .frame(height: 156)
             .clipShape(RoundedRectangle(cornerRadius: 16))
             .overlay(RoundedRectangle(cornerRadius: 16).stroke(color.opacity(0.55), lineWidth: 1))
             .shadow(color: LegendsPalette.navy.opacity(0.14), radius: 8, y: 4)
         }
         .buttonStyle(PressableButtonStyle())
+        .accessibilityIdentifier("legends.club.\(title.lowercased().replacingOccurrences(of: " ", with: "-"))")
     }
 }

@@ -222,6 +222,9 @@ struct LegendsProfile: Codable {
     var activeManagerID: String? = nil
     var ownedStadiumIDs: Set<String> = []
     var activeStadiumID: String? = nil
+    /// Persistent Legends Club facility levels. Keys are `LegendsFacilityKind`
+    /// raw values so saves from before Facilities existed decode safely.
+    var facilityLevels: [String: Int] = [:]
     /// Seasonal aging (see LegendsStore+Aging.swift). A "season" is
     /// `LegendsStore.matchesPerSeason` matches, not a calendar period —
     /// Legends has no fixture list to hang a real calendar off of.
@@ -336,7 +339,7 @@ struct LegendsProfile: Codable {
         case totalWins, currentWinStreak, matchesToday, winsToday, winsThisWeek, goalsThisWeek
         case lastDailyReset, lastWeeklyReset
         case completedPermanentChallengeIDs, completedDailyChallengeIDs, completedWeeklyChallengeIDs
-        case ownedManagerIDs, activeManagerID, ownedStadiumIDs, activeStadiumID
+        case ownedManagerIDs, activeManagerID, ownedStadiumIDs, activeStadiumID, facilityLevels
         case currentSeason, matchesPlayedThisSeason, cardAgeOffsets
         case preferredMentality
         case pendingPackID, pendingPackCardIDs, hasClaimedStarterPack, managerProfile, ownedPlayerRecords
@@ -362,6 +365,7 @@ struct LegendsProfile: Codable {
          completedWeeklyChallengeIDs: Set<String> = [],
          ownedManagerIDs: Set<String> = [], activeManagerID: String? = nil,
          ownedStadiumIDs: Set<String> = [], activeStadiumID: String? = nil,
+         facilityLevels: [String: Int] = [:],
          currentSeason: Int = 1, matchesPlayedThisSeason: Int = 0, cardAgeOffsets: [String: Int] = [:],
          preferredMentality: Mentality = .balanced, pendingPackID: String? = nil,
          pendingPackCardIDs: [String] = [], hasClaimedStarterPack: Bool = false,
@@ -409,6 +413,7 @@ struct LegendsProfile: Codable {
         self.activeManagerID = activeManagerID
         self.ownedStadiumIDs = ownedStadiumIDs
         self.activeStadiumID = activeStadiumID
+        self.facilityLevels = facilityLevels
         self.currentSeason = currentSeason
         self.matchesPlayedThisSeason = matchesPlayedThisSeason
         self.cardAgeOffsets = cardAgeOffsets
@@ -470,6 +475,10 @@ struct LegendsProfile: Codable {
         activeManagerID = try c.decodeIfPresent(String.self, forKey: .activeManagerID)
         ownedStadiumIDs = try c.decodeIfPresent(Set<String>.self, forKey: .ownedStadiumIDs) ?? []
         activeStadiumID = try c.decodeIfPresent(String.self, forKey: .activeStadiumID)
+        facilityLevels = (try c.decodeIfPresent([String: Int].self, forKey: .facilityLevels) ?? [:]).reduce(into: [:]) { result, entry in
+            guard let kind = LegendsFacilityKind(rawValue: entry.key) else { return }
+            result[entry.key] = min(kind.maxLevel, max(0, entry.value))
+        }
         currentSeason = try c.decodeIfPresent(Int.self, forKey: .currentSeason) ?? 1
         matchesPlayedThisSeason = try c.decodeIfPresent(Int.self, forKey: .matchesPlayedThisSeason) ?? 0
         cardAgeOffsets = try c.decodeIfPresent([String: Int].self, forKey: .cardAgeOffsets) ?? [:]
