@@ -2,9 +2,18 @@
 //  LegendsCollectionView.swift
 //  Retro Season Manager
 //
-//  The Collection Book (Phase 3) — browses the full card database and
-//  tracks which cards are owned. Ownership comes from opening packs
-//  (Phase 4, LegendsStore+Packs.swift).
+//  The Collection Book (Phase 3, redesigned) — browses the full card
+//  database and tracks which cards are owned. Ownership comes from
+//  opening packs (Phase 4, LegendsStore+Packs.swift).
+//
+//  Presentation follows the accepted Squad/Division/Training/Packs/
+//  Facilities/Assistants/Stadiums language: a white summary band, capsule
+//  filter chips, light card tiles, and one stable scroll container owned
+//  by this screen (the shell renders the content unsrolled). Filter and
+//  selection changes only mutate @State, so the scroll container's
+//  identity never changes and the view never jumps back to the top.
+//  All lifecycle rules (signing, releasing, retiring, favourites,
+//  duplicates) remain owned by LegendsStore — this view only reads them.
 //
 
 import SwiftUI
@@ -43,10 +52,8 @@ struct LegendsCollectionView: View {
     @State private var duplicatesOnly = false
     @State private var finalSeasonOnly = false
     @State private var showingFilters = false
-    @State private var showingComparison = false
-    @State private var comparisonCard: LegendsCard? = nil
-    @State private var releaseCandidate: LegendsCard? = nil
-    @State private var releaseFavouriteConfirmation = false
+
+    // MARK: - Derived data (authoritative store state, view-only)
 
     private var cards: [LegendsCard] {
         let retiredIDs = Set(store.profile.legendsHall.map(\.cardID))
@@ -88,19 +95,38 @@ struct LegendsCollectionView: View {
         totalCount == 0 ? 0 : Int((Double(ownedCount) / Double(totalCount) * 100).rounded())
     }
 
+    private var activeFilterCount: Int {
+        (selectedEra != nil ? 1 : 0) + (selectedRarity != nil ? 1 : 0) + (selectedNation != nil ? 1 : 0)
+            + (minimumOverall > 0 ? 1 : 0) + (highPotentialOnly ? 1 : 0) + (ownedOnly ? 1 : 0)
+            + (favouritesOnly ? 1 : 0) + (duplicatesOnly ? 1 : 0) + (finalSeasonOnly ? 1 : 0)
+            + (searchText.isEmpty ? 0 : 1)
+    }
+
     var body: some View {
         LegendsMenuShell(store: store, title: browserMode == .activeClub ? "ACTIVE CLUB" : "PLAYER COLLECTION", subtitle: "\(ownedCount) OWNED · \(signedCount) ACTIVE · \(unsignedCount) UNSIGNED · \(retiredCount) LEGENDS", icon: browserMode == .activeClub ? "person.3.fill" : "square.stack.3d.up.fill", accent: browserMode == .activeClub ? LegendsPalette.blue : LegendsPalette.orange, onBack: onBack, currentNav: .collection, onNavigate: onNavigate, scrollContent: false) {
-            VStack(spacing: 10) {
-                browserModePicker
-                statusPicker
-                if browserMode == .activeClub { activeClubSummary }
-                eraPicker
-                rarityPicker
-                capacityBanner
-                toolbar
-                if showingFilters { filterPanel }
-                activeFilterSummary
-                cardGrid
+            // One stable scroll container for the whole destination. Plain
+            // (non-lazy) rows keep every tile in the accessibility tree even
+            // when scrolled off-screen, and the container's identity never
+            // changes when filters change, so scroll position is preserved.
+            GeometryReader { geo in
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        summaryBand
+                        primaryFilterRow
+                        if browserMode == .activeClub { activeClubSummary }
+                        capacityBanner
+                        if showingFilters { advancedFilterPanel }
+                        countRow
+                        if cards.isEmpty {
+                            emptyState
+                        } else {
+                            cardGrid
+                        }
+                    }
+                    .padding(.bottom, 20)
+                    .frame(maxWidth: .infinity)
+                }
+                .frame(width: geo.size.width, height: geo.size.height)
             }
         }
         .sheet(item: $selectedCard) { card in
@@ -109,31 +135,162 @@ struct LegendsCollectionView: View {
         .accessibilityIdentifier("legends.library")
     }
 
-    private var browserModePicker: some View {
-        Picker("Player area", selection: $browserMode) {
-            ForEach(LegendsPlayerBrowserMode.allCases) { mode in Text(mode.rawValue).tag(mode) }
+    // MARK: - Summary band
+
+    private var summaryBand: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                summaryStat(value: "\(ownedCount)/\(totalCount)",
+                            label: "OWNED",
+                            color: LegendsPalette.orange,
+                            identifier: "legends.players.summary.owned")
+                summaryStat(value: "\(signedCount)",
+                            label: "SIGNED",
+                            color: LegendsPalette.green,
+                            identifier: "legends.players.summary.signed")
+                summaryStat(value: "\(unsignedCount)",
+                            label: "UNSIGNED",
+                            color: LegendsPalette.blue,
+                            identifier: "legends.players.summary.unsigned")
+                summaryStat(value: "\(retiredCount)",
+                            label: "LEGENDS",
+                            color: LegendsPalette.goldDeep,
+                            identifier: "legends.players.summary.legends")
+            }
+            HStack(spacing: 10) {
+                Text("COLLECTION COMPLETION")
+                    .font(.system(size: 8, weight: .black, design: .monospaced))
+                    .foregroundStyle(LegendsPalette.navy.opacity(0.62))
+                LegendsProgressBar(value: Double(ownedCount) / Double(max(totalCount, 1)), tint: LegendsPalette.orange, height: 8)
+                    .accessibilityIdentifier("legends.players.summary.completionBar")
+                Text("\(completionPercent)%")
+                    .font(.system(size: 12, weight: .black, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(LegendsPalette.navy)
+                    .accessibilityIdentifier("legends.players.summary.completion")
+            }
         }
-        .pickerStyle(.segmented)
-        .tint(LegendsPalette.blue)
-        .padding(.horizontal)
-        .accessibilityLabel("Player area")
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(LegendsPalette.orange.opacity(0.24), lineWidth: 1))
+        .shadow(color: LegendsPalette.navy.opacity(0.09), radius: 8, y: 4)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("legends.players.summary")
     }
 
-    private var statusPicker: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 7) {
-                ForEach(LegendsCollectionStatus.allCases) { status in
-                    Button { selectedStatus = status } label: {
-                        Text(status.rawValue).font(.system(size: 9, weight: .black, design: .monospaced))
-                            .foregroundStyle(selectedStatus == status ? .white : LegendsPalette.navy)
-                            .padding(.horizontal, 12).padding(.vertical, 7)
-                            .background(selectedStatus == status ? LegendsPalette.blue : .white)
-                            .clipShape(Capsule())
-                    }.buttonStyle(PressableButtonStyle())
+    private func summaryStat(value: String, label: String, color: Color, identifier: String) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(value)
+                .font(.system(size: 15, weight: .black, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(LegendsPalette.navy)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+            Text(label)
+                .font(.system(size: 8, weight: .black, design: .monospaced))
+                .foregroundStyle(color)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 8)
+        .padding(.horizontal, 10)
+        .background(LegendsPalette.contentBackground.opacity(0.7))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(label.lowercased()) \(value)")
+        .accessibilityIdentifier(identifier)
+    }
+
+    // MARK: - Primary filter row
+
+    /// Mode, status chips, the advanced-filter toggle and the sort menu all
+    /// live in one horizontal row: the crowded stack of four separate chip
+    /// rows collapses into a single scannable band, with rarer controls
+    /// moved into the expandable advanced area.
+    private var primaryFilterRow: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Picker("Player area", selection: $browserMode) {
+                ForEach(LegendsPlayerBrowserMode.allCases) { mode in Text(mode.rawValue).tag(mode) }
+            }
+            .pickerStyle(.segmented)
+            .tint(browserMode == .activeClub ? LegendsPalette.blue : LegendsPalette.orange)
+            .accessibilityIdentifier("legends.players.mode")
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 7) {
+                    ForEach(LegendsCollectionStatus.allCases) { status in
+                        Button {
+                            Haptics.tap()
+                            selectedStatus = status
+                        } label: {
+                            Text(status.rawValue)
+                                .font(.system(size: 9, weight: .black, design: .monospaced))
+                                .foregroundStyle(selectedStatus == status ? .white : LegendsPalette.navy)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 7)
+                                .background(selectedStatus == status ? LegendsPalette.orange : .white)
+                                .clipShape(Capsule())
+                                .overlay(Capsule().stroke(selectedStatus == status ? LegendsPalette.orange : LegendsPalette.navy.opacity(0.18), lineWidth: 1))
+                        }
+                        .buttonStyle(PressableButtonStyle())
+                        .accessibilityIdentifier("legends.players.status.\(status.rawValue.lowercased())")
+                        .accessibilityAddTraits(selectedStatus == status ? [.isSelected] : [])
+                    }
+                    Divider().frame(height: 20)
+                    Button {
+                        Haptics.tap()
+                        showingFilters.toggle()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "line.3.horizontal.decrease.circle")
+                            Text(showingFilters ? "HIDE FILTERS" : "FILTERS")
+                            if activeFilterCount > 0 && !showingFilters {
+                                Text("\(activeFilterCount)")
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 2)
+                                    .background(LegendsPalette.orange)
+                                    .clipShape(Capsule())
+                            }
+                        }
+                        .font(.system(size: 9, weight: .black, design: .monospaced))
+                        .foregroundStyle(showingFilters ? .white : LegendsPalette.navy)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(showingFilters ? LegendsPalette.blue : .white)
+                        .clipShape(Capsule())
+                        .overlay(Capsule().stroke(LegendsPalette.navy.opacity(0.18), lineWidth: 1))
+                    }
+                    .buttonStyle(PressableButtonStyle())
+                    .accessibilityIdentifier("legends.library.filters")
+
+                    Menu {
+                        ForEach(LegendsLibrarySort.allCases) { option in
+                            Button(option.rawValue) { sort = option }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.up.arrow.down")
+                            Text("SORT")
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 8, weight: .black))
+                        }
+                        .font(.system(size: 9, weight: .black, design: .monospaced))
+                        .foregroundStyle(LegendsPalette.navy)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(.white)
+                        .clipShape(Capsule())
+                        .overlay(Capsule().stroke(LegendsPalette.navy.opacity(0.18), lineWidth: 1))
+                    }
+                    .accessibilityIdentifier("legends.library.sort")
                 }
-            }.padding(.horizontal)
+                .padding(.horizontal, 1)
+            }
         }
     }
+
+    // MARK: - Active club summary
 
     private var activeClubSummary: some View {
         HStack(spacing: 18) {
@@ -141,7 +298,12 @@ struct LegendsCollectionView: View {
             summaryMetric("AVERAGE AGE", averageAge)
             summaryMetric("AVERAGE OVR", averageOverall)
             Spacer()
-        }.padding(.horizontal)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(LegendsPalette.blue.opacity(0.22), lineWidth: 1))
     }
 
     private var averageAge: Int {
@@ -157,22 +319,148 @@ struct LegendsCollectionView: View {
     }
 
     private func summaryMetric(_ title: String, _ value: Int) -> some View {
-        VStack(alignment: .leading, spacing: 1) { Text("\(value)").font(.system(size: 15, weight: .black, design: .rounded)); Text(title).font(.system(size: 8, weight: .black, design: .monospaced)) }
-            .foregroundStyle(LegendsPalette.navy)
+        VStack(alignment: .leading, spacing: 1) {
+            Text("\(value)")
+                .font(.system(size: 15, weight: .black, design: .rounded))
+                .monospacedDigit()
+            Text(title)
+                .font(.system(size: 8, weight: .black, design: .monospaced))
+                .foregroundStyle(LegendsPalette.navy.opacity(0.62))
+        }
+        .foregroundStyle(LegendsPalette.navy)
     }
 
-    private var eraPicker: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                eraChip(title: "All", isSelected: selectedEra == nil) { selectedEra = nil }
-                ForEach(LegendsEra.allCases, id: \.self) { era in
-                    eraChip(title: era.rawValue, isSelected: selectedEra == era) { selectedEra = era }
-                }
-                Divider().frame(height: 20)
-                ownedOnlyChip
+    // MARK: - Capacity banner
+
+    private var capacityBanner: some View {
+        HStack {
+            Image(systemName: "archivebox.fill")
+                .foregroundStyle(store.isUnsignedLibraryFull ? Color.red : LegendsPalette.blue)
+            Text("LIBRARY \(unsignedCount) / \(store.unsignedLibraryCapacity)")
+                .font(.system(size: 10, weight: .black, design: .monospaced))
+                .monospacedDigit()
+            Spacer()
+            if store.isUnsignedLibraryFull {
+                Text("FULL")
+                    .font(.system(size: 10, weight: .black, design: .monospaced))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.red)
+                    .clipShape(Capsule())
             }
-            .padding(.horizontal)
         }
+        .foregroundStyle(LegendsPalette.navy)
+        .padding(10)
+        .background(store.isUnsignedLibraryFull ? Color.red.opacity(0.12) : LegendsPalette.blue.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Unsigned player library capacity, \(unsignedCount) of \(store.unsignedLibraryCapacity)")
+    }
+
+    // MARK: - Advanced filters
+
+    private var advancedFilterPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            TextField("SEARCH PLAYERS", text: $searchText)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .autocorrectionDisabled()
+                .accessibilityIdentifier("legends.library.search")
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    eraChip(title: "ALL ERAS", isSelected: selectedEra == nil) { selectedEra = nil }
+                    ForEach(LegendsEra.allCases, id: \.self) { era in
+                        eraChip(title: era.rawValue, isSelected: selectedEra == era) { selectedEra = era }
+                    }
+                }
+                .padding(.horizontal, 1)
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    rarityChip(title: "ALL RARITIES", tint: LegendsPalette.navy, isSelected: selectedRarity == nil) { selectedRarity = nil }
+                    ForEach(LegendsRarity.allCases.sorted { $0.tier < $1.tier }, id: \.self) { rarity in
+                        rarityChip(title: rarity.rawValue, tint: rarity.tint, isSelected: selectedRarity == rarity) { selectedRarity = rarity }
+                    }
+                }
+                .padding(.horizontal, 1)
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 7) {
+                    Menu {
+                        Button("All nations") { selectedNation = nil }
+                        ForEach(Array(Set(LegendsCardDatabase.all.map(\.nation))).sorted(), id: \.self) { nation in
+                            Button(nation) { selectedNation = nation }
+                        }
+                    } label: {
+                        filterPill(selectedNation?.uppercased() ?? "NATION", active: selectedNation != nil, tint: LegendsPalette.blue)
+                    }
+                    .accessibilityIdentifier("legends.players.nation")
+
+                    Menu {
+                        Button("Any overall") { minimumOverall = 0 }
+                        ForEach([70, 80, 85, 90, 95], id: \.self) { rating in
+                            Button("\(rating)+ OVR") { minimumOverall = rating }
+                        }
+                    } label: {
+                        filterPill(minimumOverall == 0 ? "OVR" : "OVR \(minimumOverall)+", active: minimumOverall > 0, tint: LegendsPalette.orange)
+                    }
+                    .accessibilityIdentifier("legends.players.ovr")
+
+                    Button { highPotentialOnly.toggle() } label: {
+                        filterPill("POTENTIAL", active: highPotentialOnly, tint: LegendsPalette.green)
+                    }
+                    .buttonStyle(PressableButtonStyle())
+                    .accessibilityIdentifier("legends.players.potential")
+
+                    Button { ownedOnly.toggle() } label: {
+                        filterPill("OWNED ONLY", active: ownedOnly, tint: LegendsPalette.purple)
+                    }
+                    .buttonStyle(PressableButtonStyle())
+                    .accessibilityIdentifier("legends.players.ownedOnly")
+                }
+                .padding(.horizontal, 1)
+            }
+
+            Toggle("FAVOURITES ONLY", isOn: $favouritesOnly)
+                .font(.system(size: 10, weight: .black, design: .monospaced))
+                .tint(LegendsPalette.orange)
+                .accessibilityIdentifier("legends.library.favourites")
+            Toggle("EXACT DUPLICATES", isOn: $duplicatesOnly)
+                .font(.system(size: 10, weight: .black, design: .monospaced))
+                .tint(LegendsPalette.orange)
+                .accessibilityIdentifier("legends.library.duplicates")
+            Toggle("FINAL SEASON ONLY", isOn: $finalSeasonOnly)
+                .font(.system(size: 10, weight: .black, design: .monospaced))
+                .tint(LegendsPalette.orange)
+                .accessibilityIdentifier("legends.library.finalSeason")
+
+            Button {
+                Haptics.tap()
+                selectedStatus = .all; selectedEra = nil; selectedRarity = nil; selectedNation = nil
+                minimumOverall = 0; highPotentialOnly = false; ownedOnly = false
+                searchText = ""; favouritesOnly = false; duplicatesOnly = false; finalSeasonOnly = false; sort = .rating
+            } label: {
+                Text("RESET FILTERS")
+                    .font(.system(size: 10, weight: .black, design: .monospaced))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(LegendsPalette.navy)
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(PressableButtonStyle())
+            .accessibilityIdentifier("legends.library.resetFilters")
+        }
+        .padding(12)
+        .background(.white)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(LegendsPalette.navy.opacity(0.12), lineWidth: 1))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("legends.players.advanced")
     }
 
     private func eraChip(title: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
@@ -181,46 +469,17 @@ struct LegendsCollectionView: View {
             action()
         } label: {
             Text(title.uppercased())
-                .font(.system(.caption2, design: .monospaced).bold())
-                .foregroundStyle(isSelected ? Retro.background : Retro.text)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .background(isSelected ? Retro.accent : Retro.panel)
+                .font(.system(size: 9, weight: .black, design: .monospaced))
+                .foregroundStyle(isSelected ? .white : LegendsPalette.navy)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(isSelected ? LegendsPalette.blue : LegendsPalette.contentBackground)
                 .clipShape(Capsule())
+                .overlay(Capsule().stroke(isSelected ? LegendsPalette.blue : LegendsPalette.navy.opacity(0.18), lineWidth: 1))
         }
         .buttonStyle(PressableButtonStyle())
-    }
-
-    private var ownedOnlyChip: some View {
-        Button {
-            Haptics.tap()
-            ownedOnly.toggle()
-        } label: {
-            HStack(spacing: 4) {
-                Image(systemName: ownedOnly ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 11))
-                Text("OWNED ONLY")
-            }
-            .font(.system(.caption2, design: .monospaced).bold())
-            .foregroundStyle(ownedOnly ? Retro.background : Retro.text)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(ownedOnly ? Retro.accent : Retro.panel)
-            .clipShape(Capsule())
-        }
-        .buttonStyle(PressableButtonStyle())
-    }
-
-    private var rarityPicker: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                rarityChip(title: "All", tint: Retro.text, isSelected: selectedRarity == nil) { selectedRarity = nil }
-                ForEach(LegendsRarity.allCases.sorted { $0.tier < $1.tier }, id: \.self) { rarity in
-                    rarityChip(title: rarity.rawValue, tint: rarity.tint, isSelected: selectedRarity == rarity) { selectedRarity = rarity }
-                }
-            }
-            .padding(.horizontal)
-        }
+        .accessibilityIdentifier("legends.players.era.\(title.lowercased().replacingOccurrences(of: " ", with: "-"))")
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
 
     private func rarityChip(title: String, tint: Color, isSelected: Bool, action: @escaping () -> Void) -> some View {
@@ -229,46 +488,17 @@ struct LegendsCollectionView: View {
             action()
         } label: {
             Text(title.uppercased())
-                .font(.system(.caption2, design: .monospaced).bold())
-                .foregroundStyle(isSelected ? Retro.background : tint)
+                .font(.system(size: 9, weight: .black, design: .monospaced))
+                .foregroundStyle(isSelected ? .white : LegendsPalette.navy)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 7)
-                .background(isSelected ? tint : Retro.panel)
+                .background(isSelected ? tint : LegendsPalette.contentBackground)
                 .clipShape(Capsule())
-                .overlay(Capsule().stroke(tint.opacity(isSelected ? 0 : 0.5), lineWidth: 1))
+                .overlay(Capsule().stroke(isSelected ? tint : LegendsPalette.navy.opacity(0.18), lineWidth: 1))
         }
         .buttonStyle(PressableButtonStyle())
-    }
-
-    private var collectionFilterBar: some View {
-        let nations = Array(Set(LegendsCardDatabase.all.map(\.nation))).sorted()
-        return ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 7) {
-                Menu {
-                    Button("All nations") { selectedNation = nil }
-                    ForEach(nations, id: \.self) { nation in
-                        Button(nation) { selectedNation = nation }
-                    }
-                } label: {
-                    filterPill(selectedNation ?? "NATION", active: selectedNation != nil, tint: LegendsPalette.blue)
-                }
-                Menu {
-                    Button("Any overall") { minimumOverall = 0 }
-                    ForEach([70, 80, 85, 90, 95], id: \.self) { rating in
-                        Button("\(rating)+ OVR") { minimumOverall = rating }
-                    }
-                } label: {
-                    filterPill(minimumOverall == 0 ? "OVR" : "OVR \(minimumOverall)+", active: minimumOverall > 0, tint: LegendsPalette.orange)
-                }
-                Button {
-                    highPotentialOnly.toggle()
-                } label: {
-                    filterPill("POTENTIAL", active: highPotentialOnly, tint: LegendsPalette.green)
-                }
-                .buttonStyle(PressableButtonStyle())
-            }
-            .padding(.horizontal)
-        }
+        .accessibilityIdentifier("legends.players.rarity.\(title.lowercased().replacingOccurrences(of: " ", with: "-"))")
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
 
     private func filterPill(_ title: String, active: Bool, tint: Color) -> some View {
@@ -278,88 +508,35 @@ struct LegendsCollectionView: View {
                 .font(.system(size: 8, weight: .black))
         }
         .font(.system(size: 9, weight: .black, design: .monospaced))
-        .foregroundStyle(active ? Retro.background : Retro.text)
+        .foregroundStyle(active ? .white : LegendsPalette.navy)
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
-        .background(active ? tint : Retro.panel)
+        .background(active ? tint : LegendsPalette.contentBackground)
         .clipShape(Capsule())
+        .overlay(Capsule().stroke(active ? tint : LegendsPalette.navy.opacity(0.18), lineWidth: 1))
     }
 
-    private var capacityBanner: some View {
-        HStack {
-            Image(systemName: "archivebox.fill")
-            Text("LIBRARY \(unsignedCount) / \(store.unsignedLibraryCapacity)")
-                .font(.system(size: 10, weight: .black, design: .monospaced))
-            Spacer()
-            if store.isUnsignedLibraryFull { Text("FULL").foregroundStyle(.red) }
-        }
-        .foregroundStyle(LegendsPalette.navy)
-        .padding(10)
-        .background(store.isUnsignedLibraryFull ? Color.red.opacity(0.1) : LegendsPalette.blue.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .padding(.horizontal)
-        .accessibilityLabel("Unsigned player library capacity, \(unsignedCount) of \(store.unsignedLibraryCapacity)")
-    }
+    // MARK: - Count + grid
 
-    private var toolbar: some View {
-        HStack(spacing: 8) {
-            Button { showingFilters.toggle() } label: {
-                Label(showingFilters ? "HIDE FILTERS" : "FILTERS", systemImage: "line.3.horizontal.decrease.circle")
-            }
-            .accessibilityIdentifier("legends.library.filters")
-            Spacer()
-            Menu("SORT") {
-                ForEach(LegendsLibrarySort.allCases) { option in
-                    Button(option.rawValue) { sort = option }
-                }
-            }
-            .accessibilityIdentifier("legends.library.sort")
-        }
-        .font(.system(size: 10, weight: .black, design: .monospaced))
-        .padding(.horizontal)
-    }
-
-    private var filterPanel: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            TextField("SEARCH PLAYERS", text: $searchText)
-                .textFieldStyle(.roundedBorder)
-                .accessibilityIdentifier("legends.library.search")
-            Toggle("FAVOURITES ONLY", isOn: $favouritesOnly)
-                .accessibilityIdentifier("legends.library.favourites")
-            Toggle("EXACT DUPLICATES", isOn: $duplicatesOnly)
-                .accessibilityIdentifier("legends.library.duplicates")
-            Toggle("FINAL SEASON ONLY", isOn: $finalSeasonOnly)
-                .accessibilityIdentifier("legends.library.finalSeason")
-            Button("RESET FILTERS") {
-                selectedStatus = .all; selectedEra = nil; selectedRarity = nil; selectedNation = nil
-                minimumOverall = 0; highPotentialOnly = false; ownedOnly = false
-                searchText = ""; favouritesOnly = false; duplicatesOnly = false; finalSeasonOnly = false; sort = .rating
-            }
-            .accessibilityIdentifier("legends.library.resetFilters")
-        }
-        .padding(.horizontal)
-    }
-
-    private var activeFilterSummary: some View {
+    private var countRow: some View {
         Text("\(cards.count) PLAYERS")
             .font(.system(size: 10, weight: .bold, design: .monospaced))
-            .foregroundStyle(LegendsPalette.navy.opacity(0.6))
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal)
+            .foregroundStyle(LegendsPalette.navy.opacity(0.66))
+            .accessibilityIdentifier("legends.players.count")
     }
 
+    /// Plain rows (not lazy) so every tile stays in the accessibility tree
+    /// even when scrolled off-screen — XCUITest can always address a card.
     private var cardGrid: some View {
-        ScrollView {
-            if cards.isEmpty {
-                emptyState
-            } else {
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                    ForEach(cards) { card in
+        VStack(spacing: 10) {
+            ForEach(stride(from: 0, to: cards.count, by: 3).map { start in
+                (id: cards[start].id, cards: Array(cards[start..<min(start + 3, cards.count)]))
+            }, id: \.id) { row in
+                HStack(alignment: .top, spacing: 10) {
+                    ForEach(row.cards) { card in
                         cardTile(card)
                     }
                 }
-                .padding(.horizontal)
-                .padding(.bottom, 20)
             }
         }
     }
@@ -373,7 +550,7 @@ struct LegendsCollectionView: View {
                 .font(.system(size: 14, weight: .black, design: .rounded))
                 .foregroundStyle(LegendsPalette.navy)
             Text(browserMode == .activeClub ? "Sign players from Collection to begin their careers." : "Players you choose not to sign immediately will wait here.")
-                .font(.system(size: 10, design: .monospaced))
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
                 .foregroundStyle(LegendsPalette.navy.opacity(0.62))
                 .multilineTextAlignment(.center)
         }
@@ -381,262 +558,165 @@ struct LegendsCollectionView: View {
         .padding(18)
         .background(.white)
         .clipShape(RoundedRectangle(cornerRadius: 14))
-        .padding(.horizontal)
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(LegendsPalette.navy.opacity(0.10), lineWidth: 1))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("legends.players.empty")
     }
 
+    // MARK: - Card tile
+
     private func cardTile(_ card: LegendsCard) -> some View {
+        let owned = store.profile.ownedCardIDs.contains(card.id)
+        let retired = owned && store.isRetired(card)
+        let signed = owned && store.isSigned(card)
+        let status: String
+        let statusColor: Color
+        if retired {
+            status = "LEGEND"; statusColor = LegendsPalette.goldDeep
+        } else if !owned || !signed {
+            status = "UNSIGNED"; statusColor = LegendsPalette.blue
+        } else {
+            switch store.assignment(for: card) {
+            case .startingXI: status = "STARTING XI"; statusColor = LegendsPalette.green
+            case .bench: status = "BENCH"; statusColor = LegendsPalette.purple
+            case .reserves: status = "RESERVES"; statusColor = LegendsPalette.cyan
+            }
+        }
+        let favourite = store.isFavourite(card.id)
+        let duplicate = owned && store.isExactDuplicate(card)
+        let finalSeason = owned && store.isFinalSeason(card)
+        let accent = card.rarity.tint
+
         return Button {
             Haptics.tap()
             selectedCard = card
         } label: {
-            ZStack(alignment: .topTrailing) {
-                LegendsPlayerCardView(store: store, card: card, variant: .grid, showsStatus: true)
-                    .frame(maxWidth: .infinity)
-                if store.isFavourite(card.id) {
-                    Image(systemName: "star.fill")
-                        .foregroundStyle(LegendsPalette.gold)
-                        .padding(6)
-                        .accessibilityLabel("Favourite")
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .top, spacing: 8) {
+                    PlayerPortraitView(name: card.name, position: card.position.broad, nation: card.nation, size: 44)
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(accent.opacity(owned ? 1 : 0.35), lineWidth: 2))
+                        .overlay(alignment: .bottomTrailing) {
+                            if !owned {
+                                Image(systemName: "lock.fill")
+                                    .font(.system(size: 9, weight: .black))
+                                    .foregroundStyle(.white)
+                                    .padding(3)
+                                    .background(LegendsPalette.navy.opacity(0.75))
+                                    .clipShape(Circle())
+                            }
+                        }
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(card.position.rawValue)
+                            .font(.system(size: 10, weight: .black, design: .monospaced))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(accent.opacity(owned ? 1 : 0.4))
+                            .clipShape(Capsule())
+                        Text(card.rarity.rawValue.uppercased())
+                            .font(.system(size: 7, weight: .black, design: .monospaced))
+                            .foregroundStyle(accent)
+                            .lineLimit(1)
+                    }
+
+                    Spacer(minLength: 2)
+
+                    VStack(alignment: .trailing, spacing: 1) {
+                        Text(owned ? "\(store.effectiveOverall(for: card))" : "??")
+                            .font(.system(size: 18, weight: .black, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(owned ? LegendsPalette.navy : LegendsPalette.navy.opacity(0.4))
+                        Text("OVR")
+                            .font(.system(size: 7, weight: .black, design: .monospaced))
+                            .foregroundStyle(LegendsPalette.navy.opacity(0.55))
+                    }
                 }
-                if store.isExactDuplicate(card) {
-                    Text("DUP")
+
+                Text(owned ? card.name : "???")
+                    .font(.system(size: 11, weight: .black, design: .monospaced))
+                    .foregroundStyle(owned ? LegendsPalette.navy : LegendsPalette.navy.opacity(0.45))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+
+                HStack(spacing: 4) {
+                    FlagView(nationality: card.nation, width: 12)
+                    Text("\(card.era.rawValue.uppercased()) · \(card.season)")
                         .font(.system(size: 7, weight: .black, design: .monospaced))
-                        .foregroundStyle(.white)
-                        .padding(4)
-                        .background(LegendsPalette.orange)
-                        .clipShape(Capsule())
-                        .padding(.top, 28)
-                        .accessibilityLabel("Exact duplicate")
+                        .foregroundStyle(LegendsPalette.navy.opacity(0.6))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+
+                Text(status)
+                    .font(.system(size: 8, weight: .black, design: .monospaced))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(statusColor)
+                    .clipShape(Capsule())
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                if favourite || duplicate || finalSeason {
+                    HStack(spacing: 4) {
+                        if favourite {
+                            Image(systemName: "star.fill")
+                                .font(.system(size: 10, weight: .black))
+                                .foregroundStyle(LegendsPalette.gold)
+                                .accessibilityLabel("Favourite")
+                        }
+                        if duplicate {
+                            Text("DUP")
+                                .font(.system(size: 7, weight: .black, design: .monospaced))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2)
+                                .background(LegendsPalette.orange)
+                                .clipShape(Capsule())
+                                .accessibilityLabel("Exact duplicate")
+                        }
+                        if finalSeason {
+                            Text("FINAL SEASON")
+                                .font(.system(size: 7, weight: .black, design: .monospaced))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2)
+                                .background(LegendsPalette.orange)
+                                .clipShape(Capsule())
+                        }
+                        Spacer()
+                    }
                 }
             }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.white)
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(accent.opacity(owned ? 0.45 : 0.18), lineWidth: 1))
+            .shadow(color: LegendsPalette.navy.opacity(0.08), radius: 6, y: 3)
         }
         .buttonStyle(PressableButtonStyle())
-    }
-}
-
-private struct LegendsCardDetailSheet: View {
-    let store: LegendsStore
-    let card: LegendsCard
-    @Environment(\.dismiss) private var dismiss
-
-    private var owned: Bool { store.profile.ownedCardIDs.contains(card.id) }
-    private var effectiveOverall: Int { store.effectiveOverall(for: card) }
-    private var age: Int { store.effectiveAge(for: card) }
-    private var retired: Bool { owned && store.isRetired(card) }
-    private var signed: Bool { owned && store.isCareerStarted(card) && !retired }
-    private var career: LegendsPlayerCareer? { store.careerState(for: card) }
-    private var upgradeLevel: Int { store.profile.cardUpgrades[card.id] ?? 0 }
-    private var duplicateProgress: Int { store.profile.duplicateProgress[card.id] ?? 0 }
-    private var agingPenalty: Int { store.agingPenalty(for: card) }
-    private var foundInPacks: [LegendsPack] { LegendsPackDatabase.all.filter { $0.pool(card) } }
-
-    /// The effective OVR is a single number — this spells out what
-    /// actually went into it, since a player couldn't otherwise tell how
-    /// much came from upgrades versus how much aging has already cost them.
-    private var overallBreakdownText: String {
-        var text = "Base \(card.overall)"
-        if upgradeLevel > 0 { text += " + \(upgradeLevel) upgrade" }
-        if agingPenalty > 0 { text += " − \(agingPenalty) aging" }
-        if upgradeLevel > 0 || agingPenalty > 0 { text += " = \(effectiveOverall)" }
-        return text
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("legends.players.card.\(card.id)")
+        .accessibilityLabel(cardAccessibilityLabel(card, owned: owned, retired: retired, signed: signed,
+                                                    status: status, favourite: favourite,
+                                                    duplicate: duplicate, finalSeason: finalSeason))
     }
 
-    var body: some View {
-        ZStack {
-            Retro.background.ignoresSafeArea()
-            VStack(spacing: 16) {
-                HStack {
-                    Spacer()
-                    Button("Close") { dismiss() }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(Retro.text)
-                }
-                .padding(.horizontal)
-                .padding(.top, 12)
-
-                VStack(spacing: 8) {
-                    if owned {
-                        PlayerPortraitView(name: card.name, position: card.position.broad, nation: card.nation, size: 76)
-                            .clipShape(Circle())
-                            .overlay(Circle().stroke(card.rarity.tint, lineWidth: 3))
-                    } else {
-                        ZStack {
-                            Circle().fill(card.rarity.tint.opacity(0.85)).frame(width: 76, height: 76)
-                            Text(card.position.rawValue)
-                                .font(.system(.title3, design: .monospaced).bold())
-                                .foregroundStyle(Retro.background)
-                        }
-                    }
-                    Text(owned ? card.name : "???")
-                        .font(.system(.title2, design: .monospaced).bold())
-                        .foregroundStyle(Retro.text)
-                    Text("\(card.rarity.rawValue.uppercased()) · \(card.era.rawValue.uppercased())")
-                        .font(.system(.caption, design: .monospaced).bold())
-                        .foregroundStyle(card.rarity.tint)
-                        .tracking(1)
-                    if owned {
-                        Text(retired ? "CAREER COMPLETE" : (signed ? "ACTIVE CAREER" : "COLLECTION · CAREER NOT STARTED"))
-                            .font(.system(size: 9, weight: .black, design: .monospaced))
-                            .foregroundStyle(retired ? Retro.warning : (signed ? Retro.emerald : Retro.highlight))
-                        HStack(spacing: 5) {
-                            FlagView(nationality: card.nation, width: 16)
-                            Text("\(card.club) · \(card.nation) · \(card.season)")
-                                .font(.system(.footnote, design: .monospaced))
-                                .foregroundStyle(Retro.text.opacity(0.7))
-                        }
-                        Text(retired ? "RETIRED AT AGE \(age)" : "AGE \(age)")
-                            .font(.system(.caption, design: .monospaced).bold())
-                            .foregroundStyle(retired ? Retro.warning : Retro.text.opacity(0.6))
-                    }
-                }
-
-                if owned {
-                    if retired {
-                        Panel(title: "CAREER COMPLETE") {
-                            if let career {
-                                Text("Career record preserved in Legends Hall · \(career.appearances) appearances · \(career.goals) goals")
-                                    .font(.system(.footnote, design: .monospaced))
-                                    .foregroundStyle(Retro.warning)
-                                    .multilineTextAlignment(.center)
-                                    .frame(maxWidth: .infinity)
-                            }
-                            Text("This player has retired and can no longer be fielded. Open packs for a new generation.")
-                                .font(.system(.footnote, design: .monospaced))
-                                .foregroundStyle(Retro.warning)
-                                .multilineTextAlignment(.center)
-                                .frame(maxWidth: .infinity)
-                        }
-                        .frame(maxWidth: .infinity)
-                    } else if signed {
-                        Panel(title: "ACTIVE CAREER") {
-                            if let career {
-                                HStack {
-                                    Text("\(career.appearances) APPS · \(career.goals) G · \(career.assists) A")
-                                    Spacer()
-                                    Text(store.potentialDescription(for: card))
-                                }
-                                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                .foregroundStyle(Retro.emerald)
-                            }
-                        }
-                        .frame(maxWidth: .infinity)
-                    } else {
-                        Panel(title: "COLLECTION") {
-                            Text("Unsigned · age frozen at \(card.age). Sign this player from Player Library to start their career.")
-                                .font(.system(.footnote, design: .monospaced))
-                                .foregroundStyle(Retro.highlight)
-                                .multilineTextAlignment(.center)
-                                .frame(maxWidth: .infinity)
-                        }
-                        .frame(maxWidth: .infinity)
-                    }
-                    Panel(title: "ATTRIBUTES") {
-                        VStack(spacing: 8) {
-                            statBar("OVR", effectiveOverall)
-                            Text(overallBreakdownText)
-                                .font(.system(.caption2, design: .monospaced))
-                                .foregroundStyle(Retro.text.opacity(0.55))
-                            Text("SCOUTING: \(store.potentialDescription(for: card))")
-                                .font(.system(.caption2, design: .monospaced).bold())
-                                .foregroundStyle(Retro.highlight)
-                            statBar("PAC", card.pace)
-                            statBar("SHO", card.shooting)
-                            statBar("PAS", card.passing)
-                            statBar("DRI", card.dribbling)
-                            statBar("DEF", card.defending)
-                            statBar("PHY", card.physical)
-                        }
-                    }
-
-                    // Both duplicateProgress/cardUpgrades already existed
-                    // and persisted correctly — they just weren't shown
-                    // anywhere, so a player upgrading a card via
-                    // duplicates had no way to see it happening.
-                    Panel(title: "UPGRADE PROGRESS") {
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                Text("Duplicates toward next upgrade")
-                                    .font(.system(.caption2, design: .monospaced))
-                                    .foregroundStyle(Retro.text.opacity(0.7))
-                                Spacer()
-                                Text("\(duplicateProgress)/\(LegendsStore.duplicatesPerUpgrade)")
-                                    .font(.system(.caption, design: .monospaced).bold())
-                                    .foregroundStyle(Retro.highlight)
-                            }
-                            HStack {
-                                Text("Upgrade level")
-                                    .font(.system(.caption2, design: .monospaced))
-                                    .foregroundStyle(Retro.text.opacity(0.7))
-                                Spacer()
-                                Text(upgradeLevel >= LegendsStore.maxCardUpgrade
-                                     ? "MAX (+\(upgradeLevel) OVR)"
-                                     : "\(upgradeLevel)/\(LegendsStore.maxCardUpgrade) (+\(upgradeLevel) OVR)")
-                                    .font(.system(.caption, design: .monospaced).bold())
-                                    .foregroundStyle(Retro.gold)
-                            }
-                        }
-                    }
-
-                    Panel(title: "SPECIAL ABILITY") {
-                        Text(card.specialAbility)
-                            .font(.system(.footnote, design: .monospaced).bold())
-                            .foregroundStyle(Retro.accent)
-                    }
-
-                    Panel(title: "BIOGRAPHY") {
-                        Text(card.biography)
-                            .font(.system(.footnote, design: .monospaced))
-                            .foregroundStyle(Retro.text.opacity(0.85))
-                    }
-                } else {
-                    Panel(title: "NOT YET OWNED") {
-                        Text("Open packs to add this card to your collection.")
-                            .font(.system(.footnote, design: .monospaced))
-                            .foregroundStyle(Retro.text.opacity(0.85))
-                            .multilineTextAlignment(.center)
-                            .frame(maxWidth: .infinity)
-                    }
-                }
-
-                if !foundInPacks.isEmpty {
-                    Panel(title: "FOUND IN") {
-                        VStack(alignment: .leading, spacing: 4) {
-                            ForEach(foundInPacks) { pack in
-                                Text("• \(pack.name)")
-                                    .font(.system(.caption, design: .monospaced).bold())
-                                    .foregroundStyle(Retro.text.opacity(0.85))
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
-
-                Spacer()
-            }
-            .padding()
-            .frame(maxWidth: 420)
+    private func cardAccessibilityLabel(_ card: LegendsCard, owned: Bool, retired: Bool, signed: Bool,
+                                        status: String, favourite: Bool, duplicate: Bool, finalSeason: Bool) -> String {
+        var parts: [String]
+        if owned {
+            parts = [card.name, card.position.rawValue, "\(store.effectiveOverall(for: card)) overall",
+                     card.rarity.rawValue, card.era.rawValue, status]
+        } else {
+            parts = ["Unowned \(card.rarity.rawValue) card, \(card.era.rawValue)"]
         }
-    }
-
-    private func statBar(_ label: String, _ value: Int) -> some View {
-        HStack {
-            Text(label)
-                .font(.system(.caption2, design: .monospaced).bold())
-                .foregroundStyle(Retro.text.opacity(0.7))
-                .frame(width: 34, alignment: .leading)
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 4).fill(Retro.background.opacity(0.5))
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(card.rarity.tint)
-                        .frame(width: geo.size.width * CGFloat(min(value, 99)) / 99)
-                }
-            }
-            .frame(height: 8)
-            Text("\(value)")
-                .font(.system(.caption2, design: .monospaced).bold())
-                .foregroundStyle(Retro.text)
-                .frame(width: 26, alignment: .trailing)
-        }
+        if retired { parts.append("Career complete") }
+        if favourite { parts.append("Favourite") }
+        if duplicate { parts.append("Exact duplicate") }
+        if finalSeason { parts.append("Final season") }
+        return parts.joined(separator: ", ")
     }
 }

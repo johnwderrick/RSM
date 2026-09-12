@@ -45,6 +45,9 @@ struct ContentView: View {
         if ProcessInfo.processInfo.arguments.contains("UITEST_LEGENDS_CLUB_COLLECTION") {
             legends.prepareCollectionFixtureForDebug()
         }
+        if ProcessInfo.processInfo.arguments.contains("UITEST_LEGENDS_PLAYERS") {
+            legends.preparePlayersFixtureForDebug()
+        }
         #endif
         _legendsStore = State(initialValue: legends)
     }

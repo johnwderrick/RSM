@@ -430,6 +430,42 @@ extension LegendsStore {
         persist()
     }
 
+    /// Deterministic UI-test fixture for the redesigned Players collection:
+    /// the fully-signed starter squad plus two unsigned cards (a top-rated
+    /// Maldinho and a young Miessi), a favourited card, an exact duplicate
+    /// pair, and a completed Hall career so every summary figure, status
+    /// chip and tile badge is deterministic. Presentation only; no pack or
+    /// signing actions are performed.
+    func preparePlayersFixtureForDebug() {
+        profile = .starter()
+        profile.managerProfile = LegendsManagerProfile(
+            firstName: "Test", surname: "Manager", nationalityCode: "GB",
+            dateOfBirth: Date(timeIntervalSince1970: 315_532_800), archetype: .architect
+        )
+        migrateOwnedPlayerRecords()
+        // Two unsigned cards: owned but never signed, so their age stays
+        // frozen and the UNSIGNED chip has deterministic content.
+        profile.ownedCardIDs.insert("maldinho-9596")
+        profile.ownedCardIDs.insert("miessi-0506")
+        // An exact duplicate pair: same player name+season+position. The
+        // base card is activated (signed, in the reserves); its retro twin
+        // stays unsigned, so both states are deterministic.
+        profile.ownedCardIDs.insert("cantina-9596")
+        profile.ownedCardIDs.insert("cantina-9596-retro")
+        profile.activatedCardIDs.insert("cantina-9596")
+        profile.favouriteCardIDs.insert("cantina-9596")
+        migrateOwnedPlayerRecords()
+        // A completed career in the Hall for a card no longer owned, so the
+        // LEGENDS status has deterministic content.
+        profile.legendsHall.append(LegendsHallEntry(
+            id: "ui-test-mbappa-career", cardID: "mbappa-2223", playerName: "K. Mbappa",
+            position: .striker, nation: "France", startingAge: 23, startingOverall: 91,
+            highestOverall: 94, finalAge: 34, appearances: 412, goals: 289, assists: 87,
+            cleanSheets: 0, seasonsAtClub: 11, signedSeason: 1, retiredSeason: 11))
+        migrateOwnedPlayerRecords()
+        persist()
+    }
+
     /// Deterministic UI-test fixture for the redesigned Assistants and
     /// Stadiums collections: two owned assistants (first active, second
     /// inactive) and two owned stadiums (second active as home), plus a

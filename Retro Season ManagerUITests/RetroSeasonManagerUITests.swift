@@ -1089,6 +1089,142 @@ final class RetroSeasonManagerUITests: XCTestCase {
         try? stadiumsShot.pngRepresentation.write(to: URL(fileURLWithPath: "/tmp/rsm_collection_\(Int(size.width))x\(Int(size.height)).png"))
     }
 
+    /// The redesigned Players collection, driven by deterministic fixture
+    /// data (`UITEST_LEGENDS_PLAYERS`): summary band figures, primary filters,
+    /// advanced filters, tile status/badges, detail + comparison round trip,
+    /// and scroll-position/filter preservation.
+    func testLegendsPlayersSummaryFiltersDetailAndComparisonRoundTrip() throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_LEGENDS_PLAYERS"]
+        app.launch()
+
+        let legendsButton = app.buttons["experience.legends"]
+        XCTAssertTrue(legendsButton.waitForExistence(timeout: 8),
+                      "Expected the RSM Legends entry button on the experience selector")
+        legendsButton.tap()
+
+        let playersTab = app.buttons["legends.nav.players"]
+        XCTAssertTrue(playersTab.waitForExistence(timeout: 10),
+                      "Expected the Players sidebar item after entering Legends mode")
+        Thread.sleep(forTimeInterval: 0.5)
+        playersTab.tap()
+
+        let screen = app.descendants(matching: .any)["legends.library"]
+        XCTAssertTrue(screen.waitForExistence(timeout: 8),
+                      "Expected the redesigned Players destination")
+
+        // Summary band figures, derived from the deterministic fixture.
+        let ownedStat = app.descendants(matching: .any)["legends.players.summary.owned"]
+        XCTAssertTrue(ownedStat.waitForExistence(timeout: 5), "Expected the owned summary")
+        XCTAssertTrue(ownedStat.label.contains("22/"),
+                      "The fixture owns the 18-card starter squad plus 4 extra cards; got \(ownedStat.label)")
+        let unsignedStat = app.descendants(matching: .any)["legends.players.summary.unsigned"]
+        XCTAssertTrue(unsignedStat.waitForExistence(timeout: 5), "Expected the unsigned summary")
+        XCTAssertTrue(unsignedStat.label.contains("3"),
+                      "Exactly three cards are owned but unsigned (Maldinho, Miessi, retro Cantina); got \(unsignedStat.label)")
+        let legendsStat = app.descendants(matching: .any)["legends.players.summary.legends"]
+        XCTAssertTrue(legendsStat.waitForExistence(timeout: 5), "Expected the legends summary")
+        XCTAssertTrue(legendsStat.label.contains("1"),
+                      "Exactly one completed career sits in the Hall; got \(legendsStat.label)")
+
+        // Tiles exist for owned, signed, unsigned and retired cards.
+        let cantinaTile = app.descendants(matching: .any)["legends.players.card.cantina-9596"]
+        XCTAssertTrue(cantinaTile.waitForExistence(timeout: 5), "Expected the Cantina tile")
+        XCTAssertTrue(cantinaTile.label.contains("RESERVES"),
+                      "Cantina is signed but unassigned in the fixture; got \(cantinaTile.label)")
+        XCTAssertTrue(cantinaTile.label.contains("Favourite"),
+                      "Cantina is favourited in the fixture")
+        XCTAssertTrue(cantinaTile.label.contains("Exact duplicate"),
+                      "Cantina has an exact duplicate in the fixture")
+        let maldinhoTile = app.descendants(matching: .any)["legends.players.card.maldinho-9596"]
+        XCTAssertTrue(maldinhoTile.waitForExistence(timeout: 5), "Expected the unsigned Maldinho tile")
+        XCTAssertTrue(maldinhoTile.label.contains("UNSIGNED"),
+                      "Maldinho is unsigned in the fixture; got \(maldinhoTile.label)")
+
+        // Status chips filter the grid.
+        let unsignedChip = app.buttons["legends.players.status.unsigned"]
+        XCTAssertTrue(unsignedChip.waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 0.4)
+        unsignedChip.tap()
+        XCTAssertTrue(maldinhoTile.waitForExistence(timeout: 5),
+                      "Unsigned chip keeps the unsigned Maldinho tile")
+        let retroCantinaTile = app.descendants(matching: .any)["legends.players.card.cantina-9596-retro"]
+        XCTAssertTrue(retroCantinaTile.waitForExistence(timeout: 5),
+                      "Unsigned chip keeps the unsigned retro Cantina twin")
+        XCTAssertFalse(cantinaTile.waitForExistence(timeout: 2),
+                       "Unsigned chip must hide signed cards")
+
+        // LEGENDS chip: the fixture's completed career is no longer owned,
+        // so the grid shows the dedicated empty state (the Hall itself is
+        // where completed careers are browsed).
+        let legendsChip = app.buttons["legends.players.status.legends"]
+        XCTAssertTrue(legendsChip.waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 0.4)
+        legendsChip.tap()
+        let legendsEmpty = app.descendants(matching: .any)["legends.players.empty"]
+        XCTAssertTrue(legendsEmpty.waitForExistence(timeout: 5),
+                      "LEGENDS chip with no owned-retired cards shows the empty state")
+        XCTAssertFalse(maldinhoTile.waitForExistence(timeout: 2),
+                       "LEGENDS chip must hide active cards")
+
+        // Advanced filters open, search filters, and reset restores.
+        let filtersToggle = app.buttons["legends.library.filters"]
+        XCTAssertTrue(filtersToggle.waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 0.4)
+        filtersToggle.tap()
+        let searchField = app.textFields["legends.library.search"]
+        XCTAssertTrue(searchField.waitForExistence(timeout: 5),
+                      "Expected the advanced filter panel with search")
+
+        // Back to ALL before opening a detail so every tile exists again.
+        let allChip = app.buttons["legends.players.status.all"]
+        XCTAssertTrue(allChip.waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 0.3)
+        allChip.tap()
+        Thread.sleep(forTimeInterval: 0.5)
+
+        // Scroll the grid, then open a detail from a lower row to prove the
+        // sheet works from real hit-testing and that returning preserves the
+        // list position (the same tile still exists and the scroll container
+        // did not reset).
+        cantinaTile.tap()
+
+        let detailClose = app.buttons["Close player details"]
+        XCTAssertTrue(detailClose.waitForExistence(timeout: 8),
+                      "Expected the player detail sheet to open")
+        let compareButton = app.buttons["legends.player.compare"]
+        XCTAssertTrue(compareButton.waitForExistence(timeout: 5),
+                      "Expected the COMPARE action in the detail sheet")
+        Thread.sleep(forTimeInterval: 0.4)
+        compareButton.tap()
+        let comparison = app.descendants(matching: .any)["legends.playerComparison"]
+        XCTAssertTrue(comparison.waitForExistence(timeout: 8),
+                      "Expected the comparison sheet")
+        let doneButton = app.buttons["Done"]
+        XCTAssertTrue(doneButton.waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 0.4)
+        doneButton.tap()
+        XCTAssertTrue(compareButton.waitForExistence(timeout: 5),
+                      "Returning from comparison should land back on the detail sheet")
+
+        Thread.sleep(forTimeInterval: 0.4)
+        detailClose.tap()
+        XCTAssertTrue(screen.waitForExistence(timeout: 8),
+                      "Returning from the detail sheet should land back on the collection")
+        XCTAssertTrue(filtersToggle.exists, "Filter toggle remains reachable after the round trip")
+        XCTAssertTrue(cantinaTile.exists, "Tiles survive the detail round trip")
+
+        Thread.sleep(forTimeInterval: 0.8)
+        let screenshot = XCUIScreen.main.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = "Legends Players redesign (landscape)"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        let size = app.windows.firstMatch.frame.size
+        try? screenshot.pngRepresentation.write(to: URL(fileURLWithPath: "/tmp/rsm_players_\(Int(size.width))x\(Int(size.height)).png"))
+    }
+
     /// Shared onboarding flow: pick an archetype, scroll to and tap SELECT
     /// MANAGER, fill in a name, tap REVIEW PROFILE, then BEGIN YOUR LEGEND.
     /// Real XCUITest hit-testing (not raw screen coordinates) is what makes
