@@ -1383,6 +1383,171 @@ final class RetroSeasonManagerUITests: XCTestCase {
         try? screenshot.pngRepresentation.write(to: URL(fileURLWithPath: "/tmp/rsm_hall_\(Int(size.width))x\(Int(size.height)).png"))
     }
 
+    /// The redesigned Legends Challenges screen: navigation, deterministic
+    /// summary values, all three cadences, active/completed filtering,
+    /// reward labels, and state preservation after navigating away and back.
+    func testLegendsChallengesSummaryCadencesFiltersAndRewards() throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_LEGENDS_CHALLENGES"]
+        app.launch()
+
+        let legendsButton = app.buttons["experience.legends"]
+        XCTAssertTrue(legendsButton.waitForExistence(timeout: 8),
+                      "Expected the RSM Legends entry button on the experience selector")
+        legendsButton.tap()
+
+        let challengesTab = app.buttons["legends.nav.challenges"]
+        XCTAssertTrue(challengesTab.waitForExistence(timeout: 10),
+                      "Expected the Challenges sidebar item after entering Legends mode")
+        Thread.sleep(forTimeInterval: 0.5)
+        challengesTab.tap()
+
+        let screen = app.descendants(matching: .any)["legends.challenges.screen"]
+        XCTAssertTrue(screen.waitForExistence(timeout: 8),
+                      "Expected the redesigned Challenges destination")
+        XCTAssertTrue(app.staticTexts["CHALLENGES"].waitForExistence(timeout: 5),
+                      "Challenges must stay the highlighted shell destination")
+
+        // Summary band, derived from the deterministic fixture:
+        // 4 completed of 19 total, 15 active; Daily 1/2, Weekly 0/3,
+        // Permanent 3/15.
+        let completedStat = app.descendants(matching: .any)["legends.challenges.summary.completed"]
+        XCTAssertTrue(completedStat.waitForExistence(timeout: 5), "Expected the completed summary")
+        XCTAssertTrue(completedStat.label.contains("4 COMPLETED"), "Got \(completedStat.label)")
+        let activeStat = app.descendants(matching: .any)["legends.challenges.summary.active"]
+        XCTAssertTrue(activeStat.waitForExistence(timeout: 5), "Expected the active summary")
+        XCTAssertTrue(activeStat.label.contains("15 ACTIVE"), "Got \(activeStat.label)")
+        let dailyStat = app.descendants(matching: .any)["legends.challenges.summary.daily"]
+        XCTAssertTrue(dailyStat.waitForExistence(timeout: 5), "Expected the daily summary")
+        XCTAssertTrue(dailyStat.label.contains("1 of 2"), "Got \(dailyStat.label)")
+        let weeklyStat = app.descendants(matching: .any)["legends.challenges.summary.weekly"]
+        XCTAssertTrue(weeklyStat.waitForExistence(timeout: 5), "Expected the weekly summary")
+        XCTAssertTrue(weeklyStat.label.contains("0 of 3"), "Got \(weeklyStat.label)")
+        let permanentStat = app.descendants(matching: .any)["legends.challenges.summary.permanent"]
+        XCTAssertTrue(permanentStat.waitForExistence(timeout: 5), "Expected the permanent summary")
+        XCTAssertTrue(permanentStat.label.contains("3 of 14"), "Got \(permanentStat.label)")
+
+        // Daily cadence (default): completed daily-match plus active daily-win.
+        let dailyMatchCard = app.descendants(matching: .any)["legends.challenges.card.daily-match"]
+        XCTAssertTrue(dailyMatchCard.waitForExistence(timeout: 5), "Expected the completed daily-match card")
+        XCTAssertTrue(dailyMatchCard.label.contains("completed"), "Got \(dailyMatchCard.label)")
+        let dailyWinCard = app.descendants(matching: .any)["legends.challenges.card.daily-win"]
+        XCTAssertTrue(dailyWinCard.waitForExistence(timeout: 5), "Expected the active daily-win card")
+        XCTAssertTrue(dailyWinCard.label.contains("active"), "Got \(dailyWinCard.label)")
+
+        // Reward labels: Balance-only, token-only and mixed examples.
+        let dailyMatchReward = app.descendants(matching: .any)["legends.challenges.reward.daily-match"]
+        XCTAssertTrue(dailyMatchReward.waitForExistence(timeout: 5))
+        XCTAssertTrue(dailyMatchReward.label.contains("+30 Balance"), "Got \(dailyMatchReward.label)")
+        let dailyWinReward = app.descendants(matching: .any)["legends.challenges.reward.daily-win"]
+        XCTAssertTrue(dailyWinReward.waitForExistence(timeout: 5))
+        XCTAssertTrue(dailyWinReward.label.contains("+50 Balance") && dailyWinReward.label.contains("1 pack token"),
+                      "Got \(dailyWinReward.label)")
+
+        // Progress labels reflect the fixture counters.
+        let dailyWinProgress = app.descendants(matching: .any)["legends.challenges.progress.daily-win"]
+        XCTAssertTrue(dailyWinProgress.waitForExistence(timeout: 5))
+        XCTAssertTrue(dailyWinProgress.label.contains("0 of 1"), "Got \(dailyWinProgress.label)")
+
+        // COMPLETED filter hides the active daily challenge.
+        let completedFilter = app.buttons["legends.challenges.filter.completed"]
+        let activeFilter = app.buttons["legends.challenges.filter.active"]
+        let allFilter = app.buttons["legends.challenges.filter.all"]
+        XCTAssertTrue(completedFilter.waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 0.4)
+        completedFilter.tap()
+        XCTAssertTrue(dailyMatchCard.waitForExistence(timeout: 5),
+                      "COMPLETED filter keeps the completed daily-match card")
+        XCTAssertFalse(dailyWinCard.waitForExistence(timeout: 2),
+                       "COMPLETED filter must hide the active daily-win card")
+        XCTAssertTrue(app.descendants(matching: .any)["legends.challenges.empty"].waitForExistence(timeout: 2) == false,
+                      "COMPLETED daily has content, so no empty state")
+
+        // ACTIVE filter inverts the list.
+        Thread.sleep(forTimeInterval: 0.4)
+        activeFilter.tap()
+        XCTAssertTrue(dailyWinCard.waitForExistence(timeout: 5),
+                      "ACTIVE filter keeps the active daily-win card")
+        XCTAssertFalse(dailyMatchCard.waitForExistence(timeout: 2),
+                       "ACTIVE filter must hide the completed daily-match card")
+
+        // ALL restores both.
+        Thread.sleep(forTimeInterval: 0.4)
+        allFilter.tap()
+        XCTAssertTrue(dailyMatchCard.waitForExistence(timeout: 5))
+        XCTAssertTrue(dailyWinCard.waitForExistence(timeout: 5))
+
+        // Switch to Weekly: both weekly challenges are active in the fixture,
+        // so the COMPLETED filter shows the dedicated empty state.
+        let weeklyTab = app.buttons["legends.challenges.cadence.weekly"]
+        XCTAssertTrue(weeklyTab.waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 0.4)
+        weeklyTab.tap()
+        let weeklyWinsCard = app.descendants(matching: .any)["legends.challenges.card.weekly-wins"]
+        XCTAssertTrue(weeklyWinsCard.waitForExistence(timeout: 5), "Expected the weekly-wins card")
+        let weeklyGoalsCard = app.descendants(matching: .any)["legends.challenges.card.weekly-goals"]
+        XCTAssertTrue(weeklyGoalsCard.waitForExistence(timeout: 5), "Expected the weekly-goals card")
+        let weeklyProgress = app.descendants(matching: .any)["legends.challenges.progress.weekly-wins"]
+        XCTAssertTrue(weeklyProgress.waitForExistence(timeout: 5))
+        XCTAssertTrue(weeklyProgress.label.contains("1 of 3"), "Got \(weeklyProgress.label)")
+        Thread.sleep(forTimeInterval: 0.4)
+        completedFilter.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["legends.challenges.empty"].waitForExistence(timeout: 5),
+                      "Weekly COMPLETED with no completions shows the empty state")
+        Thread.sleep(forTimeInterval: 0.4)
+        allFilter.tap()
+        XCTAssertTrue(weeklyWinsCard.waitForExistence(timeout: 5))
+
+        // Switch to Permanent: three completed in the fixture.
+        let permanentTab = app.buttons["legends.challenges.cadence.permanent"]
+        XCTAssertTrue(permanentTab.waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 0.4)
+        permanentTab.tap()
+        let firstWinCard = app.descendants(matching: .any)["legends.challenges.card.first-win"]
+        XCTAssertTrue(firstWinCard.waitForExistence(timeout: 5), "Expected the completed first-win card")
+        XCTAssertTrue(firstWinCard.label.contains("completed"), "Got \(firstWinCard.label)")
+        let firstWinReward = app.descendants(matching: .any)["legends.challenges.reward.first-win"]
+        XCTAssertTrue(firstWinReward.waitForExistence(timeout: 5))
+        XCTAssertTrue(firstWinReward.label.contains("+100 Balance"), "Got \(firstWinReward.label)")
+        let collectorCard = app.descendants(matching: .any)["legends.challenges.card.collector-10"]
+        XCTAssertTrue(collectorCard.waitForExistence(timeout: 5))
+        let collectorReward = app.descendants(matching: .any)["legends.challenges.reward.collector-10"]
+        XCTAssertTrue(collectorReward.waitForExistence(timeout: 5))
+        XCTAssertTrue(collectorReward.label.contains("1 pack token") && !collectorReward.label.contains("Balance"),
+                      "Token-only reward; got \(collectorReward.label)")
+        let cleanSheetReward = app.descendants(matching: .any)["legends.challenges.reward.clean-sheet"]
+        XCTAssertTrue(cleanSheetReward.waitForExistence(timeout: 5))
+        XCTAssertTrue(cleanSheetReward.label.contains("+100 Balance") && cleanSheetReward.label.contains("1 pack token"),
+                      "Mixed reward; got \(cleanSheetReward.label)")
+
+        // Scroll the permanent list — the badge collection is long.
+        app.swipeUp()
+        let topFlightCard = app.descendants(matching: .any)["legends.challenges.card.top-flight"]
+        XCTAssertTrue(topFlightCard.waitForExistence(timeout: 5),
+                      "Challenges further down the list stay reachable while scrolling")
+
+        // Navigate away and back: cadence and filter state are preserved.
+        Thread.sleep(forTimeInterval: 0.4)
+        let homeTab = app.buttons["legends.nav.home"]
+        homeTab.tap()
+        XCTAssertTrue(app.buttons["legends.nav.challenges"].waitForExistence(timeout: 8))
+        Thread.sleep(forTimeInterval: 0.5)
+        app.buttons["legends.nav.challenges"].tap()
+        XCTAssertTrue(screen.waitForExistence(timeout: 8), "Returning to Challenges lands back on the screen")
+        XCTAssertTrue(firstWinCard.waitForExistence(timeout: 5),
+                      "Permanent cadence selection survives leaving and returning")
+
+        Thread.sleep(forTimeInterval: 0.8)
+        let screenshot = XCUIScreen.main.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = "Legends Challenges redesign (landscape)"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        let size = app.windows.firstMatch.frame.size
+        try? screenshot.pngRepresentation.write(to: URL(fileURLWithPath: "/tmp/rsm_challenges_\(Int(size.width))x\(Int(size.height)).png"))
+    }
+
     /// Shared onboarding flow: pick an archetype, scroll to and tap SELECT
     /// MANAGER, fill in a name, tap REVIEW PROFILE, then BEGIN YOUR LEGEND.
     /// Real XCUITest hit-testing (not raw screen coordinates) is what makes

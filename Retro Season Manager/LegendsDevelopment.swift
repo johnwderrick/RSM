@@ -625,5 +625,41 @@ extension LegendsStore {
         persist()
     }
 
+    /// Deterministic UI-test fixture for the redesigned Challenges screen:
+    /// mixed progress and completion across all three cadences, including
+    /// Balance-only, token-only and mixed-reward examples. Presentation
+    /// only — no match results are recorded and no reward grants are run;
+    /// the completed sets below are the authoritative persisted state.
+    func prepareChallengesFixtureForDebug() {
+        profile = .starter()
+        profile.managerProfile = LegendsManagerProfile(
+            firstName: "Test", surname: "Manager", nationalityCode: "GB",
+            dateOfBirth: Date(timeIntervalSince1970: 315_532_800), archetype: .architect
+        )
+        migrateOwnedPlayerRecords()
+
+        // Completed permanent challenges. Rewards were already granted
+        // through the real grant path in earlier sessions; the fixture
+        // restores the resulting balances alongside the completed set.
+        //   first-win  — Balance-only (100 coins)
+        //   collector-10 — token-only (1 pack token)
+        //   clean-sheet — mixed (100 coins + 1 token)
+        profile.completedPermanentChallengeIDs = ["first-win", "collector-10", "clean-sheet"]
+        profile.completedDailyChallengeIDs = ["daily-match"]
+        profile.completedWeeklyChallengeIDs = []
+
+        // Counters that drive the deterministic progress bars:
+        profile.totalWins = 6          // streak-3 bar: 2/3 toward its target
+        profile.currentWinStreak = 1   // streak-5 bar: 1/5
+        profile.matchesToday = 1       // daily-match: completed
+        profile.winsToday = 0          // daily-win: 0/1
+        profile.winsThisWeek = 1       // weekly-wins: 1/3
+        profile.goalsThisWeek = 2      // weekly-goals: 2/5
+        profile.lastDailyReset = Date()
+        profile.lastWeeklyReset = Date()
+
+        persist()
+    }
+
     #endif
 }
