@@ -1548,6 +1548,176 @@ final class RetroSeasonManagerUITests: XCTestCase {
         try? screenshot.pngRepresentation.write(to: URL(fileURLWithPath: "/tmp/rsm_challenges_\(Int(size.width))x\(Int(size.height)).png"))
     }
 
+    /// The redesigned Career Planning and Season Reports destinations:
+    /// navigation, sidebar highlights, planning summary and sections,
+    /// report archive and detail categories, dismissal, and round trips.
+    func testLegendsPlanningAndReportsSummaryNavigationAndDetailRoundTrip() throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_LEGENDS_PLANNING_REPORTS"]
+        app.launch()
+
+        let legendsButton = app.buttons["experience.legends"]
+        XCTAssertTrue(legendsButton.waitForExistence(timeout: 8),
+                      "Expected the RSM Legends entry button on the experience selector")
+        legendsButton.tap()
+
+        let planningTab = app.buttons["legends.nav.planning"]
+        XCTAssertTrue(planningTab.waitForExistence(timeout: 10),
+                      "Expected the Planning sidebar item after entering Legends mode")
+        Thread.sleep(forTimeInterval: 0.5)
+        planningTab.tap()
+
+        let planningScreen = app.descendants(matching: .any)["legends.planning.screen"]
+        XCTAssertTrue(planningScreen.waitForExistence(timeout: 8),
+                      "Expected the redesigned Career Planning destination")
+        XCTAssertTrue(app.staticTexts["CAREER PLANNING"].waitForExistence(timeout: 5),
+                      "Planning must be the highlighted shell destination")
+
+        // Summary band values from the deterministic fixture squad.
+        let xiAge = app.descendants(matching: .any)["legends.planning.summary.xiAge"]
+        XCTAssertTrue(xiAge.waitForExistence(timeout: 5), "Expected the XI age summary")
+        XCTAssertTrue(xiAge.label.contains("average age"), "Got \(xiAge.label)")
+        let squadAge = app.descendants(matching: .any)["legends.planning.summary.squadAge"]
+        XCTAssertTrue(squadAge.waitForExistence(timeout: 5), "Expected the squad age summary")
+        let finalCount = app.descendants(matching: .any)["legends.planning.summary.finalSeason"]
+        XCTAssertTrue(finalCount.waitForExistence(timeout: 5), "Expected the final-season summary")
+        XCTAssertTrue(finalCount.label.contains("final season"), "Got \(finalCount.label)")
+        let risk = app.descendants(matching: .any)["legends.planning.summary.risk"]
+        XCTAssertTrue(risk.waitForExistence(timeout: 5), "Expected the retirement-risk status")
+        XCTAssertTrue(risk.label.contains("Retirement risk"), "Got \(risk.label)")
+
+        // Career-stage rows and radar groups exist with fixture content.
+        XCTAssertTrue(app.descendants(matching: .any)["legends.planning.stages"].waitForExistence(timeout: 5),
+                      "Expected the career-stage distribution")
+        XCTAssertTrue(app.descendants(matching: .any)["legends.planning.stage.prime"].waitForExistence(timeout: 5),
+                      "Expected a PRIME stage row")
+        let radarNext = app.descendants(matching: .any)["legends.planning.radar.next"]
+        XCTAssertTrue(radarNext.waitForExistence(timeout: 5), "Expected the next-season radar group")
+        XCTAssertTrue(radarNext.label.contains("Modricek") && radarNext.label.contains("Keegana"),
+                      "Named next-season retirees; got \(radarNext.label)")
+        let radarWithin = app.descendants(matching: .any)["legends.planning.radar.within"]
+        XCTAssertTrue(radarWithin.waitForExistence(timeout: 5), "Expected the within-three-seasons group")
+        XCTAssertTrue(radarWithin.label.contains("Walkerino"), "Named within-three-seasons retirees; got \(radarWithin.label)")
+
+        // Replacement Watch has named unsigned candidates and slots.
+        XCTAssertTrue(app.descendants(matching: .any)["legends.planning.replacement.positions"].waitForExistence(timeout: 5),
+                      "Expected the slots-to-cover row")
+        let suggestion = app.descendants(matching: .any)["legends.planning.replacement.suggestion"].firstMatch
+        XCTAssertTrue(suggestion.waitForExistence(timeout: 5), "Expected at least one unsigned replacement suggestion")
+
+        // Age distribution rows.
+        XCTAssertTrue(app.descendants(matching: .any)["legends.planning.ages"].waitForExistence(timeout: 5),
+                      "Expected the age distribution")
+        XCTAssertTrue(app.descendants(matching: .any)["legends.planning.age.25"].waitForExistence(timeout: 5) ||
+                      app.descendants(matching: .any)["legends.planning.age.26"].waitForExistence(timeout: 2) ||
+                      app.descendants(matching: .any)["legends.planning.age.27"].waitForExistence(timeout: 2),
+                      "Expected at least one populated age row")
+
+        Thread.sleep(forTimeInterval: 0.6)
+        let planningShot = XCUIScreen.main.screenshot()
+        let planningAttachment = XCTAttachment(screenshot: planningShot)
+        planningAttachment.name = "Legends Career Planning redesign (landscape)"
+        planningAttachment.lifetime = .keepAlways
+        add(planningAttachment)
+        let planningSize = app.windows.firstMatch.frame.size
+        try? planningShot.pngRepresentation.write(to: URL(fileURLWithPath: "/tmp/rsm_planning_\(Int(planningSize.width))x\(Int(planningSize.height)).png"))
+
+        // Compact-screen reachability: scroll to the bottom of Planning.
+        app.swipeUp()
+        app.swipeUp()
+        XCTAssertTrue(app.descendants(matching: .any)["legends.planning.ages"].waitForExistence(timeout: 5) ||
+                      app.descendants(matching: .any)["legends.planning.replacement"].waitForExistence(timeout: 2),
+                      "Planning sections remain reachable while scrolling")
+
+        // Direct Planning → Reports navigation from the sidebar.
+        let reportsTab = app.buttons["legends.nav.reports"]
+        XCTAssertTrue(reportsTab.waitForExistence(timeout: 6))
+        Thread.sleep(forTimeInterval: 0.5)
+        reportsTab.tap()
+
+        let reportsScreen = app.descendants(matching: .any)["legends.reports.screen"]
+        XCTAssertTrue(reportsScreen.waitForExistence(timeout: 8),
+                      "Expected the redesigned Season Reports destination")
+        XCTAssertTrue(app.staticTexts["SEASON REPORTS"].waitForExistence(timeout: 5),
+                      "Reports must be the highlighted shell destination")
+
+        // Archive summary from the fixture: 3 reports, latest S3.
+        let reportCount = app.descendants(matching: .any)["legends.reports.summary.count"]
+        XCTAssertTrue(reportCount.waitForExistence(timeout: 5), "Expected the report-count summary")
+        XCTAssertTrue(reportCount.label.contains("3 season reports"), "Got \(reportCount.label)")
+        let latestSeason = app.descendants(matching: .any)["legends.reports.summary.latest"]
+        XCTAssertTrue(latestSeason.waitForExistence(timeout: 5))
+        XCTAssertTrue(latestSeason.label.contains("season 3"), "Got \(latestSeason.label)")
+        XCTAssertTrue(app.descendants(matching: .any)["legends.reports.summary.improved"].waitForExistence(timeout: 5),
+                      "Expected the latest-season improved chip")
+        XCTAssertTrue(app.descendants(matching: .any)["legends.reports.summary.retired"].waitForExistence(timeout: 5),
+                      "Expected the latest-season retired chip")
+
+        // Season cards exist for all three fixture reports.
+        let season3Card = app.descendants(matching: .any)["legends.reports.card.3"]
+        XCTAssertTrue(season3Card.waitForExistence(timeout: 5), "Expected the season 3 card")
+        XCTAssertTrue(app.descendants(matching: .any)["legends.reports.card.2"].waitForExistence(timeout: 5),
+                      "Expected the season 2 card")
+        XCTAssertTrue(app.descendants(matching: .any)["legends.reports.card.1"].waitForExistence(timeout: 5),
+                      "Expected the season 1 card")
+        XCTAssertTrue(app.descendants(matching: .any)["legends.reports.card.3.warning"].waitForExistence(timeout: 5),
+                      "Expected the season 3 squad-age warning")
+
+        // Open the season 3 report and reach every category group.
+        Thread.sleep(forTimeInterval: 0.4)
+        season3Card.tap()
+        XCTAssertTrue(app.staticTexts["SEASON 3"].waitForExistence(timeout: 8),
+                      "Expected the report detail page for season 3")
+        XCTAssertTrue(app.descendants(matching: .any)["legends.reports.detail.improved"].waitForExistence(timeout: 5),
+                      "Expected the IMPROVED group")
+        XCTAssertTrue(app.descendants(matching: .any)["legends.reports.detail.stable"].waitForExistence(timeout: 5),
+                      "Expected the STABLE group")
+        XCTAssertTrue(app.descendants(matching: .any)["legends.reports.detail.declining"].waitForExistence(timeout: 5),
+                      "Expected the DECLINING group")
+        XCTAssertTrue(app.descendants(matching: .any)["legends.reports.detail.final"].waitForExistence(timeout: 5),
+                      "Expected the FINAL SEASON group")
+        XCTAssertTrue(app.descendants(matching: .any)["legends.reports.detail.warning"].waitForExistence(timeout: 5),
+                      "Expected the squad-age warning panel")
+        let playerEntry = app.descendants(matching: .any)["legends.reports.detail.player.mbappa-2223"]
+        XCTAssertTrue(playerEntry.waitForExistence(timeout: 5), "Expected the Mbappa report entry")
+        XCTAssertTrue(playerEntry.label.contains("25"), "Age-after in the entry label; got \(playerEntry.label)")
+
+        // Scroll inside the detail to reach the FINAL SEASON group fully.
+        app.swipeUp()
+        XCTAssertTrue(app.descendants(matching: .any)["legends.reports.detail.final"].waitForExistence(timeout: 5),
+                      "Final-season group stays reachable while scrolling")
+
+        // Dismiss and land back on the archive.
+        Thread.sleep(forTimeInterval: 0.4)
+        let closeButton = app.buttons["legends.reports.detail.close"]
+        XCTAssertTrue(closeButton.waitForExistence(timeout: 5))
+        closeButton.tap()
+        XCTAssertTrue(reportsScreen.waitForExistence(timeout: 8),
+                      "Closing the report lands back on the archive")
+        XCTAssertTrue(season3Card.exists, "Season cards survive the detail round trip")
+
+        // Navigate away and back: both destinations remain reliable.
+        Thread.sleep(forTimeInterval: 0.4)
+        app.buttons["legends.nav.home"].tap()
+        XCTAssertTrue(app.buttons["legends.nav.planning"].waitForExistence(timeout: 8))
+        Thread.sleep(forTimeInterval: 0.5)
+        app.buttons["legends.nav.reports"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["legends.reports.screen"].waitForExistence(timeout: 8),
+                      "Returning to Reports after visiting Home works")
+        XCTAssertTrue(app.staticTexts["SEASON REPORTS"].waitForExistence(timeout: 5),
+                      "Reports remains the highlighted destination after the round trip")
+
+        Thread.sleep(forTimeInterval: 0.8)
+        let screenshot = XCUIScreen.main.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = "Legends Reports redesign (landscape)"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        let size = app.windows.firstMatch.frame.size
+        try? screenshot.pngRepresentation.write(to: URL(fileURLWithPath: "/tmp/rsm_reports_\(Int(size.width))x\(Int(size.height)).png"))
+    }
+
     /// Shared onboarding flow: pick an archetype, scroll to and tap SELECT
     /// MANAGER, fill in a name, tap REVIEW PROFILE, then BEGIN YOUR LEGEND.
     /// Real XCUITest hit-testing (not raw screen coordinates) is what makes
