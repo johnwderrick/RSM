@@ -6,6 +6,11 @@
 //  removing the retired card from the active collection and is independent
 //  from any later generation of the same database player.
 //
+//  Presentation only: every figure shown here is derived from the
+//  authoritative `store.profile.legendsHall` entries and the existing
+//  favourites store. Sorting and filtering are view-local and never
+//  reorder or mutate the stored Hall itself.
+//
 
 import SwiftUI
 
@@ -13,13 +18,29 @@ struct LegendsHallView: View {
     let store: LegendsStore
     var onNavigate: ((LegendsNavItem) -> Void)? = nil
     var onBack: () -> Void
+
     @State private var selectedEntry: LegendsHallEntry? = nil
     @State private var searchText = ""
     @State private var favouritesOnly = false
-    @State private var sort: AlumniSort = .retirement
+    @State private var sort: HallSort = .retirement
+
+    /// The user-facing sort options. The raw values double as the menu
+    /// button labels and stay stable for UI tests.
+    enum HallSort: String, CaseIterable, Identifiable {
+        case peak = "PEAK OVR"
+        case appearances = "APPEARANCES"
+        case goals = "GOALS"
+        case seasons = "SEASONS AT CLUB"
+        case retirement = "RETIREMENT SEASON"
+        case legacy = "LEGACY"
+        case name = "NAME"
+        var id: String { rawValue }
+    }
+
+    private var allEntries: [LegendsHallEntry] { store.profile.legendsHall }
 
     private var entries: [LegendsHallEntry] {
-        store.profile.legendsHall.filter { entry in
+        allEntries.filter { entry in
             (!favouritesOnly || store.isFavourite(entry.cardID)) &&
             (searchText.isEmpty || entry.playerName.localizedCaseInsensitiveContains(searchText))
         }.sorted { lhs, rhs in
@@ -35,205 +56,480 @@ struct LegendsHallView: View {
         }
     }
 
-    private enum AlumniSort: String, CaseIterable, Identifiable {
-        case peak = "PEAK OVR", appearances = "APPEARANCES", goals = "GOALS", seasons = "SEASONS AT CLUB", retirement = "RETIREMENT SEASON", legacy = "LEGACY", name = "NAME"
-        var id: String { rawValue }
-    }
-
+    /// All-time ranking used by the Hall of Fame podium. Deliberately
+    /// independent from the list filter/sort so the podium is always the
+    /// stable "greatest of the club" view.
     private var ranking: [LegendsHallEntry] {
-        store.profile.legendsHall.sorted { $0.legacyScore > $1.legacyScore }
+        allEntries.sorted { $0.legacyScore > $1.legacyScore }
     }
 
     var body: some View {
         LegendsMenuShell(store: store, title: "LEGENDS HALL",
-                         subtitle: "\(entries.count) COMPLETED CAREERS",
+                         subtitle: "\(allEntries.count) COMPLETED CAREERS",
                          icon: "rosette", accent: LegendsPalette.gold,
                          onBack: onBack, currentNav: .hall, onNavigate: onNavigate) {
             VStack(alignment: .leading, spacing: 14) {
-                header
+                summaryBand
                 controls
-                if entries.isEmpty {
+                if allEntries.isEmpty {
                     emptyState
+                } else if entries.isEmpty {
+                    filteredEmptyState
                 } else {
-                    rankingPanel
-                    ForEach(entries) { entry in
-                        Button {
-                            Haptics.tap()
-                            selectedEntry = entry
-                        } label: {
-                            careerCard(entry)
-                        }
-                        .buttonStyle(PressableButtonStyle())
-                    }
+                    podium
+                    careerList
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            // Facilities-style containment: the identifier describes the
+            // destination without swallowing the identities of the controls
+            // nested inside it.
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("legends.hall.screen")
         }
         .sheet(item: $selectedEntry) { entry in
             LegendsHallEntryDetailView(store: store, entry: entry)
         }
     }
 
+    // MARK: - Summary band
+
+    private var summaryBand: some View {
+        let hall = allEntries
+        let appearances = hall.reduce(0) { $0 + $1.appearances }
+        let goals = hall.reduce(0) { $0 + $1.goals }
+        let honours = hall.reduce(0) { $0 + $1.honours.count }
+        let clubLegends = hall.filter(\.isClubLegend).count
+
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 7) {
+                Image(systemName: "rosette")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(LegendsPalette.goldDeep)
+                Text("HALL OF FAME AT A GLANCE")
+                    .font(.system(size: 11, weight: .black, design: .monospaced))
+                    .foregroundStyle(LegendsPalette.navy)
+            }
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 8)], spacing: 8) {
+                summaryStat(value: "\(hall.count)", label: "CAREERS",
+                            accessible: "\(hall.count) completed careers",
+                            identifier: "legends.hall.summary.careers")
+                summaryStat(value: "\(clubLegends)", label: "CLUB LEGENDS",
+                            accessible: "\(clubLegends) club legends",
+                            identifier: "legends.hall.summary.clubLegends")
+                summaryStat(value: "\(appearances)", label: "APPEARANCES",
+                            accessible: "\(appearances) total appearances",
+                            identifier: "legends.hall.summary.appearances")
+                summaryStat(value: "\(goals)", label: "GOALS",
+                            accessible: "\(goals) total goals",
+                            identifier: "legends.hall.summary.goals")
+                summaryStat(value: "\(honours)", label: "HONOURS",
+                            accessible: "\(honours) career honours",
+                            identifier: "legends.hall.summary.honours")
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(LegendsPalette.gold.opacity(0.32), lineWidth: 1.2))
+        .shadow(color: LegendsPalette.navy.opacity(0.09), radius: 8, y: 4)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("legends.hall.summary")
+    }
+
+    private func summaryStat(value: String, label: String, accessible: String, identifier: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(value)
+                .font(.system(size: 20, weight: .black, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(LegendsPalette.goldDeep)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+            Text(label)
+                .font(.system(size: 8, weight: .black, design: .monospaced))
+                .foregroundStyle(LegendsPalette.navy.opacity(0.62))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessible)
+        .accessibilityIdentifier(identifier)
+    }
+
+    // MARK: - Controls
+
     private var controls: some View {
         VStack(spacing: 8) {
-            TextField("SEARCH ALUMNI", text: $searchText)
-                .textFieldStyle(.roundedBorder)
-                .accessibilityIdentifier("legends.alumni.search")
-            HStack {
-                Toggle("FAVOURITES", isOn: $favouritesOnly)
-                    .accessibilityIdentifier("legends.alumni.favourites")
-                Spacer()
-                Menu("SORT") {
-                    ForEach(AlumniSort.allCases) { option in Button(option.rawValue) { sort = option } }
+            HStack(spacing: 8) {
+                TextField("SEARCH ALUMNI", text: $searchText)
+                    .textFieldStyle(.roundedBorder)
+                    .autocorrectionDisabled()
+                    .accessibilityIdentifier("legends.hall.search")
+                if !searchText.isEmpty || favouritesOnly {
+                    Button {
+                        Haptics.tap()
+                        searchText = ""
+                        favouritesOnly = false
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundStyle(LegendsPalette.navy.opacity(0.55))
+                    }
+                    .buttonStyle(PressableButtonStyle())
+                    .accessibilityIdentifier("legends.hall.clearSearch")
+                    .accessibilityLabel("Clear search and filters")
                 }
-                .accessibilityIdentifier("legends.alumni.sort")
             }
-            .font(.system(size: 10, weight: .bold, design: .monospaced))
+
+            HStack(spacing: 8) {
+                Button {
+                    Haptics.tap()
+                    favouritesOnly.toggle()
+                } label: {
+                    Label("FAVOURITES", systemImage: favouritesOnly ? "star.fill" : "star")
+                        .font(.system(size: 10, weight: .black, design: .monospaced))
+                        .foregroundStyle(favouritesOnly ? LegendsPalette.goldDeep : LegendsPalette.navy.opacity(0.7))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(favouritesOnly ? LegendsPalette.goldWash : Color.white)
+                        .clipShape(Capsule())
+                        .overlay(Capsule().stroke(
+                            favouritesOnly ? LegendsPalette.gold : LegendsPalette.navy.opacity(0.22),
+                            lineWidth: 1))
+                }
+                .buttonStyle(PressableButtonStyle())
+                .accessibilityIdentifier("legends.hall.favourites")
+                .accessibilityLabel(favouritesOnly ? "Favourites filter on" : "Favourites filter off")
+                .accessibilityAddTraits(favouritesOnly ? .isSelected : [])
+
+                Spacer(minLength: 8)
+
+                Menu {
+                    ForEach(HallSort.allCases) { option in
+                        Button(option.rawValue) { sort = option }
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "arrow.up.arrow.down")
+                            .font(.system(size: 9, weight: .black))
+                        Text("SORT: \(sort.rawValue)")
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                    }
+                    .font(.system(size: 10, weight: .black, design: .monospaced))
+                    .foregroundStyle(LegendsPalette.navy)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(Color.white)
+                    .clipShape(Capsule())
+                    .overlay(Capsule().stroke(LegendsPalette.navy.opacity(0.22), lineWidth: 1))
+                }
+                .accessibilityIdentifier("legends.hall.sort")
+            }
         }
     }
 
-    private var rankingPanel: some View {
-        LegendsDashboardPanel(title: "GREATEST RSM LEGENDS", icon: "crown.fill", color: LegendsPalette.gold) {
-            VStack(spacing: 7) {
-                ForEach(Array(ranking.prefix(5).enumerated()), id: \.element.id) { index, entry in
-                    HStack(spacing: 8) {
-                        Text("\(index + 1)")
-                            .font(.system(size: 11, weight: .black, design: .monospaced))
-                            .foregroundStyle(index == 0 ? LegendsPalette.goldDeep : LegendsPalette.navy.opacity(0.5))
-                            .frame(width: 20)
-                        Text(entry.playerName)
-                            .font(.system(size: 11, weight: .bold, design: .rounded))
-                            .foregroundStyle(LegendsPalette.navy)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
-                        Spacer()
-                        if entry.isClubLegend {
-                            Image(systemName: "star.fill")
-                                .font(.system(size: 9))
-                                .foregroundStyle(LegendsPalette.gold)
+    // MARK: - Podium
+
+    private var podium: some View {
+        let top = Array(ranking.prefix(3))
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 7) {
+                Image(systemName: "crown.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(LegendsPalette.goldDeep)
+                Text("GREATEST RSM LEGENDS")
+                    .font(.system(size: 11, weight: .black, design: .monospaced))
+                    .foregroundStyle(LegendsPalette.navy)
+                Spacer(minLength: 4)
+                Text("BY LEGACY SCORE")
+                    .font(.system(size: 8, weight: .black, design: .monospaced))
+                    .foregroundStyle(LegendsPalette.navy.opacity(0.55))
+            }
+            HStack(alignment: .top, spacing: 10) {
+                ForEach(Array(top.enumerated()), id: \.element.id) { index, entry in
+                    podiumCard(index: index, entry: entry)
+                }
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(LegendsPalette.goldWash)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(LegendsPalette.gold.opacity(0.45), lineWidth: 1.2))
+        .shadow(color: LegendsPalette.navy.opacity(0.09), radius: 8, y: 4)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("legends.hall.podium")
+    }
+
+    private func podiumCard(index: Int, entry: LegendsHallEntry) -> some View {
+        let rankColors: [Color] = [LegendsPalette.gold, LegendsPalette.navy.opacity(0.55), LegendsPalette.orange]
+        let rank = index + 1
+        return VStack(spacing: 5) {
+            Text("\(rank)")
+                .font(.system(size: 15, weight: .black, design: .monospaced))
+                .foregroundStyle(.white)
+                .frame(width: 26, height: 26)
+                .background(rankColors[index])
+                .clipShape(Circle())
+            PlayerPortraitView(name: entry.playerName, position: entry.position.broad,
+                               nation: entry.nation, size: 46)
+                .clipShape(Circle())
+                .overlay(Circle().stroke(LegendsPalette.gold, lineWidth: 2))
+            Text(entry.playerName)
+                .font(.system(size: 11, weight: .black, design: .rounded))
+                .foregroundStyle(LegendsPalette.navy)
+                .lineLimit(1)
+                .minimumScaleFactor(0.55)
+            HStack(spacing: 3) {
+                if entry.isClubLegend {
+                    Image(systemName: "star.fill")
+                        .font(.system(size: 8))
+                        .foregroundStyle(LegendsPalette.goldDeep)
+                }
+                Text("\(entry.legacyScore)")
+                    .font(.system(size: 11, weight: .black, design: .monospaced))
+                    .monospacedDigit()
+                    .foregroundStyle(LegendsPalette.goldDeep)
+            }
+            Text("LEGACY")
+                .font(.system(size: 7, weight: .black, design: .monospaced))
+                .foregroundStyle(LegendsPalette.navy.opacity(0.55))
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 9)
+        .background(.white)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(LegendsPalette.gold.opacity(0.3), lineWidth: 1))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Rank \(rank): \(entry.playerName), legacy score \(entry.legacyScore)\(entry.isClubLegend ? ", club legend" : "")")
+        .accessibilityIdentifier("legends.hall.podium.\(rank)")
+    }
+
+    // MARK: - Career list
+
+    /// Row-major pairing keeps wide layouts dense while staying a plain
+    /// (non-lazy) hierarchy, so every career card stays materialised in the
+    /// accessibility tree and the shared shell scroll never resets.
+    @ViewBuilder
+    private var careerList: some View {
+        let cards = entries
+        let columns = cardColumnCount
+        if columns == 2 {
+            VStack(spacing: 12) {
+                ForEach(Array(stride(from: 0, to: cards.count, by: 2)), id: \.self) { start in
+                    HStack(alignment: .top, spacing: 12) {
+                        careerCard(cards[start])
+                        if start + 1 < cards.count {
+                            careerCard(cards[start + 1])
+                        } else {
+                            Color.clear
                         }
-                        Text("\(entry.legacyScore)")
-                            .font(.system(size: 11, weight: .black, design: .monospaced))
-                            .foregroundStyle(LegendsPalette.goldDeep)
                     }
                 }
             }
+        } else {
+            VStack(spacing: 12) {
+                ForEach(cards) { entry in
+                    careerCard(entry)
+                }
+            }
         }
     }
 
-    private var header: some View {
-        LegendsDashboardPanel(title: "CREATE THE STORY", icon: "book.closed.fill", color: LegendsPalette.gold) {
-            Text("Retired players stay here forever. Every new card generation begins a separate career.")
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(LegendsPalette.navy.opacity(0.7))
-        }
+    private var cardColumnCount: Int {
+        // One column keeps every figure readable on compact landscape
+        // phones; wider layouts fit two card columns side by side.
+        screenAllowsTwoColumns ? 2 : 1
     }
 
-    private var emptyState: some View {
-        LegendsDashboardPanel(title: "NO COMPLETED CAREERS YET", icon: "sparkles", color: LegendsPalette.blue) {
-            Text("Sign a player, build their career, and the Hall will remember their final season.")
-                .font(.system(size: 12, design: .monospaced))
-                .foregroundStyle(LegendsPalette.navy.opacity(0.68))
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    private var screenAllowsTwoColumns: Bool {
+        // Compact iPhone landscape (~667–740pt of content width) stays
+        // single-column; iPad compatibility mode and larger phones get two.
+        horizontalSizeClass == .regular
     }
 
     private func careerCard(_ entry: LegendsHallEntry) -> some View {
-        let card = LegendsCardDatabase.all.first { $0.id == entry.cardID }
-        return HStack(spacing: 12) {
-            if let card {
-                PlayerPortraitView(name: entry.playerName, position: card.position.broad,
-                                   nation: entry.nation, size: 54)
+        Button {
+            Haptics.tap()
+            selectedEntry = entry
+        } label: {
+            HStack(alignment: .top, spacing: 12) {
+                PlayerPortraitView(name: entry.playerName, position: entry.position.broad,
+                                   nation: entry.nation, size: 52)
                     .clipShape(Circle())
-                    .overlay(Circle().stroke(LegendsPalette.gold, lineWidth: 2))
-            } else {
-                Image(systemName: "person.fill")
-                    .font(.system(size: 24, weight: .black))
-                    .foregroundStyle(LegendsPalette.gold)
-                    .frame(width: 54, height: 54)
-                    .background(LegendsPalette.goldWash)
-                    .clipShape(Circle())
-            }
+                    .overlay(
+                        Circle().stroke(entry.isClubLegend ? LegendsPalette.gold : LegendsPalette.gold.opacity(0.5),
+                                        lineWidth: entry.isClubLegend ? 3 : 2)
+                    )
+                    .overlay(alignment: .topTrailing) {
+                        if entry.isClubLegend {
+                            Image(systemName: "star.circle.fill")
+                                .font(.system(size: 16))
+                                .foregroundStyle(LegendsPalette.gold)
+                                .background(Circle().fill(.white))
+                                .offset(x: 5, y: -5)
+                        }
+                    }
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(entry.playerName)
-                    .font(.system(size: 14, weight: .black, design: .rounded))
-                    .foregroundStyle(LegendsPalette.navy)
-                Text("\(entry.position.rawValue) · \(entry.nation) · AGE \(entry.startingAge) → \(entry.finalAge)")
-                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                    .foregroundStyle(LegendsPalette.navy.opacity(0.58))
-                if store.isFavourite(entry.cardID) {
-                    Label("FAVOURITE", systemImage: "star.fill")
-                        .font(.system(size: 8, weight: .black, design: .monospaced))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(entry.playerName)
+                        .font(.system(size: 14, weight: .black, design: .rounded))
+                        .foregroundStyle(LegendsPalette.navy)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                    HStack(spacing: 5) {
+                        Text("\(entry.position.rawValue) · \(entry.nation) · AGE \(entry.startingAge) → \(entry.finalAge)")
+                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            .foregroundStyle(LegendsPalette.navy.opacity(0.6))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                        if store.isFavourite(entry.cardID) {
+                            Image(systemName: "star.fill")
+                                .font(.system(size: 9))
+                                .foregroundStyle(LegendsPalette.goldDeep)
+                        }
+                    }
+                    Text("CAREER S\(entry.signedSeason)–S\(entry.retiredSeason) · \(entry.seasonsAtClub) SEASONS")
+                        .font(.system(size: 9, weight: .black, design: .monospaced))
                         .foregroundStyle(LegendsPalette.goldDeep)
+                    HStack(spacing: 8) {
+                        stat("APP", entry.appearances)
+                        stat("G", entry.goals)
+                        stat("A", entry.assists)
+                        if entry.cleanSheets > 0 { stat("CS", entry.cleanSheets) }
+                    }
+
+                    if !entry.honours.isEmpty || !entry.individualAwards.isEmpty {
+                        HStack(spacing: 8) {
+                            if !entry.honours.isEmpty {
+                                Label("\(entry.honours.count)", systemImage: "trophy.fill")
+                                    .font(.system(size: 9, weight: .black, design: .monospaced))
+                                    .foregroundStyle(LegendsPalette.goldDeep)
+                            }
+                            if !entry.individualAwards.isEmpty {
+                                Label("\(entry.individualAwards.count)", systemImage: "medal.fill")
+                                    .font(.system(size: 9, weight: .black, design: .monospaced))
+                                    .foregroundStyle(LegendsPalette.navy.opacity(0.72))
+                            }
+                        }
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("\(entry.honours.count) career honours, \(entry.individualAwards.count) individual awards")
+                    }
                 }
-                Text("CAREER \(entry.signedSeason)–\(entry.retiredSeason) · \(entry.seasonsAtClub) SEASONS")
-                    .font(.system(size: 9, weight: .black, design: .monospaced))
-                    .foregroundStyle(LegendsPalette.goldDeep)
-            }
-            Spacer(minLength: 4)
-            VStack(alignment: .trailing, spacing: 4) {
-                Text("\(entry.highestOverall)")
-                    .font(.system(size: 22, weight: .black, design: .rounded))
-                    .foregroundStyle(LegendsPalette.goldDeep)
-                Text("PEAK OVR")
-                    .font(.system(size: 8, weight: .black, design: .monospaced))
-                    .foregroundStyle(LegendsPalette.navy.opacity(0.55))
-                if entry.legacyScore > 0 {
+
+                Spacer(minLength: 6)
+
+                VStack(alignment: .trailing, spacing: 3) {
+                    Text("\(entry.highestOverall)")
+                        .font(.system(size: 21, weight: .black, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(LegendsPalette.goldDeep)
+                    Text("PEAK OVR")
+                        .font(.system(size: 7, weight: .black, design: .monospaced))
+                        .foregroundStyle(LegendsPalette.navy.opacity(0.55))
                     Text("\(entry.legacyScore)")
                         .font(.system(size: 12, weight: .black, design: .monospaced))
-                        .foregroundStyle(LegendsPalette.goldDeep)
+                        .monospacedDigit()
+                        .foregroundStyle(LegendsPalette.navy)
                     Text("LEGACY")
                         .font(.system(size: 7, weight: .black, design: .monospaced))
                         .foregroundStyle(LegendsPalette.navy.opacity(0.5))
                 }
-                if !entry.honours.isEmpty || !entry.individualAwards.isEmpty {
-                    HStack(spacing: 6) {
-                        if !entry.honours.isEmpty {
-                            Label("\(entry.honours.count)", systemImage: "trophy.fill")
-                                .font(.system(size: 9, weight: .black, design: .monospaced))
-                                .foregroundStyle(LegendsPalette.goldDeep)
-                                .accessibilityLabel("\(entry.honours.count) career honours")
-                        }
-                        if !entry.individualAwards.isEmpty {
-                            Label("\(entry.individualAwards.count)", systemImage: "medal.fill")
-                                .font(.system(size: 9, weight: .black, design: .monospaced))
-                                .foregroundStyle(LegendsPalette.goldDeep)
-                                .accessibilityLabel("\(entry.individualAwards.count) individual awards")
-                        }
-                    }
-                    .accessibilityIdentifier("legends.alumni.badges")
-                }
             }
+            .padding(13)
+            .background(.white)
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(
+                entry.isClubLegend ? LegendsPalette.gold.opacity(0.7) : LegendsPalette.gold.opacity(0.3),
+                lineWidth: entry.isClubLegend ? 1.6 : 1))
+            .shadow(color: LegendsPalette.navy.opacity(0.08), radius: 7, y: 3)
         }
-        .overlay(alignment: .topLeading) {
-            if entry.isClubLegend {
-                Image(systemName: "star.circle.fill")
-                    .font(.system(size: 20))
-                    .foregroundStyle(LegendsPalette.gold)
-                    .offset(x: -4, y: -4)
-            }
-        }
-        .padding(14)
-        .background(.white)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(LegendsPalette.gold.opacity(0.35), lineWidth: 1))
-        .shadow(color: LegendsPalette.navy.opacity(0.08), radius: 7, y: 3)
-        .overlay(alignment: .bottomLeading) {
-            HStack(spacing: 12) {
-                stat("APP", entry.appearances)
-                stat("G", entry.goals)
-                stat("A", entry.assists)
-                stat("CS", entry.cleanSheets)
-            }
-            .padding(.leading, 80)
-            .padding(.bottom, 8)
-        }
+        .buttonStyle(PressableButtonStyle())
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("legends.hall.card.\(entry.cardID)")
+        .accessibilityLabel("\(entry.playerName), \(entry.position.rawValue), peak overall \(entry.highestOverall), \(entry.appearances) appearances, \(entry.goals) goals, legacy score \(entry.legacyScore)\(entry.isClubLegend ? ", club legend" : "")\(store.isFavourite(entry.cardID) ? ", favourited" : "")")
     }
 
     private func stat(_ label: String, _ value: Int) -> some View {
-        Text("\(label) \(value)")
-            .font(.system(size: 8, weight: .bold, design: .monospaced))
-            .foregroundStyle(LegendsPalette.navy.opacity(0.62))
+        HStack(spacing: 2) {
+            Text(label)
+                .foregroundStyle(LegendsPalette.navy.opacity(0.55))
+            Text("\(value)")
+                .monospacedDigit()
+                .foregroundStyle(LegendsPalette.navy.opacity(0.85))
+        }
+        .font(.system(size: 8, weight: .black, design: .monospaced))
+    }
+
+    // MARK: - Empty states
+
+    private var emptyState: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 7) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(LegendsPalette.blue)
+                Text("THE HALL AWAITS ITS FIRST LEGEND")
+                    .font(.system(size: 11, weight: .black, design: .monospaced))
+                    .foregroundStyle(LegendsPalette.navy)
+            }
+            Text("Sign a player, build their career across the seasons, and when they retire their complete story — statistics, honours and legacy score — is preserved here forever.")
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(LegendsPalette.navy.opacity(0.72))
+            Text("Every new card generation of the same player begins a separate career of its own.")
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(LegendsPalette.navy.opacity(0.6))
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(LegendsPalette.blue.opacity(0.25), lineWidth: 1))
+        .shadow(color: LegendsPalette.navy.opacity(0.09), radius: 8, y: 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("legends.hall.empty")
+    }
+
+    private var filteredEmptyState: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 7) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(LegendsPalette.blue)
+                Text("NO CAREERS MATCH")
+                    .font(.system(size: 11, weight: .black, design: .monospaced))
+                    .foregroundStyle(LegendsPalette.navy)
+            }
+            Text("No completed career matches the current search or favourites filter. Clear them to see the full Hall.")
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(LegendsPalette.navy.opacity(0.7))
+            Button {
+                Haptics.tap()
+                searchText = ""
+                favouritesOnly = false
+            } label: {
+                Text("CLEAR SEARCH & FILTERS")
+                    .font(.system(size: 10, weight: .black, design: .monospaced))
+                    .foregroundStyle(LegendsPalette.navy)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(LegendsPalette.blueWash)
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(PressableButtonStyle())
+            .accessibilityIdentifier("legends.hall.clearFilters")
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(LegendsPalette.blue.opacity(0.25), lineWidth: 1))
+        .shadow(color: LegendsPalette.navy.opacity(0.09), radius: 8, y: 4)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("legends.hall.filteredEmpty")
     }
 }
 
@@ -268,6 +564,7 @@ private struct LegendsHallEntryDetailView: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Close career page")
+                        .accessibilityIdentifier("legends.hall.detail.close")
                     }
                     VStack(spacing: 8) {
                         PlayerPortraitView(name: entry.playerName, position: entry.position.broad, nation: entry.nation, size: 84)
@@ -286,9 +583,7 @@ private struct LegendsHallEntryDetailView: View {
                             Label(isFavourite ? "FAVOURITED" : "FAVOURITE", systemImage: isFavourite ? "star.fill" : "star")
                         }
                         .buttonStyle(.borderedProminent)
-                        .accessibilityIdentifier("legends.alumni.favourite")
-                            .font(.system(size: 9, weight: .black, design: .monospaced))
-                            .foregroundStyle(Retro.highlight)
+                        .accessibilityIdentifier("legends.hall.detail.favourite")
                     }
 
                     Panel(title: "CAREER TOTALS") {
@@ -303,6 +598,7 @@ private struct LegendsHallEntryDetailView: View {
                             detailLine("Legacy Score", "\(entry.legacyScore)")
                         }
                     }
+                    .accessibilityIdentifier("legends.hall.detail.totals")
 
                     if let identity = entry.identityProfile {
                         Panel(title: "IDENTITY & PROFILE") {
@@ -314,7 +610,7 @@ private struct LegendsHallEntryDetailView: View {
                                     .foregroundStyle(Retro.text.opacity(0.65))
                             }
                         }
-                        .accessibilityIdentifier("legends.alumni.identity")
+                        .accessibilityIdentifier("legends.hall.detail.identity")
                     }
 
                     Panel(title: "FINAL CONDITION") {
@@ -325,7 +621,7 @@ private struct LegendsHallEntryDetailView: View {
                             detailLine("Fame", "\(entry.finalCondition.fame)/100")
                         }
                     }
-                    .accessibilityIdentifier("legends.alumni.condition")
+                    .accessibilityIdentifier("legends.hall.detail.condition")
 
                     Panel(title: "FINAL DEVELOPMENT PLAN") {
                         VStack(alignment: .leading, spacing: 6) {
@@ -337,7 +633,7 @@ private struct LegendsHallEntryDetailView: View {
                                 .foregroundStyle(Retro.text.opacity(0.65))
                         }
                     }
-                    .accessibilityIdentifier("legends.alumni.training")
+                    .accessibilityIdentifier("legends.hall.detail.training")
 
                     if !entry.honours.isEmpty {
                         Panel(title: "HONOURS") {
@@ -360,7 +656,7 @@ private struct LegendsHallEntryDetailView: View {
                                 }
                             }
                         }
-                        .accessibilityIdentifier("legends.alumni.honours")
+                        .accessibilityIdentifier("legends.hall.detail.honours")
                     }
 
                     if !entry.individualAwards.isEmpty {
@@ -382,7 +678,7 @@ private struct LegendsHallEntryDetailView: View {
                                 }
                             }
                         }
-                        .accessibilityIdentifier("legends.alumni.awards")
+                        .accessibilityIdentifier("legends.hall.detail.awards")
                     }
 
                     if entry.identityProfile != nil {
@@ -405,7 +701,7 @@ private struct LegendsHallEntryDetailView: View {
                                 }
                             }
                         }
-                        .accessibilityIdentifier("legends.alumni.attributes")
+                        .accessibilityIdentifier("legends.hall.detail.attributes")
                     }
 
                     if !entry.careerHistory.isEmpty {
@@ -436,6 +732,7 @@ private struct LegendsHallEntryDetailView: View {
                                 }
                             }
                         }
+                        .accessibilityIdentifier("legends.hall.detail.history")
                     }
 
                     if !entry.milestones.isEmpty {
@@ -453,6 +750,7 @@ private struct LegendsHallEntryDetailView: View {
                                 }
                             }
                         }
+                        .accessibilityIdentifier("legends.hall.detail.milestones")
                     }
 
                     if !records.isEmpty {
@@ -474,6 +772,7 @@ private struct LegendsHallEntryDetailView: View {
                                 }
                             }
                         }
+                        .accessibilityIdentifier("legends.hall.detail.records")
                     }
                 }
                 .padding(16)

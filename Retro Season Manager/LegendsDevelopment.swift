@@ -502,5 +502,128 @@ extension LegendsStore {
         persist()
     }
 
+    /// Deterministic UI-test fixture for the redesigned Legends Hall: five
+    /// completed careers with varied rankings, statistics, honours, awards,
+    /// favourites and one club legend, so the summary band, Hall of Fame
+    /// podium, sorting, search and card presentation are all deterministic.
+    /// Presentation only — no retirement or legacy recalculation is run;
+    /// the legacy scores below were produced by the authoritative formula.
+    func prepareHallFixtureForDebug() {
+        profile = .starter()
+        profile.managerProfile = LegendsManagerProfile(
+            firstName: "Test", surname: "Manager", nationalityCode: "GB",
+            dateOfBirth: Date(timeIntervalSince1970: 315_532_800), archetype: .architect
+        )
+        migrateOwnedPlayerRecords()
+
+        func record(_ start: Int, _ end: Int, age: Int, apps: Int, goals: Int,
+                    assists: Int, cleanSheets: Int = 0, overallStart: Int,
+                    overallEnd: Int) -> LegendsSeasonRecord {
+            LegendsSeasonRecord(season: start, age: age, appearances: apps, goals: goals,
+                                assists: assists, cleanSheets: cleanSheets,
+                                overallAtStart: overallStart, overallAtEnd: overallEnd)
+        }
+
+        // #1 by legacy score — club-legend striker with honours and awards.
+        profile.legendsHall.append(LegendsHallEntry(
+            id: "ui-hall-mbappa", cardID: "mbappa-2223", playerName: "K. Mbappa",
+            position: .striker, nation: "France", startingAge: 23, startingOverall: 91,
+            highestOverall: 94, finalAge: 34, appearances: 412, goals: 289, assists: 87,
+            cleanSheets: 0, seasonsAtClub: 11, signedSeason: 1, retiredSeason: 11,
+            finalOverall: 90, trophies: 10,
+            milestones: [.firstAppearance, .firstGoal, .seventyAppearances, .hundredFortyAppearances,
+                         .threeFiftyAppearances, .seventyGoals, .hundredFortyGoals, .twoEightyGoals,
+                         .firstTrophy, .clubLegend],
+            isClubLegend: true, legacyScore: 5512,
+            careerHistory: [
+                record(1, 1, age: 23, apps: 36, goals: 24, assists: 8, overallStart: 91, overallEnd: 92),
+                record(2, 2, age: 24, apps: 38, goals: 27, assists: 9, overallStart: 92, overallEnd: 93),
+                record(3, 3, age: 25, apps: 37, goals: 30, assists: 7, overallStart: 93, overallEnd: 94),
+            ],
+            identityProfile: LegendsIdentityEngine.profile(for: LegendsCardDatabase.all.first { $0.id == "mbappa-2223" }!),
+            honours: [
+                LegendsHonour(id: "ui-hall-mbappa-h1", season: 1, competitionID: "division-1",
+                              competitionName: "Legends Division 1", type: "CHAMPIONS",
+                              clubName: profile.clubName, cardID: "mbappa-2223", careerID: "ui-hall-mbappa"),
+                LegendsHonour(id: "ui-hall-mbappa-h2", season: 3, competitionID: "legends-cup",
+                              competitionName: "Legends Cup", type: "WINNERS",
+                              clubName: profile.clubName, cardID: "mbappa-2223", careerID: "ui-hall-mbappa"),
+            ],
+            individualAwards: [
+                LegendsIndividualAward(id: "ui-hall-mbappa-a1", season: 2, type: "GOLDEN BOOT",
+                                       cardID: "mbappa-2223", careerID: "ui-hall-mbappa", value: 27),
+                LegendsIndividualAward(id: "ui-hall-mbappa-a2", season: 3, type: "PLAYER OF THE SEASON",
+                                       cardID: "mbappa-2223", careerID: "ui-hall-mbappa", value: 30),
+            ]))
+
+        // #2 — long-serving defender, clean sheets, favourited.
+        profile.legendsHall.append(LegendsHallEntry(
+            id: "ui-hall-maldinho", cardID: "maldinho-9596", playerName: "P. Maldinho",
+            position: .centreBack, nation: "Italy", startingAge: 27, startingOverall: 91,
+            highestOverall: 93, finalAge: 37, appearances: 380, goals: 21, assists: 12,
+            cleanSheets: 146, seasonsAtClub: 10, signedSeason: 2, retiredSeason: 11,
+            finalOverall: 88, trophies: 8,
+            milestones: [.firstAppearance, .seventyAppearances, .hundredFortyAppearances,
+                         .threeFiftyAppearances, .firstTrophy, .clubLegend],
+            isClubLegend: true, legacyScore: 4719,
+            careerHistory: [
+                record(2, 2, age: 27, apps: 37, goals: 2, assists: 1, cleanSheets: 17, overallStart: 91, overallEnd: 92),
+                record(3, 3, age: 28, apps: 38, goals: 3, assists: 2, cleanSheets: 19, overallStart: 92, overallEnd: 93),
+            ],
+            identityProfile: LegendsIdentityEngine.profile(for: LegendsCardDatabase.all.first { $0.id == "maldinho-9596" }!),
+            honours: [
+                LegendsHonour(id: "ui-hall-maldinho-h1", season: 2, competitionID: "division-1",
+                              competitionName: "Legends Division 1", type: "CHAMPIONS",
+                              clubName: profile.clubName, cardID: "maldinho-9596", careerID: "ui-hall-maldinho"),
+            ]))
+        profile.favouriteCardIDs.insert("maldinho-9596")
+
+        // #3 — prolific forward without a legend crown.
+        profile.legendsHall.append(LegendsHallEntry(
+            id: "ui-hall-batigora", cardID: "batigora-9596", playerName: "G. Batigora",
+            position: .striker, nation: "Argentina", startingAge: 26, startingOverall: 89,
+            highestOverall: 91, finalAge: 33, appearances: 266, goals: 178, assists: 41,
+            cleanSheets: 0, seasonsAtClub: 7, signedSeason: 4, retiredSeason: 10,
+            finalOverall: 86, trophies: 5,
+            milestones: [.firstAppearance, .firstGoal, .seventyAppearances, .hundredFortyAppearances,
+                         .seventyGoals, .hundredFortyGoals, .firstTrophy],
+            isClubLegend: false, legacyScore: 2988,
+            careerHistory: [
+                record(4, 4, age: 26, apps: 35, goals: 22, assists: 5, overallStart: 89, overallEnd: 90),
+                record(5, 5, age: 27, apps: 38, goals: 28, assists: 7, overallStart: 90, overallEnd: 91),
+            ],
+            identityProfile: LegendsIdentityEngine.profile(for: LegendsCardDatabase.all.first { $0.id == "batigora-9596" }!)))
+
+        // #4 — loyal midfielder, modest output, long service.
+        profile.legendsHall.append(LegendsHallEntry(
+            id: "ui-hall-cantina", cardID: "cantina-9596", playerName: "E. Cantina",
+            position: .striker, nation: "France", startingAge: 29, startingOverall: 88,
+            highestOverall: 89, finalAge: 36, appearances: 244, goals: 96, assists: 63,
+            cleanSheets: 0, seasonsAtClub: 7, signedSeason: 3, retiredSeason: 9,
+            finalOverall: 81, trophies: 4,
+            milestones: [.firstAppearance, .firstGoal, .seventyAppearances, .hundredFortyAppearances,
+                         .seventyGoals, .firstTrophy],
+            isClubLegend: false, legacyScore: 1997,
+            careerHistory: [
+                record(3, 3, age: 29, apps: 33, goals: 12, assists: 8, overallStart: 88, overallEnd: 89),
+                record(4, 4, age: 30, apps: 36, goals: 15, assists: 10, overallStart: 89, overallEnd: 89),
+            ]))
+
+        // #5 — short single-season cult hero, lowest legacy score.
+        profile.legendsHall.append(LegendsHallEntry(
+            id: "ui-hall-renaldo", cardID: "renaldo-0405", playerName: "C. Renaldo",
+            position: .rightWing, nation: "Portugal", startingAge: 19, startingOverall: 82,
+            highestOverall: 84, finalAge: 20, appearances: 34, goals: 7, assists: 11,
+            cleanSheets: 0, seasonsAtClub: 1, signedSeason: 5, retiredSeason: 5,
+            finalOverall: 84, trophies: 1,
+            milestones: [.firstAppearance, .firstGoal, .firstTrophy],
+            isClubLegend: false, legacyScore: 592,
+            careerHistory: [
+                record(5, 5, age: 19, apps: 34, goals: 7, assists: 11, overallStart: 82, overallEnd: 84),
+            ]))
+
+        persist()
+    }
+
     #endif
 }

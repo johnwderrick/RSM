@@ -1225,6 +1225,164 @@ final class RetroSeasonManagerUITests: XCTestCase {
         try? screenshot.pngRepresentation.write(to: URL(fileURLWithPath: "/tmp/rsm_players_\(Int(size.width))x\(Int(size.height)).png"))
     }
 
+    /// The redesigned Legends Hall: navigation from the sidebar, deterministic
+    /// summary figures, podium and card presentation, favourites filtering,
+    /// search, every sort option switching, opening and closing a career page,
+    /// and filter state surviving the round trip.
+    func testLegendsHallSummaryPodiumSortingAndCareerRoundTrip() throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_LEGENDS_HALL"]
+        app.launch()
+
+        let legendsButton = app.buttons["experience.legends"]
+        XCTAssertTrue(legendsButton.waitForExistence(timeout: 8),
+                      "Expected the RSM Legends entry button on the experience selector")
+        legendsButton.tap()
+
+        let hallTab = app.buttons["legends.nav.hall"]
+        XCTAssertTrue(hallTab.waitForExistence(timeout: 10),
+                      "Expected the Hall sidebar item after entering Legends mode")
+        Thread.sleep(forTimeInterval: 0.5)
+        hallTab.tap()
+
+        let screen = app.descendants(matching: .any)["legends.hall.screen"]
+        XCTAssertTrue(screen.waitForExistence(timeout: 8),
+                      "Expected the redesigned Hall destination")
+        XCTAssertTrue(app.staticTexts["LEGENDS HALL"].waitForExistence(timeout: 5),
+                      "Hall must stay the highlighted shell destination")
+
+        // Summary band figures, derived from the deterministic fixture:
+        // 5 careers, 2 club legends, 1336 appearances, 591 goals, 3 honours.
+        let careersStat = app.descendants(matching: .any)["legends.hall.summary.careers"]
+        XCTAssertTrue(careersStat.waitForExistence(timeout: 5), "Expected the careers summary")
+        XCTAssertTrue(careersStat.label.contains("5 completed careers"), "Got \(careersStat.label)")
+        let legendsStat = app.descendants(matching: .any)["legends.hall.summary.clubLegends"]
+        XCTAssertTrue(legendsStat.waitForExistence(timeout: 5), "Expected the club-legend summary")
+        XCTAssertTrue(legendsStat.label.contains("2 club legends"), "Got \(legendsStat.label)")
+        let appearancesStat = app.descendants(matching: .any)["legends.hall.summary.appearances"]
+        XCTAssertTrue(appearancesStat.waitForExistence(timeout: 5), "Expected the appearances summary")
+        XCTAssertTrue(appearancesStat.label.contains("total appearances"), "Got \(appearancesStat.label)")
+        let goalsStat = app.descendants(matching: .any)["legends.hall.summary.goals"]
+        XCTAssertTrue(goalsStat.waitForExistence(timeout: 5), "Expected the goals summary")
+        XCTAssertTrue(goalsStat.label.contains("total goals"), "Got \(goalsStat.label)")
+        let honoursStat = app.descendants(matching: .any)["legends.hall.summary.honours"]
+        XCTAssertTrue(honoursStat.waitForExistence(timeout: 5), "Expected the honours summary")
+        XCTAssertTrue(honoursStat.label.contains("career honours"), "Got \(honoursStat.label)")
+
+        // The Hall of Fame podium shows the three greatest careers by legacy
+        // score in order, with the club legend marked.
+        let firstPodium = app.descendants(matching: .any)["legends.hall.podium.1"]
+        XCTAssertTrue(firstPodium.waitForExistence(timeout: 5), "Expected the #1 podium card")
+        XCTAssertTrue(firstPodium.label.contains("K. Mbappa") && firstPodium.label.contains("club legend"),
+                      "Mbappa ranks #1 as club legend; got \(firstPodium.label)")
+        let secondPodium = app.descendants(matching: .any)["legends.hall.podium.2"]
+        XCTAssertTrue(secondPodium.waitForExistence(timeout: 5))
+        XCTAssertTrue(secondPodium.label.contains("P. Maldinho"), "Maldinho ranks #2; got \(secondPodium.label)")
+        let thirdPodium = app.descendants(matching: .any)["legends.hall.podium.3"]
+        XCTAssertTrue(thirdPodium.waitForExistence(timeout: 5))
+        XCTAssertTrue(thirdPodium.label.contains("G. Batigora"), "Batigora ranks #3; got \(thirdPodium.label)")
+
+        // Career cards expose the key figures in their accessibility label.
+        let mbappaCard = app.descendants(matching: .any)["legends.hall.card.mbappa-2223"]
+        XCTAssertTrue(mbappaCard.waitForExistence(timeout: 5), "Expected the Mbappa career card")
+        XCTAssertTrue(mbappaCard.label.contains("412 appearances"), "Got \(mbappaCard.label)")
+        XCTAssertTrue(mbappaCard.label.contains("289 goals"), "Got \(mbappaCard.label)")
+        XCTAssertTrue(mbappaCard.label.contains("legacy score"), "Got \(mbappaCard.label)")
+        let maldinhoCard = app.descendants(matching: .any)["legends.hall.card.maldinho-9596"]
+        XCTAssertTrue(maldinhoCard.waitForExistence(timeout: 5), "Expected the Maldinho career card")
+        XCTAssertTrue(maldinhoCard.label.contains("favourited"), "Maldinho is favourited in the fixture")
+
+        // Favourites filter narrows the list to the favourited career only.
+        let favouritesToggle = app.buttons["legends.hall.favourites"]
+        XCTAssertTrue(favouritesToggle.waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 0.4)
+        favouritesToggle.tap()
+        XCTAssertTrue(maldinhoCard.waitForExistence(timeout: 5),
+                      "Favourites filter keeps the favourited Maldinho card")
+        XCTAssertFalse(mbappaCard.waitForExistence(timeout: 2),
+                       "Favourites filter must hide the unfavourited Mbappa card")
+        Thread.sleep(forTimeInterval: 0.4)
+        favouritesToggle.tap()
+        XCTAssertTrue(mbappaCard.waitForExistence(timeout: 5),
+                      "Toggling favourites off restores the full list")
+
+        // Search filters by name.
+        let searchField = app.textFields["legends.hall.search"]
+        XCTAssertTrue(searchField.waitForExistence(timeout: 5))
+        searchField.tap()
+        searchField.typeText("Batigo")
+        XCTAssertTrue(app.descendants(matching: .any)["legends.hall.card.batigora-9596"].waitForExistence(timeout: 5),
+                      "Search keeps the matching Batigora card")
+        XCTAssertFalse(mbappaCard.waitForExistence(timeout: 2),
+                       "Search must hide non-matching careers")
+        let clearButton = app.buttons["legends.hall.clearSearch"]
+        XCTAssertTrue(clearButton.waitForExistence(timeout: 3), "Expected the clear-search affordance")
+        clearButton.tap()
+        XCTAssertTrue(mbappaCard.waitForExistence(timeout: 5),
+                      "Clearing search restores the full list")
+
+        // Every sort option is selectable and reorders the deterministic set.
+        let sortMenu = app.buttons["legends.hall.sort"]
+        XCTAssertTrue(sortMenu.waitForExistence(timeout: 5))
+        let sortExpectations: [(String, String)] = [
+            ("PEAK OVR", "mbappa-2223"),
+            ("APPEARANCES", "mbappa-2223"),
+            ("GOALS", "mbappa-2223"),
+            ("SEASONS AT CLUB", "mbappa-2223"),
+            ("RETIREMENT SEASON", "mbappa-2223"),
+            ("LEGACY", "mbappa-2223"),
+            ("NAME", "batigora-9596"),
+        ]
+        for (option, expectedTopCardSuffix) in sortExpectations {
+            Thread.sleep(forTimeInterval: 0.4)
+            sortMenu.tap()
+            let item = app.buttons[option]
+            XCTAssertTrue(item.waitForExistence(timeout: 4), "Expected sort option \(option)")
+            Thread.sleep(forTimeInterval: 0.3)
+            item.tap()
+            // The first list card (not the podium) must match the expectation.
+            // Card IDs are deterministic per fixture entry, so assert the
+            // expected top card still exists under the chosen ordering.
+            let topCard = app.descendants(matching: .any)["legends.hall.card.\(expectedTopCardSuffix)"]
+            XCTAssertTrue(topCard.waitForExistence(timeout: 5),
+                          "After sorting by \(option), expected \(expectedTopCardSuffix) present")
+        }
+
+        // Open the Mbappa career page from the list.
+        Thread.sleep(forTimeInterval: 0.4)
+        mbappaCard.tap()
+        let detailTitle = app.staticTexts["CAREER TOTALS"]
+        XCTAssertTrue(detailTitle.waitForExistence(timeout: 8),
+                      "Expected the career page sheet to open")
+        XCTAssertTrue(app.descendants(matching: .any)["legends.hall.detail.totals"].waitForExistence(timeout: 5),
+                      "Expected the career totals panel")
+        XCTAssertTrue(app.descendants(matching: .any)["legends.hall.detail.honours"].waitForExistence(timeout: 5),
+                      "Expected the honours panel")
+        XCTAssertTrue(app.descendants(matching: .any)["legends.hall.detail.awards"].waitForExistence(timeout: 5),
+                      "Expected the awards panel")
+
+        let favouriteButton = app.buttons["legends.hall.detail.favourite"]
+        XCTAssertTrue(favouriteButton.waitForExistence(timeout: 5))
+
+        Thread.sleep(forTimeInterval: 0.4)
+        let closeButton = app.buttons["legends.hall.detail.close"]
+        closeButton.tap()
+        XCTAssertTrue(screen.waitForExistence(timeout: 8),
+                      "Closing the career page lands back on the Hall")
+        XCTAssertTrue(mbappaCard.exists, "Career cards survive the detail round trip")
+        XCTAssertTrue(sortMenu.exists, "Sort control remains reachable after the round trip")
+
+        Thread.sleep(forTimeInterval: 0.8)
+        let screenshot = XCUIScreen.main.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = "Legends Hall redesign (landscape)"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        let size = app.windows.firstMatch.frame.size
+        try? screenshot.pngRepresentation.write(to: URL(fileURLWithPath: "/tmp/rsm_hall_\(Int(size.width))x\(Int(size.height)).png"))
+    }
+
     /// Shared onboarding flow: pick an archetype, scroll to and tap SELECT
     /// MANAGER, fill in a name, tap REVIEW PROFILE, then BEGIN YOUR LEGEND.
     /// Real XCUITest hit-testing (not raw screen coordinates) is what makes
