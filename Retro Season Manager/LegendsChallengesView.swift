@@ -95,8 +95,8 @@ struct LegendsChallengesView: View {
             if let restoredFilter = ChallengeStateFilter(rawValue: stateFilterRaw) { stateFilter = restoredFilter }
             store.refreshChallengeCadences()
         }
-        .onChange(of: cadence) { cadenceRaw = $0.rawValue }
-        .onChange(of: stateFilter) { stateFilterRaw = $0.rawValue }
+        .onChange(of: cadence) { _, newValue in cadenceRaw = newValue.rawValue }
+        .onChange(of: stateFilter) { _, newValue in stateFilterRaw = newValue.rawValue }
     }
 
     // MARK: - Summary band

@@ -658,6 +658,13 @@ extension LegendsStore {
         profile.lastDailyReset = Date()
         profile.lastWeeklyReset = Date()
 
+        // The remembered cadence/filter tabs are presentation memory stored
+        // in user defaults, deliberately outside the save. Clear them so
+        // the fixture always presents the default Daily/ALL view, keeping
+        // the UI test deterministic across repeated simulator runs.
+        UserDefaults.standard.removeObject(forKey: "legends.challenges.cadence")
+        UserDefaults.standard.removeObject(forKey: "legends.challenges.stateFilter")
+
         persist()
     }
 
