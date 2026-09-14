@@ -306,7 +306,7 @@ final class RetroSeasonManagerUITests: XCTestCase {
             ("Squad", "legends.shell.squad"), ("Training", "legends.training.screen"), ("Packs", "legends.packs.screen"),
             ("Players", "legends.library"), ("Challenges", "legends.shell.challenges"),
             ("Division", "legends.shell.division"), ("Club", "legends.shell.club"),
-            ("Planning", "legends.careerPlanning"), ("Reports", "legends.seasonReports"),
+            ("Planning", "legends.planning.screen"), ("Reports", "legends.reports.screen"),
             ("Manager", "legends.shell.manager"), ("Settings", "legends.shell.settings"),
         ]
         for destination in destinations {
@@ -315,9 +315,9 @@ final class RetroSeasonManagerUITests: XCTestCase {
 
         // From Reports: the sidebar must be live and each item must highlight
         // itself — the old Reports screen highlighted PLANNING.
-        assertLands("Reports", screenID: "legends.seasonReports")
+        assertLands("Reports", screenID: "legends.reports.screen")
         assertHighlights("Reports")
-        assertLands("Planning", screenID: "legends.careerPlanning")
+        assertLands("Planning", screenID: "legends.planning.screen")
         assertHighlights("Planning")
         XCTAssertFalse(app.buttons["legends.nav.reports"].isSelected,
                        "Planning must not highlight the Reports item")
