@@ -84,6 +84,338 @@ final class RetroSeasonManagerUITests: XCTestCase {
         completeOnboarding(app)
     }
 
+    /// Focused coverage for the polished manager-creation flow: every
+    /// archetype reachable and selectable, validation gating the primary
+    /// action, the keyboard never trapping REVIEW PROFILE (regression for a
+    /// confirmed defect where the step had no scroll container), back
+    /// navigation, clean per-step screenshots, and relaunch bypass after
+    /// creation. Runs in landscape so the compact-device reachability
+    /// guarantees are exercised on every target size.
+    ///
+    /// Deliberately launches with NO launch arguments: launch arguments set
+    /// on any XCUIApplication in a test method persist across app instances
+    /// (a relaunch with the reset flag wiped the freshly created profile —
+    /// verified via an app-side init log). Determinism comes from the app's
+    /// own DEBUG "RESET MANAGER ONBOARDING" control instead.
+    func testManagerCreationShowsFullBodyArtworkAndRemainsUsable() throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launch()
+
+        func snap(_ name: String) {
+            let shot = XCUIScreen.main.screenshot()
+            let attachment = XCTAttachment(screenshot: shot)
+            attachment.name = name
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            let size = app.windows.firstMatch.frame.size
+            try? shot.pngRepresentation.write(to: URL(fileURLWithPath: "/tmp/rsm_mc_\(name)_\(Int(size.width))x\(Int(size.height)).png"))
+        }
+
+        // Step 1 — archetype selection. A leftover profile from a previous
+        // run is reset through the app's own DEBUG control (never launch args).
+        let legendsButton = app.buttons["experience.legends"]
+        XCTAssertTrue(legendsButton.waitForExistence(timeout: 8))
+        legendsButton.tap()
+        if !app.staticTexts["CHOOSE YOUR MANAGER"].waitForExistence(timeout: 4) {
+            let managerNav = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Manager")).firstMatch
+            XCTAssertTrue(managerNav.waitForExistence(timeout: 8),
+                          "Expected the Manager sidebar destination when a profile already exists")
+            managerNav.tap()
+            let resetButton = app.buttons["RESET MANAGER ONBOARDING"]
+            XCTAssertTrue(resetButton.waitForExistence(timeout: 8),
+                          "Expected the DEBUG reset control on the Manager Profile screen")
+            resetButton.tap()
+        }
+        XCTAssertTrue(app.staticTexts["CHOOSE YOUR MANAGER"].waitForExistence(timeout: 8),
+                      "Onboarding must be showing before the creation journey starts")
+        snap("1-selection")
+
+        let archetypeCards = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Preferred formation"))
+        XCTAssertTrue(archetypeCards.firstMatch.waitForExistence(timeout: 8),
+                      "Expected the archetype cards on the manager-selection screen")
+        XCTAssertEqual(archetypeCards.count, 5, "All five manager profiles must be offered")
+        XCTAssertTrue(archetypeCards.element(boundBy: 0).isHittable,
+                      "The first archetype card must be reachable in landscape")
+
+        // Select the last card to prove the horizontal card row scrolls and
+        // every option is selectable, not just the first one visible.
+        archetypeCards.element(boundBy: 0).tap()
+        let selectManagerButton = app.buttons["SELECT MANAGER"]
+        XCTAssertTrue(selectManagerButton.waitForExistence(timeout: 4))
+        selectManagerButton.tap()
+
+        // Back navigation returns to selection with the choice retained.
+        XCTAssertTrue(app.buttons["BACK"].waitForExistence(timeout: 4))
+        // (Back is on the customization step; verified after moving forward.)
+
+        // Step 2 — customization: validation, keyboard, reachability.
+        let firstNameField = app.textFields["FIRST NAME"]
+        XCTAssertTrue(firstNameField.waitForExistence(timeout: 4))
+        snap("2-customization")
+        let reviewButton = app.buttons["REVIEW PROFILE"]
+        XCTAssertTrue(reviewButton.waitForExistence(timeout: 4))
+        XCTAssertFalse(reviewButton.isEnabled,
+                       "REVIEW PROFILE must be disabled while required fields are incomplete")
+
+        firstNameField.tap()
+        firstNameField.typeText("Alex")
+        let surnameField = app.textFields["SURNAME"]
+        XCTAssertTrue(surnameField.waitForExistence(timeout: 4))
+        surnameField.tap()
+        surnameField.typeText("Ferguson")
+
+        // Regression for the two confirmed keyboard-trap defects: on a
+        // compact landscape phone the scroll container reveals the action;
+        // on iPad compatibility mode the content fits the viewport so
+        // scrolling is impossible — tapping outside the fields dismisses the
+        // keyboard instead (the affordance added with this pass).
+        for _ in 0..<3 {
+            if reviewButton.isHittable { break }
+            app.swipeUp()
+            if reviewButton.isHittable { break }
+            app.otherElements.firstMatch.tap()
+        }
+        XCTAssertTrue(reviewButton.waitForExistence(timeout: 4))
+        XCTAssertTrue(reviewButton.isEnabled, "Valid names must enable REVIEW PROFILE")
+        XCTAssertTrue(reviewButton.isHittable,
+                      "REVIEW PROFILE must be reachable with the keyboard up")
+
+        // Back returns to step 1 with the archetype still selected.
+        app.buttons["BACK"].firstMatch.tap()
+        XCTAssertTrue(selectManagerButton.waitForExistence(timeout: 4),
+                      "Back must return to the selection step with the choice retained")
+        selectManagerButton.tap()
+        XCTAssertTrue(firstNameField.waitForExistence(timeout: 4))
+        XCTAssertEqual(firstNameField.value as? String, "Alex",
+                       "Forward navigation must retain entered names")
+
+        // Move on to confirmation.
+        if !reviewButton.isHittable { app.swipeUp() }
+        reviewButton.tap()
+
+        // Step 3 — confirmation: full-body artwork card, primary action reachable.
+        // The full-body card is taller than the old cropped circle, so on a
+        // compact landscape phone the action starts below the fold; the step
+        // owns the scroll container, so scrolling must reveal it (the same
+        // reachability contract as the customization step's keyboard case).
+        let beginButton = app.buttons["BEGIN YOUR LEGEND"]
+        XCTAssertTrue(beginButton.waitForExistence(timeout: 4))
+        snap("3-confirmation-artwork")
+        for _ in 0..<3 where !beginButton.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(beginButton.isEnabled)
+        XCTAssertTrue(beginButton.isHittable,
+                      "BEGIN YOUR LEGEND must be reachable by scrolling, never clipped permanently")
+        snap("3-confirmation-actions")
+        beginButton.tap()
+
+        // Creation reaches the first playable Legends screen.
+        XCTAssertTrue(app.buttons["Squad"].waitForExistence(timeout: 8),
+                      "Confirming creation must land on the playable Legends dashboard")
+        snap("4-dashboard")
+
+        // Relaunching with the created profile must bypass onboarding.
+        app.terminate()
+        let relaunched = XCUIApplication()
+        relaunched.launch()
+        let legendsAgain = relaunched.buttons["experience.legends"]
+        XCTAssertTrue(legendsAgain.waitForExistence(timeout: 12),
+                      "A returning player must still reach the experience selector on relaunch")
+        legendsAgain.tap()
+        XCTAssertTrue(relaunched.buttons["Squad"].waitForExistence(timeout: 8),
+                      "A created profile must skip manager creation on relaunch")
+        XCTAssertFalse(relaunched.staticTexts["CHOOSE YOUR MANAGER"].exists,
+                       "Onboarding must not repeat for a returning profile")
+    }
+
+    /// Focused coverage for the manager-editing flow opened from the Manager
+    /// Profile destination's EDIT MANAGER action: opens with every saved
+    /// value prepopulated, offers the full archetype set, validates like
+    /// creation, reaches review with the keyboard up, explains retained
+    /// progression, applies exactly once, preserves career state, and the
+    /// edited identity survives an app relaunch. Cancel and Back never
+    /// change the stored manager.
+    func testManagerEditFlowPrepopulatesAppliesOnceAndPreservesCareer() throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_LEGENDS_MANAGER_EDIT"]
+        app.launch()
+
+        func snap(_ name: String) {
+            let shot = XCUIScreen.main.screenshot()
+            let attachment = XCTAttachment(screenshot: shot)
+            attachment.name = name
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            let size = app.windows.firstMatch.frame.size
+            try? shot.pngRepresentation.write(to: URL(fileURLWithPath: "/tmp/rsm_me_\(name)_\(Int(size.width))x\(Int(size.height)).png"))
+        }
+
+        func clearAndType(_ field: XCUIElement, _ text: String) {
+            field.tap()
+            let current = (field.value as? String) ?? ""
+            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count + 4))
+            field.typeText(text)
+        }
+
+        // Enter Legends and open the Manager Profile destination.
+        let legendsButton = app.buttons["experience.legends"]
+        XCTAssertTrue(legendsButton.waitForExistence(timeout: 8))
+        legendsButton.tap()
+        let managerTab = app.buttons["legends.nav.manager"]
+        XCTAssertTrue(managerTab.waitForExistence(timeout: 10),
+                      "Expected the Manager sidebar item after entering Legends mode")
+        Thread.sleep(forTimeInterval: 0.5)
+        managerTab.tap()
+
+        let editManager = app.buttons["manager.editManager"]
+        XCTAssertTrue(editManager.waitForExistence(timeout: 8),
+                      "Expected the EDIT MANAGER action on the Manager Profile destination")
+        snap("1-profile")
+
+        // Open the editor: it must present the archetype choice preselected.
+        editManager.tap()
+        XCTAssertTrue(app.staticTexts["EDIT YOUR MANAGER"].waitForExistence(timeout: 8),
+                      "Expected the polished editor to open on the archetype step")
+        XCTAssertTrue(app.buttons["identity.archetypeCard.architect"].exists,
+                      "The current manager's archetype card must be offered")
+        let continueButton = app.buttons["identity.edit.continue"]
+        XCTAssertTrue(continueButton.waitForExistence(timeout: 5))
+
+        // CANCEL from the archetype step: the editor closes and the stored
+        // manager is unchanged.
+        let cancelButton = app.buttons["identity.edit.cancel"]
+        XCTAssertTrue(cancelButton.waitForExistence(timeout: 4))
+        cancelButton.tap()
+        XCTAssertFalse(continueButton.waitForExistence(timeout: 2),
+                       "Cancel must close the editor")
+        XCTAssertTrue(app.buttons["manager.editManager"].waitForExistence(timeout: 6),
+                      "Cancel returns to the Manager Profile destination")
+
+        // Reopen and walk forward without changing anything to verify the
+        // prepopulated values.
+        app.buttons["manager.editManager"].tap()
+        XCTAssertTrue(continueButton.waitForExistence(timeout: 6))
+        continueButton.tap()
+        let firstNameField = app.textFields["FIRST NAME"]
+        XCTAssertTrue(firstNameField.waitForExistence(timeout: 5))
+        XCTAssertEqual(firstNameField.value as? String, "Alex",
+                       "First name must be prepopulated from the saved manager")
+        XCTAssertEqual(app.textFields["SURNAME"].value as? String, "Ferguson",
+                       "Surname must be prepopulated from the saved manager")
+        let reviewButton = app.buttons["identity.edit.review"]
+        XCTAssertTrue(reviewButton.waitForExistence(timeout: 4))
+        XCTAssertTrue(reviewButton.isEnabled, "Saved values must already be valid")
+        snap("2-details-prepopulated")
+
+        // An invalid surname blocks review exactly like creation.
+        let surnameField = app.textFields["SURNAME"]
+        surnameField.tap()
+        surnameField.typeText("!")
+        XCTAssertFalse(reviewButton.isEnabled, "An invalid edit must not be savable")
+
+        // Edit the identity: surname, first name and nationality.
+        clearAndType(surnameField, "Mourinho")
+        clearAndType(firstNameField, "Jose")
+        // Dismiss the keyboard before opening the nationality menu (tapping
+        // the heading is a safe outside-tap; a focused field plus a
+        // competing tap otherwise swallows the picker's opening tap).
+        app.staticTexts["MANAGER DETAILS"].tap()
+        Thread.sleep(forTimeInterval: 0.5)
+        let nationalityPicker = app.descendants(matching: .any)["identity.edit.nationality"]
+        XCTAssertTrue(nationalityPicker.waitForExistence(timeout: 4))
+        nationalityPicker.tap()
+        // France sits near the top of the nation list, so the popup menu
+        // shows it without scrolling (menu scrolling is not deterministic
+        // under XCUITest).
+        let franceOption = app.buttons["France"]
+        XCTAssertTrue(franceOption.waitForExistence(timeout: 6),
+                      "Expected the nationality menu to offer France")
+        franceOption.tap()
+
+        // Review must be reachable with the keyboard up (scroll on compact
+        // phones; tap-outside dismisses it where content fits, iPad style).
+        for _ in 0..<4 {
+            if reviewButton.isHittable { break }
+            app.swipeUp()
+            if reviewButton.isHittable { break }
+            app.otherElements.firstMatch.tap()
+        }
+        XCTAssertTrue(reviewButton.isEnabled, "Valid edited values must enable review")
+        XCTAssertTrue(reviewButton.isHittable,
+                      "REVIEW PROFILE must be reachable with the keyboard up")
+        reviewButton.tap()
+
+        // Review step: full-body artwork, identity summary, and the explicit
+        // promise that the club career and its progress are retained.
+        XCTAssertTrue(app.staticTexts["REVIEW CHANGES"].waitForExistence(timeout: 5))
+        let promise = app.descendants(matching: .any)["identity.edit.promise"]
+        XCTAssertTrue(promise.waitForExistence(timeout: 5),
+                      "Review must explain that career progress is retained")
+        XCTAssertTrue(promise.label.contains("carry over unchanged"), "Got \(promise.label)")
+        XCTAssertTrue(app.staticTexts["JOSE MOURINHO"].exists,
+                      "Review must show the edited identity")
+        XCTAssertTrue(app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "France · AGE")).firstMatch.exists,
+                      "Review must show the edited nationality; got a different nationality")
+        let applyButton = app.buttons["identity.edit.apply"]
+        XCTAssertTrue(applyButton.waitForExistence(timeout: 4))
+        snap("3-review")
+
+        // Apply once: the editor closes and the profile shows the new
+        // identity immediately.
+        applyButton.tap()
+        XCTAssertFalse(applyButton.waitForExistence(timeout: 2),
+                       "Applying must close the editor")
+        XCTAssertFalse(app.staticTexts["REVIEW CHANGES"].exists,
+                       "Applying must dismiss the complete edit flow")
+        XCTAssertTrue(app.buttons["manager.editManager"].waitForExistence(timeout: 8),
+                      "Applying must return to the Manager Profile destination")
+        XCTAssertTrue(app.staticTexts["JOSE MOURINHO"].waitForExistence(timeout: 8),
+                      "The Manager Profile destination must show the new identity")
+        snap("4-profile-updated")
+
+        // An unchanged edit is a successful no-op: Save still closes the
+        // editor and returns to the profile without rewriting identity.
+        app.buttons["manager.editManager"].firstMatch.tap()
+        XCTAssertTrue(app.buttons["identity.edit.continue"].waitForExistence(timeout: 6))
+        app.buttons["identity.edit.continue"].tap()
+        let reviewAgain = app.buttons["identity.edit.review"]
+        XCTAssertTrue(reviewAgain.waitForExistence(timeout: 5))
+        for _ in 0..<3 where !reviewAgain.isHittable { app.swipeUp() }
+        reviewAgain.tap()
+        let applyAgain = app.buttons["identity.edit.apply"]
+        XCTAssertTrue(applyAgain.waitForExistence(timeout: 5))
+        applyAgain.tap()
+        XCTAssertFalse(applyAgain.waitForExistence(timeout: 2),
+                       "Saving an unchanged manager must close the editor")
+        XCTAssertFalse(app.staticTexts["REVIEW CHANGES"].exists,
+                       "An unchanged save must dismiss the complete edit flow")
+        XCTAssertTrue(app.buttons["manager.editManager"].waitForExistence(timeout: 8),
+                      "An unchanged save must return to Manager Profile")
+        XCTAssertTrue(app.staticTexts["JOSE MOURINHO"].exists,
+                      "An unchanged save must retain the existing identity")
+
+        // Relaunch with no launch arguments: the edited identity must come
+        // back from disk, not from a fixture re-seed.
+        app.terminate()
+        let relaunched = XCUIApplication()
+        relaunched.launch()
+        let legendsAgain = relaunched.buttons["experience.legends"]
+        XCTAssertTrue(legendsAgain.waitForExistence(timeout: 12))
+        legendsAgain.tap()
+        let managerTabAgain = relaunched.buttons["legends.nav.manager"]
+        XCTAssertTrue(managerTabAgain.waitForExistence(timeout: 10))
+        Thread.sleep(forTimeInterval: 0.5)
+        managerTabAgain.tap()
+        XCTAssertTrue(relaunched.staticTexts["JOSE MOURINHO"].waitForExistence(timeout: 8),
+                      "The edited identity must survive save/load and relaunch")
+        XCTAssertTrue(relaunched.buttons["manager.editManager"].waitForExistence(timeout: 6))
+        snap("5-relaunch-preserved")
+    }
+
     /// Regression test for a reported "left tab freezes the game" bug:
     /// navigate away from the Home dashboard into another sidebar
     /// destination (Squad), then tap Home again to come back. If

@@ -57,6 +57,9 @@ struct ContentView: View {
         if ProcessInfo.processInfo.arguments.contains("UITEST_LEGENDS_PLANNING_REPORTS") {
             legends.preparePlanningReportsFixtureForDebug()
         }
+        if ProcessInfo.processInfo.arguments.contains("UITEST_LEGENDS_MANAGER_EDIT") {
+            legends.prepareManagerEditFixtureForDebug()
+        }
         #endif
         _legendsStore = State(initialValue: legends)
     }

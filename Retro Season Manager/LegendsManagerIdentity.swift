@@ -243,6 +243,50 @@ enum LegendsManagerIdentityValidation {
     }
 }
 
+extension LegendsManagerProfile {
+    /// Transforms this manager in place with a confirmed identity edit.
+    /// Only identity fields change; XP, level (stored on LegendsProfile),
+    /// career statistics, reputation, earned traits/nicknames and the active
+    /// nickname are deliberately untouched. Returns false when the values
+    /// are invalid (nothing is modified).
+    mutating func applyIdentityEdit(firstName: String, surname: String,
+                                    nationalityCode: String, dateOfBirth: Date,
+                                    archetype: LegendsManagerArchetype) -> Bool {
+        let cleanFirst = LegendsManagerIdentityValidation.cleanName(firstName)
+        let cleanLast = LegendsManagerIdentityValidation.cleanName(surname)
+        guard LegendsManagerIdentityValidation.validName(cleanFirst),
+              LegendsManagerIdentityValidation.validName(cleanLast),
+              LegendsManagerIdentityValidation.validDateOfBirth(dateOfBirth) else { return false }
+        self.firstName = cleanFirst
+        self.surname = cleanLast
+        self.nationalityCode = nationalityCode
+        self.dateOfBirth = dateOfBirth
+        self.archetype = archetype
+        return true
+    }
+}
+
+extension LegendsStore {
+    /// Applies a confirmed manager identity edit to the stored manager.
+    /// The transform is strictly identity-only and idempotent: XP, level,
+    /// career statistics, reputation, earned traits/nicknames and all other
+    /// Legends progression are untouched, and re-applying the same values
+    /// produces exactly the same state as applying them once. Returns false
+    /// (with no change) when there is no manager or the values are invalid.
+    @discardableResult
+    func applyManagerIdentityEdit(firstName: String, surname: String,
+                                  nationalityCode: String, dateOfBirth: Date,
+                                  archetype: LegendsManagerArchetype) -> Bool {
+        guard var manager = profile.managerProfile,
+              manager.applyIdentityEdit(firstName: firstName, surname: surname,
+                                        nationalityCode: nationalityCode,
+                                        dateOfBirth: dateOfBirth, archetype: archetype) else { return false }
+        profile.managerProfile = manager
+        persist()
+        return true
+    }
+}
+
 extension LegendsStore {
     /// Uses LegendsStore's existing managerLevel/managerXP as the only
     /// canonical level system; identity stores only identity-specific data.
@@ -308,9 +352,11 @@ struct LegendsManagerProfileView: View {
                     statsPanel(manager)
                     tacticalPanel(manager)
                     nicknamePanel(manager)
+                    editManagerButton
                     #if DEBUG
                     Button("RESET MANAGER ONBOARDING") { store.resetManagerOnboardingForDebug(); onBack() }
                         .buttonStyle(IdentitySecondaryButtonStyle())
+                        .accessibilityIdentifier("manager.resetOnboarding")
                     #endif
                 }
                 .frame(maxWidth: 760)
@@ -318,7 +364,35 @@ struct LegendsManagerProfileView: View {
                 Text("Manager profile not created yet.").foregroundStyle(LegendsPalette.navy)
             }
         }
-        .sheet(isPresented: $editing) { LegendsManagerEditView(store: store) }
+        .sheet(isPresented: $editing) {
+            LegendsManagerEditView(
+                store: store,
+                onCancel: { editing = false },
+                onSave: { editing = false }
+            )
+                .accessibilityIdentifier("legends.managerEdit")
+        }
+    }
+
+    /// The dedicated EDIT MANAGER action: a full-width primary row below the
+    /// panels (alongside the compact EDIT in the identity hero), opening the
+    /// polished identity-editing flow.
+    private var editManagerButton: some View {
+        Button {
+            editing = true
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "pencil.line")
+                Text("EDIT MANAGER")
+            }
+            .font(.system(size: 12, weight: .black, design: .monospaced))
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 13)
+            .background(LegendsPalette.green)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+        .accessibilityIdentifier("manager.editManager")
     }
 
     private func identityHero(_ manager: LegendsManagerProfile) -> some View {
@@ -375,48 +449,313 @@ struct LegendsManagerProfileView: View {
     }
 }
 
+/// Edits an established manager's identity: archetype/appearance, names,
+/// nationality and date of birth. Mirrors the polished creation flow step
+/// for step (same full-body aspect-correct artwork, same validation, same
+/// review/confirmation stage) while staying a strictly separate flow: it
+/// never touches the new-profile completion path and only ever transforms
+/// the existing `LegendsManagerProfile`, so XP, level, career statistics,
+/// earned nicknames, reputation, club identity and all Legends progression
+/// are preserved untouched.
 struct LegendsManagerEditView: View {
     let store: LegendsStore
-    @Environment(\.dismiss) private var dismiss
+    var onCancel: () -> Void = {}
+    var onSave: () -> Void = {}
+    @State private var archetype: LegendsManagerArchetype?
+    @State private var step = 0
     @State private var firstName = ""
     @State private var surname = ""
     @State private var nationality = "England"
     @State private var dateOfBirth = Date()
-    @State private var error: String?
+    @State private var hasAppliedEdit = false
+
+    private var cleanFirstName: String { LegendsManagerIdentityValidation.cleanName(firstName) }
+    private var cleanSurname: String { LegendsManagerIdentityValidation.cleanName(surname) }
+    private var namesValid: Bool {
+        LegendsManagerIdentityValidation.validName(cleanFirstName) && LegendsManagerIdentityValidation.validName(cleanSurname)
+    }
+    private var dateValid: Bool { LegendsManagerIdentityValidation.validDateOfBirth(dateOfBirth) }
+    /// True when the reviewed draft would change the stored identity. An
+    /// unchanged draft can still be confirmed and closed without rewriting
+    /// the saved profile.
+    private var draftDiffers: Bool {
+        guard let stored = store.profile.managerProfile else { return false }
+        return archetype != stored.archetype
+            || cleanFirstName != stored.firstName
+            || cleanSurname != stored.surname
+            || nationality != stored.nationalityCode
+            || dateOfBirth != stored.dateOfBirth
+    }
 
     var body: some View {
-        ZStack { LegendsPalette.navy.ignoresSafeArea(); VStack(spacing: 14) {
-            Text("EDIT MANAGER IDENTITY").font(.system(size: 20, weight: .black, design: .rounded)).foregroundStyle(.white)
-            HStack(spacing: 10) { editField("FIRST NAME", text: $firstName); editField("SURNAME", text: $surname) }
-            Picker("Nationality", selection: $nationality) { ForEach(nations, id: \.self) { Text($0).tag($0) } }.pickerStyle(.menu).tint(.white)
-            DatePicker("DATE OF BIRTH", selection: $dateOfBirth, in: ...Date(), displayedComponents: .date).foregroundStyle(.white)
-            if let error { Text(error).font(.caption).foregroundStyle(.orange) }
-            HStack { Button("CANCEL") { dismiss() }.buttonStyle(IdentitySecondaryButtonStyle()); Button("SAVE") { save() }.buttonStyle(IdentityPrimaryButtonStyle(color: LegendsPalette.green)) }
-        }.padding(24).frame(maxWidth: 620) }
-        .onAppear { if let manager = store.profile.managerProfile { firstName = manager.firstName; surname = manager.surname; nationality = manager.nationalityCode; dateOfBirth = manager.dateOfBirth } }
+        ZStack {
+            LegendsPalette.navy.ignoresSafeArea()
+            Group {
+                switch step {
+                case 0: selection
+                case 1: customization
+                default: confirmation
+                }
+            }
+            .transition(.opacity)
+        }
+        .animation(.easeOut(duration: 0.2), value: step)
+        .onAppear { loadStoredManager() }
+        .interactiveDismissDisabled(step == 2)
+    }
+
+    private func loadStoredManager() {
+        guard let manager = store.profile.managerProfile else { return }
+        archetype = manager.archetype
+        firstName = manager.firstName
+        surname = manager.surname
+        nationality = manager.nationalityCode
+        dateOfBirth = manager.dateOfBirth
+    }
+
+    private var selection: some View {
+        // Same landscape reachability contract as creation's selection step:
+        // heading + full-body cards + detail panel + action exceed ~402pt of
+        // landscape height, so the step owns a vertical scroll container.
+        ScrollView {
+            VStack(spacing: 14) {
+                heading("EDIT YOUR MANAGER", subtitle: "Redefine the identity that leads your club. Your career continues untouched.")
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(alignment: .bottom, spacing: 12) {
+                        ForEach(LegendsManagerArchetype.allCases) { option in
+                            archetypeCard(option)
+                        }
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 8)
+                }
+                if let selected = archetype {
+                    detailPanel(selected)
+                    HStack {
+                        Button("CANCEL") { onCancel() }.buttonStyle(IdentitySecondaryButtonStyle())
+                            .accessibilityIdentifier("identity.edit.cancel")
+                        Button("CONTINUE") { step = 1 }
+                            .buttonStyle(IdentityPrimaryButtonStyle(color: selected.accent))
+                            .accessibilityIdentifier("identity.edit.continue")
+                    }
+                } else {
+                    Text("SELECT A PROFILE TO CONTINUE")
+                        .font(.system(size: 11, weight: .black, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.55))
+                }
+            }
+            .padding(18)
+        }
+    }
+
+    private var customization: some View {
+        // Same keyboard/reachability contract as creation's customization
+        // step: the scroll container reveals the action on compact phones,
+        // and tapping outside the fields dismisses the keyboard where the
+        // content fits the viewport (iPad compatibility mode).
+        ScrollView {
+            VStack(spacing: 16) {
+                heading("MANAGER DETAILS", subtitle: "Update the name and details shown throughout your Legends career.")
+                if let selected = archetype {
+                    HStack(spacing: 14) {
+                        ManagerIdentityArtwork.aspectFit(selected)
+                            .frame(width: 92, height: 188)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(selected.nickname.rawValue).font(.system(size: 18, weight: .black, design: .rounded)).foregroundStyle(.white)
+                            Text("\(selected.philosophy) · \(selected.formation)").font(.system(size: 10, weight: .bold, design: .monospaced)).foregroundStyle(selected.accent)
+                        }
+                    }
+                }
+                HStack(spacing: 12) {
+                    editField("FIRST NAME", text: $firstName)
+                    editField("SURNAME", text: $surname)
+                }
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("NATIONALITY").identityLabel()
+                        Picker("Nationality", selection: $nationality) {
+                            ForEach(LegendsManagerNations.all, id: \.self) { Text($0).tag($0) }
+                        }
+                        .pickerStyle(.menu)
+                        .tint(.white)
+                        .padding(8)
+                        .background(.white.opacity(0.1))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .accessibilityIdentifier("identity.edit.nationality")
+                    }
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("DATE OF BIRTH").identityLabel()
+                        DatePicker("Date of Birth", selection: $dateOfBirth, in: ...Date(), displayedComponents: .date)
+                            .labelsHidden()
+                            .tint(.white)
+                            .padding(4)
+                            .background(.white.opacity(0.1))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .accessibilityIdentifier("identity.edit.dob")
+                    }
+                }
+                if !namesValid { Text("Enter a first name and surname using letters, apostrophes or hyphens.").identityError() }
+                if !dateValid { Text("Manager age must be between 30 and 70.").identityError() }
+                HStack {
+                    Button("BACK") { step = 0 }.buttonStyle(IdentitySecondaryButtonStyle())
+                    Button("REVIEW PROFILE") { step = 2 }.buttonStyle(IdentityPrimaryButtonStyle(color: archetype?.accent ?? LegendsPalette.green)).disabled(!namesValid || !dateValid || archetype == nil)
+                        .accessibilityIdentifier("identity.edit.review")
+                }
+            }
+            .padding(24)
+            .frame(maxWidth: 700)
+            .frame(maxWidth: .infinity)
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .onTapGesture { hideKeyboard() }
+    }
+
+    private var confirmation: some View {
+        // Same scroll-container contract as creation's confirmation step.
+        ScrollView {
+            VStack(spacing: 13) {
+                heading("REVIEW CHANGES", subtitle: "Your club career continues — XP, records, squad and progression are kept.")
+                if let selected = archetype {
+                    HStack(spacing: 18) {
+                        ManagerIdentityArtwork.aspectFit(selected)
+                            .frame(width: 116, height: 242)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(selected.accent, lineWidth: 3))
+                        VStack(alignment: .leading, spacing: 7) {
+                            Text("\(cleanFirstName) \(cleanSurname)".uppercased()).font(.system(size: 24, weight: .black, design: .rounded)).foregroundStyle(.white)
+                            Text("\"\(selected.nickname.rawValue)\"").font(.system(size: 15, weight: .bold, design: .monospaced)).foregroundStyle(selected.accent)
+                            Text("\(nationality) · AGE \(LegendsManagerProfile(firstName: cleanFirstName, surname: cleanSurname, nationalityCode: nationality, dateOfBirth: dateOfBirth, archetype: selected).age())")
+                                .font(.system(size: 10, weight: .bold, design: .monospaced)).foregroundStyle(.white.opacity(0.7))
+                        }
+                    }
+                    HStack(spacing: 25) {
+                        summaryValue("STYLE", selected.philosophy)
+                        summaryValue("FORMATION", selected.formation)
+                        summaryValue("TRAIT", selected.trait.rawValue)
+                    }
+                    Text("Your manager level, XP, career statistics, squad, collection and all progression carry over unchanged.")
+                        .font(.system(size: 11, design: .monospaced)).foregroundStyle(.white.opacity(0.72)).multilineTextAlignment(.center).frame(maxWidth: 600)
+                        .accessibilityIdentifier("identity.edit.promise")
+                    HStack {
+                        Button("BACK") { step = 1 }.buttonStyle(IdentitySecondaryButtonStyle())
+                        Button("CANCEL") { onCancel() }.buttonStyle(IdentitySecondaryButtonStyle())
+                            .accessibilityIdentifier("identity.edit.cancel")
+                        Button("SAVE MANAGER") { applyEdit() }
+                            .buttonStyle(IdentityPrimaryButtonStyle(color: selected.accent))
+                            .disabled(hasAppliedEdit)
+                            .accessibilityIdentifier("identity.edit.apply")
+                    }
+                }
+            }
+            .padding(24)
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    /// Applies the confirmed edit exactly once, transforming only the
+    /// identity fields of the stored manager.
+    private func applyEdit() {
+        guard !hasAppliedEdit else { return }
+        guard let selected = archetype,
+              namesValid, dateValid,
+              store.profile.managerProfile != nil else { return }
+        hasAppliedEdit = true
+        if draftDiffers,
+           !store.applyManagerIdentityEdit(firstName: cleanFirstName, surname: cleanSurname,
+                                           nationalityCode: nationality, dateOfBirth: dateOfBirth,
+                                           archetype: selected) {
+            hasAppliedEdit = false
+            return
+        }
+        Haptics.success()
+        onSave()
     }
 
     private func editField(_ title: String, text: Binding<String>) -> some View {
-        VStack(alignment: .leading, spacing: 4) { Text(title).identityLabel(); TextField(title, text: text).foregroundStyle(.white).padding(9).background(.white.opacity(0.1)).clipShape(RoundedRectangle(cornerRadius: 8)) }.frame(maxWidth: .infinity)
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title).identityLabel()
+            TextField(title, text: text)
+                .textInputAutocapitalization(.words)
+                .autocorrectionDisabled()
+                .foregroundStyle(.white)
+                .padding(10)
+                .background(.white.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .accessibilityLabel(title)
+        }
+        .frame(maxWidth: .infinity)
     }
-    private func save() {
-        guard var manager = store.profile.managerProfile else { return }
-        let first = LegendsManagerIdentityValidation.cleanName(firstName); let last = LegendsManagerIdentityValidation.cleanName(surname)
-        guard LegendsManagerIdentityValidation.validName(first), LegendsManagerIdentityValidation.validName(last) else { error = "Enter a valid first name and surname."; return }
-        guard LegendsManagerIdentityValidation.validDateOfBirth(dateOfBirth) else { error = "Manager age must be between 30 and 70."; return }
-        manager.firstName = first; manager.surname = last; manager.nationalityCode = nationality; manager.dateOfBirth = dateOfBirth
-        store.profile.managerProfile = manager; store.persist(); dismiss()
+
+    private func archetypeCard(_ option: LegendsManagerArchetype) -> some View {
+        let selected = archetype == option
+        return Button {
+            Haptics.tap()
+            archetype = option
+        } label: {
+            VStack(spacing: 7) {
+                ZStack {
+                    LinearGradient(colors: [option.accent.opacity(0.95), LegendsPalette.navy], startPoint: .top, endPoint: .bottom)
+                    ManagerIdentityArtwork.aspectFit(option)
+                        .padding(.top, 8)
+                        .padding(.bottom, 6)
+                }
+                .frame(width: 142, height: 297)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+                .overlay(RoundedRectangle(cornerRadius: 16).stroke(selected ? .white : option.accent.opacity(0.55), lineWidth: selected ? 3 : 1))
+                Text(option.nickname.rawValue)
+                    .font(.system(size: 12, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                Text(option.philosophy)
+                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                    .foregroundStyle(option.accent)
+            }
+            .scaleEffect(selected ? 1.04 : 0.96)
+        }
+        .buttonStyle(PressableButtonStyle())
+        .accessibilityLabel("\(option.nickname.rawValue). \(option.philosophy) manager. Preferred formation \(option.formation).")
+        .accessibilityIdentifier("identity.archetypeCard.\(option.rawValue)")
     }
-    private let nations = ["England", "Scotland", "Wales", "Republic of Ireland", "France", "Germany", "Italy", "Spain", "Portugal", "Netherlands", "Brazil", "Argentina", "Japan", "South Korea"]
+
+    private func detailPanel(_ option: LegendsManagerArchetype) -> some View {
+        HStack(spacing: 12) {
+            ManagerIdentityArtwork.fill(option, fullBody: false)
+                .frame(width: 72, height: 72)
+                .clipShape(Circle())
+                .overlay(Circle().stroke(option.accent, lineWidth: 2))
+            VStack(alignment: .leading, spacing: 4) {
+                Text(option.nickname.rawValue).font(.system(size: 16, weight: .black, design: .rounded)).foregroundStyle(.white)
+                Text("\(option.philosophy) · \(option.formation) · \(option.trait.rawValue)")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced)).foregroundStyle(option.accent)
+                Text(option.description)
+                    .font(.system(size: 10, design: .monospaced)).foregroundStyle(.white.opacity(0.72)).lineLimit(2)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .background(.white.opacity(0.1))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func summaryValue(_ title: String, _ value: String) -> some View {
+        VStack(spacing: 4) { Text(title).identityLabel(); Text(value).font(.system(size: 11, weight: .black, design: .monospaced)).foregroundStyle(.white) }
+    }
+
+    private func heading(_ title: String, subtitle: String) -> some View {
+        VStack(spacing: 5) {
+            Text("RSM LEGENDS").font(.system(size: 11, weight: .black, design: .monospaced)).foregroundStyle(LegendsPalette.green)
+            Text(title).font(.system(size: 28, weight: .black, design: .rounded)).foregroundStyle(.white)
+            Text(subtitle).font(.system(size: 11, design: .monospaced)).foregroundStyle(.white.opacity(0.65)).multilineTextAlignment(.center)
+        }
+    }
+
+    private func hideKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
 }
 
-private struct IdentityPrimaryButtonStyle: ButtonStyle {
-    let color: Color
-    func makeBody(configuration: Configuration) -> some View { configuration.label.font(.system(size: 11, weight: .black, design: .monospaced)).foregroundStyle(.white).padding(.horizontal, 22).padding(.vertical, 12).background(color).clipShape(Capsule()).scaleEffect(configuration.isPressed ? 0.96 : 1) }
-}
-private struct IdentitySecondaryButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View { configuration.label.font(.system(size: 11, weight: .black, design: .monospaced)).foregroundStyle(.white.opacity(0.82)).padding(.horizontal, 18).padding(.vertical, 11).background(.white.opacity(0.12)).clipShape(Capsule()).scaleEffect(configuration.isPressed ? 0.96 : 1) }
-}
-private extension Text {
-    func identityLabel() -> some View { self.font(.system(size: 9, weight: .black, design: .monospaced)).foregroundStyle(.white.opacity(0.65)) }
-}
+// Identity button/label styling is shared with manager creation and lives in
+// LegendsManagerOnboardingView.swift (IdentityPrimaryButtonStyle,
+// IdentitySecondaryButtonStyle, Text.identityLabel).

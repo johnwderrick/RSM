@@ -1,5 +1,49 @@
 import SwiftUI
 
+/// Shared manager-artwork presentation for the identity flows (creation
+/// and editing), so both present the same aspect-correct artwork.
+enum ManagerIdentityArtwork {
+    /// Aspect-true full-body/portrait presentation. `scaledToFill` is
+    /// correct inside small circle crops, but the creation and edit steps
+    /// must show the manager's complete body. `Color.clear` sets the layout
+    /// size, `scaledToFill` sizes the image to cover it,
+    /// `.aspectRatio(_:contentMode: .fit)` then shrinks the whole
+    /// composition to the largest fully-visible size for the source aspect,
+    /// and `clipped()` removes any remaining overflow — no head, torso or
+    /// feet are ever cropped.
+    @ViewBuilder static func aspectFit(_ option: LegendsManagerArchetype, fullBody: Bool = true) -> some View {
+        let asset = fullBody ? option.fullBodyAsset : option.portraitAsset
+        if UIImage(named: asset) != nil {
+            Color.clear
+                .overlay(Image(asset).resizable().scaledToFill())
+                .aspectRatio(CGSize(width: 307, height: 641), contentMode: .fit)
+                .clipped()
+        } else {
+            Image(systemName: "person.crop.circle.fill")
+                .resizable()
+                .scaledToFit()
+                .foregroundStyle(.white.opacity(0.8))
+                .padding(18)
+        }
+    }
+
+    /// Fills the enclosing frame/clip with the artwork (scaledToFill).
+    /// The source photos aren't square (portraits ~4:5, full-body ~1:2),
+    /// so scaledToFit left gaps at the frame's edges inside every
+    /// circle/rounded-rect clip, letting the panel background show through
+    /// as a stray crescent/band. Every call site pairs this with its own
+    /// .frame(...).clipShape(...), which crops the overflow correctly once
+    /// this actually fills.
+    @ViewBuilder static func fill(_ option: LegendsManagerArchetype, fullBody: Bool) -> some View {
+        let asset = fullBody ? option.fullBodyAsset : option.portraitAsset
+        if UIImage(named: asset) != nil {
+            Image(asset).resizable().scaledToFill()
+        } else {
+            Image(systemName: "person.crop.circle.fill").resizable().scaledToFit().foregroundStyle(.white.opacity(0.8)).padding(18)
+        }
+    }
+}
+
 struct LegendsManagerOnboardingView: View {
     let store: LegendsStore
     let onComplete: () -> Void
@@ -9,6 +53,7 @@ struct LegendsManagerOnboardingView: View {
     @State private var surname = ""
     @State private var nationality = "England"
     @State private var dateOfBirth = Calendar.current.date(byAdding: .year, value: -38, to: Date()) ?? Date()
+    @State private var hasCompletedCreation = false
 
     private var cleanFirstName: String { LegendsManagerIdentityValidation.cleanName(firstName) }
     private var cleanSurname: String { LegendsManagerIdentityValidation.cleanName(surname) }
@@ -58,6 +103,7 @@ struct LegendsManagerOnboardingView: View {
                     Button("SELECT MANAGER") { step = 1 }
                         .buttonStyle(IdentityPrimaryButtonStyle(color: selected.accent))
                         .disabled(archetype == nil)
+                        .accessibilityIdentifier("identity.selectManager")
                 } else {
                     Text("SELECT A PROFILE TO CONTINUE")
                         .font(.system(size: 11, weight: .black, design: .monospaced))
@@ -75,12 +121,18 @@ struct LegendsManagerOnboardingView: View {
             archetype = option
         } label: {
             VStack(spacing: 7) {
-                ZStack(alignment: .bottom) {
+                ZStack {
                     LinearGradient(colors: [option.accent.opacity(0.95), LegendsPalette.navy], startPoint: .top, endPoint: .bottom)
-                    managerArtwork(option, fullBody: true)
+                    // The full-body photos are ~0.48 aspect (307×641). The old
+                    // 142×226 (0.63) card frame with scaledToFill cropped
+                    // roughly a quarter of the figure — head and feet. The
+                    // aspect-fit presentation below letterboxes the whole
+                    // figure instead, so the manager is shown full-body.
+                    ManagerIdentityArtwork.aspectFit(option)
                         .padding(.top, 8)
+                        .padding(.bottom, 6)
                 }
-                .frame(width: 142, height: 226)
+                .frame(width: 142, height: 297)
                 .clipShape(RoundedRectangle(cornerRadius: 16))
                 .overlay(RoundedRectangle(cornerRadius: 16).stroke(selected ? .white : option.accent.opacity(0.55), lineWidth: selected ? 3 : 1))
                 Text(option.nickname.rawValue)
@@ -96,11 +148,12 @@ struct LegendsManagerOnboardingView: View {
         }
         .buttonStyle(PressableButtonStyle())
         .accessibilityLabel("\(option.nickname.rawValue). \(option.philosophy) manager. Preferred formation \(option.formation).")
+        .accessibilityIdentifier("identity.archetypeCard.\(option.rawValue)")
     }
 
     private func detailPanel(_ option: LegendsManagerArchetype) -> some View {
         HStack(spacing: 12) {
-            managerArtwork(option, fullBody: false)
+            ManagerIdentityArtwork.fill(option, fullBody: false)
                 .frame(width: 72, height: 72)
                 .clipShape(Circle())
                 .overlay(Circle().stroke(option.accent, lineWidth: 2))
@@ -131,7 +184,9 @@ struct LegendsManagerOnboardingView: View {
                 heading("CREATE YOUR MANAGER", subtitle: "Your name leads the story. The archetype defines the starting identity.")
                 if let selected = archetype {
                     HStack(spacing: 14) {
-                        managerArtwork(selected, fullBody: false).frame(width: 92, height: 92).clipShape(Circle())
+                        ManagerIdentityArtwork.aspectFit(selected)
+                            .frame(width: 92, height: 188)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
                         VStack(alignment: .leading, spacing: 5) {
                             Text(selected.nickname.rawValue).font(.system(size: 18, weight: .black, design: .rounded)).foregroundStyle(.white)
                             Text("\(selected.philosophy) · \(selected.formation)").font(.system(size: 10, weight: .bold, design: .monospaced)).foregroundStyle(selected.accent)
@@ -146,7 +201,7 @@ struct LegendsManagerOnboardingView: View {
                     VStack(alignment: .leading, spacing: 5) {
                         Text("NATIONALITY").identityLabel()
                         Picker("Nationality", selection: $nationality) {
-                            ForEach(Self.nations, id: \.self) { Text($0).tag($0) }
+                            ForEach(LegendsManagerNations.all, id: \.self) { Text($0).tag($0) }
                         }
                         .pickerStyle(.menu)
                         .tint(.white)
@@ -169,6 +224,7 @@ struct LegendsManagerOnboardingView: View {
                 HStack {
                     Button("BACK") { step = 0 }.buttonStyle(IdentitySecondaryButtonStyle())
                     Button("REVIEW PROFILE") { step = 2 }.buttonStyle(IdentityPrimaryButtonStyle(color: archetype?.accent ?? LegendsPalette.green)).disabled(!namesValid || !dateValid || archetype == nil)
+                        .accessibilityIdentifier("identity.review")
                 }
             }
             .padding(24)
@@ -176,6 +232,11 @@ struct LegendsManagerOnboardingView: View {
             .frame(maxWidth: .infinity)
         }
         .scrollDismissesKeyboard(.interactively)
+        // iPad compatibility mode: when all content fits the viewport the
+        // scroll view cannot scroll, so a landscape keyboard would cover the
+        // primary action with no remedy. Tapping anywhere outside the fields
+        // dismisses the keyboard (children keep gesture priority).
+        .onTapGesture { hideKeyboard() }
     }
 
     private func identityField(_ title: String, text: Binding<String>) -> some View {
@@ -204,7 +265,13 @@ struct LegendsManagerOnboardingView: View {
                 heading("YOUR MANAGER", subtitle: "Everything is ready. Confirm to begin your Legends journey.")
                 if let selected = archetype {
                     HStack(spacing: 18) {
-                        managerArtwork(selected, fullBody: false).frame(width: 120, height: 120).clipShape(Circle()).overlay(Circle().stroke(selected.accent, lineWidth: 3))
+                        // Full-body artwork, not the cropped 120pt circle: the
+                        // whole figure is reserved here at its natural aspect
+                        // inside a rounded card, matching the selection step.
+                        ManagerIdentityArtwork.aspectFit(selected)
+                            .frame(width: 116, height: 242)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(selected.accent, lineWidth: 3))
                         VStack(alignment: .leading, spacing: 7) {
                             Text("\(cleanFirstName) \(cleanSurname)".uppercased()).font(.system(size: 24, weight: .black, design: .rounded)).foregroundStyle(.white)
                             Text("\"\(selected.nickname.rawValue)\"").font(.system(size: 15, weight: .bold, design: .monospaced)).foregroundStyle(selected.accent)
@@ -220,7 +287,10 @@ struct LegendsManagerOnboardingView: View {
                     Text(selected.description).font(.system(size: 11, design: .monospaced)).foregroundStyle(.white.opacity(0.72)).multilineTextAlignment(.center).frame(maxWidth: 600)
                     HStack {
                         Button("BACK") { step = 1 }.buttonStyle(IdentitySecondaryButtonStyle())
-                        Button("BEGIN YOUR LEGEND") { confirm() }.buttonStyle(IdentityPrimaryButtonStyle(color: selected.accent))
+                        Button("BEGIN YOUR LEGEND") { confirm() }
+                            .buttonStyle(IdentityPrimaryButtonStyle(color: selected.accent))
+                            .disabled(hasCompletedCreation)
+                            .accessibilityIdentifier("identity.begin")
                     }
                 }
             }
@@ -234,27 +304,13 @@ struct LegendsManagerOnboardingView: View {
     }
 
     private func confirm() {
+        guard !hasCompletedCreation else { return }
         guard let selected = archetype else { return }
+        hasCompletedCreation = true
         store.profile.managerProfile = LegendsManagerProfile(firstName: cleanFirstName, surname: cleanSurname, nationalityCode: nationality, dateOfBirth: dateOfBirth, archetype: selected)
         store.persist()
         Haptics.success()
         onComplete()
-    }
-
-    @ViewBuilder private func managerArtwork(_ option: LegendsManagerArchetype, fullBody: Bool) -> some View {
-        let asset = fullBody ? option.fullBodyAsset : option.portraitAsset
-        if UIImage(named: asset) != nil {
-            // scaledToFill, not scaledToFit — the source photos aren't
-            // square (portraits ~4:5, full-body ~1:2), so scaledToFit left
-            // gaps at the frame's edges inside every circle/rounded-rect
-            // clip that shows this artwork, letting the panel background
-            // show through as a stray crescent/band. Every call site
-            // already pairs this with its own .frame(...).clipShape(...),
-            // which crops the overflow correctly once this actually fills.
-            Image(asset).resizable().scaledToFill()
-        } else {
-            Image(systemName: "person.crop.circle.fill").resizable().scaledToFit().foregroundStyle(.white.opacity(0.8)).padding(18)
-        }
     }
 
     private func heading(_ title: String, subtitle: String) -> some View {
@@ -265,21 +321,38 @@ struct LegendsManagerOnboardingView: View {
         }
     }
 
-    private static let nations = ["England", "Scotland", "Wales", "Republic of Ireland", "France", "Germany", "Italy", "Spain", "Portugal", "Netherlands", "Brazil", "Argentina", "Japan", "South Korea"]
 }
 
-private struct IdentityPrimaryButtonStyle: ButtonStyle {
+/// The nationality options shared by manager creation and manager editing,
+/// so both flows always offer the same identity choices.
+enum LegendsManagerNations {
+    static let all = ["England", "Scotland", "Wales", "Republic of Ireland", "France", "Germany", "Italy", "Spain", "Portugal", "Netherlands", "Brazil", "Argentina", "Japan", "South Korea"]
+}
+
+
+/// Button and label primitives shared by manager creation and manager
+/// editing, so the two flows keep one identical visual language. The
+/// typealiases below preserve the onboarding file's original names.
+extension LegendsManagerOnboardingView {
+    // Internal (not private) so the manager-editing flow shares the same
+    // keyboard-dismissal affordance.
+    func hideKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+}
+
+struct IdentityPrimaryButtonStyle: ButtonStyle {
     let color: Color
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.font(.system(size: 11, weight: .black, design: .monospaced)).foregroundStyle(.white).padding(.horizontal, 22).padding(.vertical, 12).background(color).clipShape(Capsule()).scaleEffect(configuration.isPressed ? 0.96 : 1)
     }
 }
-private struct IdentitySecondaryButtonStyle: ButtonStyle {
+struct IdentitySecondaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.font(.system(size: 11, weight: .black, design: .monospaced)).foregroundStyle(.white.opacity(0.82)).padding(.horizontal, 18).padding(.vertical, 11).background(.white.opacity(0.12)).clipShape(Capsule()).scaleEffect(configuration.isPressed ? 0.96 : 1)
     }
 }
-private extension Text {
+extension Text {
     func identityLabel() -> some View { self.font(.system(size: 9, weight: .black, design: .monospaced)).foregroundStyle(.white.opacity(0.65)) }
     func identityError() -> some View { self.font(.system(size: 9, weight: .bold, design: .monospaced)).foregroundStyle(.orange) }
 }

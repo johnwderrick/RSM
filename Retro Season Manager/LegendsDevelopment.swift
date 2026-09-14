@@ -668,5 +668,46 @@ extension LegendsStore {
         persist()
     }
 
+    /// Deterministic UI-test fixture for the manager-editing flow: a
+    /// returning manager with an established career (level, XP, match
+    /// history, reputation, earned nicknames) and progression state the
+    /// edit must preserve. DOB is 1980-01-01 so the manager is inside the
+    /// valid 30–70 age window with room to move in either direction.
+    ///
+    /// Seeds once per app install: the edit UI test's relaunch leg must
+    /// observe the edited identity loaded back from disk, not a re-seeded
+    /// fixture. A UserDefaults marker (outside the save, wiped together
+    /// with the container on reinstall) distinguishes a run's first launch
+    /// from its relaunches, so the fixture stays deterministic even when
+    /// unit tests have written a manager to the shared save beforehand.
+    func prepareManagerEditFixtureForDebug() {
+        let seededKey = "rsm.uitest.managerEditSeeded"
+        guard UserDefaults.standard.bool(forKey: seededKey) == false else { return }
+        UserDefaults.standard.set(true, forKey: seededKey)
+        profile = .starter()
+        var manager = LegendsManagerProfile(
+            firstName: "Alex", surname: "Ferguson", nationalityCode: "Scotland",
+            dateOfBirth: Date(timeIntervalSince1970: 315_532_800), archetype: .architect
+        )
+        // Established career the edit must never touch.
+        profile.managerLevel = 4
+        profile.managerXP = 230
+        manager.reputation = 44
+        manager.careerStats.matches = 37
+        manager.careerStats.wins = 21
+        manager.careerStats.draws = 8
+        manager.careerStats.losses = 8
+        manager.careerStats.goalsScored = 63
+        manager.careerStats.goalsConceded = 40
+        manager.careerStats.promotions = 2
+        manager.careerStats.trophies = 1
+        manager.careerStats.packsOpened = 12
+        manager.earnedNicknames = [.architect, .collector]
+        manager.activeNickname = .architect
+        profile.managerProfile = manager
+        migrateOwnedPlayerRecords()
+        persist()
+    }
+
     #endif
 }
