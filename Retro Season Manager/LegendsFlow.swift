@@ -1463,46 +1463,48 @@ struct LegendsDivisionTableView: View {
     var onNavigate: ((LegendsNavItem) -> Void)? = nil
     let onBack: () -> Void
 
-    @Environment(\.verticalSizeClass) private var verticalSizeClass
-    private var compactHeight: Bool { verticalSizeClass == .compact }
-
     var body: some View {
         LegendsMenuShell(store: store, title: "DIVISION TABLE", subtitle: store.profile.division.displayName,
                          icon: "trophy.fill", accent: LegendsPalette.gold, onBack: onBack,
-                         currentNav: .table, onNavigate: onNavigate) {
+                         currentNav: .table, onNavigate: onNavigate,
+                         scrollContent: false) {
+            // The screen owns its single scroll container: the shell's outer
+            // ScrollView proposes the full viewport height to this
+            // GeometryReader, which would otherwise accept it and pin the
+            // scroll extent to the viewport (content locked at the top with
+            // lower panels unreachable). Owning the ScrollView like the
+            // accepted Training layout keeps the scroll extent driven by
+            // real content and immune to view-update resizes that used to
+            // snap the page back to the top.
             GeometryReader { geo in
                 let wide = geo.size.width >= 860
-                Group {
-                    if wide {
-                        // League table as the main panel, fixture centre beside it.
-                        HStack(alignment: .top, spacing: 14) {
-                            leagueTablePanel
-                                .frame(maxWidth: .infinity)
+                ScrollView(showsIndicators: false) {
+                    Group {
+                        if wide {
+                            // League table as the main panel, fixture centre beside it.
+                            HStack(alignment: .top, spacing: 14) {
+                                leagueTablePanel
+                                    .frame(maxWidth: .infinity)
+                                VStack(spacing: 12) {
+                                    seasonContextPanel
+                                    fixtureCentre
+                                }
+                                .frame(width: 330)
+                            }
+                        } else {
                             VStack(spacing: 12) {
                                 seasonContextPanel
                                 fixtureCentre
+                                leagueTablePanel
                             }
-                            .frame(width: 330)
-                        }
-                    } else {
-                        VStack(spacing: 12) {
-                            seasonContextPanel
-                            fixtureCentre
-                            leagueTablePanel
                         }
                     }
+                    .frame(maxWidth: .infinity, alignment: .top)
                 }
-                .frame(maxWidth: .infinity, alignment: .top)
+                .frame(width: geo.size.width, height: geo.size.height)
             }
-            .frame(minHeight: wideMinHeight, alignment: .top)
         }
     }
-
-    // On compact heights (landscape iPhones) the shell's ScrollView provides
-    // scrolling; the next fixture still anchors to the top so it's visible
-    // without scrolling. On regular heights, fill the panel vertically so
-    // upcoming/results get room to breathe.
-    private var wideMinHeight: CGFloat { compactHeight ? 0 : 560 }
 
     // MARK: - League table
 

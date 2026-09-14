@@ -342,6 +342,124 @@ final class RetroSeasonManagerUITests: XCTestCase {
         add(attachment)
     }
 
+    /// Regression for the reported Division scroll lock: the page used to
+    /// stick at the top (the content's GeometryReader absorbed the shell
+    /// ScrollView's viewport-height proposal) and could jump back to the top
+    /// during ordinary view updates. The screen must own one stable scroll
+    /// container: swiping must genuinely move the content, lower panels must
+    /// become reachable, the position must hold across idle time, and
+    /// navigating away and back must stay reliable.
+    func testDivisionScreenScrollsToLowerContentHoldsPositionAndSurvivesRoundTrip() throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_LEGENDS_DIVISION"]
+        app.launch()
+
+        let legendsButton = app.buttons["experience.legends"]
+        XCTAssertTrue(legendsButton.waitForExistence(timeout: 8),
+                      "Expected the RSM Legends entry button on the experience selector")
+        legendsButton.tap()
+
+        let divisionTab = app.buttons["legends.nav.division"]
+        XCTAssertTrue(divisionTab.waitForExistence(timeout: 10),
+                      "Expected the Legends dashboard sidebar after entering Legends mode")
+        Thread.sleep(forTimeInterval: 0.5)
+        divisionTab.tap()
+
+        let divisionShell = app.descendants(matching: .any)["legends.shell.division"]
+        XCTAssertTrue(divisionShell.waitForExistence(timeout: 8),
+                      "Tapping DIVISION should show the Division screen")
+
+        // Navigate away and back FIRST, in the same state the accepted
+        // Division test uses (before content scrolling changes sidebar
+        // auto-centering): the screen must survive a full round trip.
+        let homeNav = app.buttons["legends.nav.home"]
+        XCTAssertTrue(homeNav.waitForExistence(timeout: 6))
+        var homeLanded = false
+        for attempt in 1...2 {
+            Thread.sleep(forTimeInterval: attempt == 1 ? 0.5 : 0.8)
+            homeNav.tap()
+            homeLanded = app.buttons["legends.shell.home"].waitForExistence(timeout: 6)
+                          || !divisionShell.exists
+            if homeLanded { break }
+        }
+        XCTAssertTrue(homeLanded, "Expected the Home dashboard after navigating away")
+        Thread.sleep(forTimeInterval: 0.5)
+        divisionTab.tap()
+        XCTAssertTrue(divisionShell.waitForExistence(timeout: 8),
+                      "Division must reopen after a home round trip")
+        XCTAssertTrue(app.descendants(matching: .any)["legends.division.results"].waitForExistence(timeout: 6),
+                      "Results panel must exist after reopening Division")
+        XCTAssertTrue(app.descendants(matching: .any)["legends.division.userRow"].waitForExistence(timeout: 6),
+                      "Table must render after reopening Division")
+
+        // Lower content: the recent-results panel sits well below the fold
+        // on compact landscape phones.
+        let results = app.descendants(matching: .any)["legends.division.results"].firstMatch
+        XCTAssertTrue(results.waitForExistence(timeout: 8), "Expected the recent results panel")
+        let window = app.windows.firstMatch
+        let resultsBefore = results.frame
+        XCTAssertTrue(resultsBefore.minY > window.frame.maxY - 60,
+                      "Precondition: results start below the visible area (frame \(resultsBefore), window \(window.frame))")
+
+        // Scroll down using the suite's accepted drag gesture (a plain
+        // app.swipeUp() is unreliable on some simulators). With the defect
+        // the content never moves — the GeometryReader pins the scroll
+        // extent to the viewport.
+        func dragContentUp() {
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.72))
+            let end = start.withOffset(CGVector(dx: 0, dy: -140))
+            start.press(forDuration: 0.05, thenDragTo: end)
+        }
+        func dragContentDown() {
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35))
+            let end = start.withOffset(CGVector(dx: 0, dy: 140))
+            start.press(forDuration: 0.05, thenDragTo: end)
+        }
+        for _ in 1...2 {
+            dragContentUp()
+            Thread.sleep(forTimeInterval: 0.4)
+        }
+        let resultsAfterScroll = results.frame
+        XCTAssertLessThan(resultsAfterScroll.minY, resultsBefore.minY - 40,
+                          "Swiping up must move the Division content; results frame stayed at \(resultsAfterScroll)")
+        XCTAssertLessThanOrEqual(resultsAfterScroll.minY, window.frame.maxY,
+                                 "Lower content must become visible after scrolling")
+
+        // Hold the position long enough to expose a scroll reset from
+        // ordinary view updates (e.g. a verticalSizeClass / layout flip).
+        Thread.sleep(forTimeInterval: 1.5)
+        let resultsHeld = results.frame
+        XCTAssertLessThan(resultsHeld.minY, resultsBefore.minY - 40,
+                          "Scroll position must hold; content snapped back to \(resultsHeld)")
+
+        // The table (upper content) must remain reachable by scrolling back.
+        var userRowVisible = false
+        var userRowFrame: CGRect = .zero
+        for _ in 0..<4 {
+            dragContentDown()
+            let userRow = app.descendants(matching: .any)["legends.division.userRow"].firstMatch
+            if userRow.waitForExistence(timeout: 2) {
+                userRowFrame = userRow.frame
+                if userRowFrame.minY >= window.frame.minY && userRowFrame.maxY <= window.frame.maxY + 20 {
+                    userRowVisible = true
+                    break
+                }
+            }
+        }
+        XCTAssertTrue(userRowVisible,
+                      "User table row must be back in the visible area after scrolling up; frame \(userRowFrame)")
+
+        Thread.sleep(forTimeInterval: 0.6)
+        let screenshot = XCUIScreen.main.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = "Legends Division scroll regression (landscape)"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        let size = app.windows.firstMatch.frame.size
+        try? screenshot.pngRepresentation.write(to: URL(fileURLWithPath: "/tmp/rsm_division_scroll_\(Int(size.width))x\(Int(size.height)).png"))
+    }
+
     /// The redesigned Division screen, driven through deterministic fixture
     /// data (`UITEST_LEGENDS_DIVISION`): table visible, user row identifiable,
     /// fixture centre populated with a next fixture, upcoming fixtures and
