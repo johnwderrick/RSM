@@ -89,8 +89,8 @@ final class LegendsManagerIdentityTests: XCTestCase {
     /// active nickname are preserved. Progression state on the surrounding
     /// profile — coins, tokens, division, facilities, squad and reports —
     /// must also be untouched.
-    func testIdentityEditChangesOnlyIdentityFields() throws {
-        let store = LegendsStore()
+    func testIdentityEditChangesOnlyIdentityFields() async throws {
+        let store = await Task { @MainActor in LegendsStore() }.value
         let before = store.profile
         store.profile.managerProfile = establishedManager()
 
@@ -127,8 +127,8 @@ final class LegendsManagerIdentityTests: XCTestCase {
     }
 
     /// Invalid edits must be rejected with no change to any field.
-    func testInvalidIdentityEditsAreRejectedWithoutChange() {
-        let store = LegendsStore()
+    func testInvalidIdentityEditsAreRejectedWithoutChange() async {
+        let store = await Task { @MainActor in LegendsStore() }.value
         store.profile.managerProfile = establishedManager()
         let original = store.profile.managerProfile
 
@@ -147,8 +147,8 @@ final class LegendsManagerIdentityTests: XCTestCase {
 
     /// Re-applying the same confirmed edit is a no-op: idempotent, exactly
     /// the same manager, exactly the same profile.
-    func testRepeatedEditApplicationsAreIdempotent() {
-        let store = LegendsStore()
+    func testRepeatedEditApplicationsAreIdempotent() async {
+        let store = await Task { @MainActor in LegendsStore() }.value
         store.profile.managerProfile = establishedManager()
         let dob = Date(timeIntervalSince1970: 473_577_600)
 
@@ -177,8 +177,8 @@ final class LegendsManagerIdentityTests: XCTestCase {
     /// must refuse. (LegendsStore loads the one shared on-disk save, so the
     /// no-manager precondition is established explicitly rather than
     /// assumed from disk state left by another test.)
-    func testEditWithoutManagerIsRefused() {
-        let store = LegendsStore()
+    func testEditWithoutManagerIsRefused() async {
+        let store = await Task { @MainActor in LegendsStore() }.value
         store.profile.managerProfile = nil
         XCTAssertFalse(store.applyManagerIdentityEdit(firstName: "A", surname: "B",
                                                       nationalityCode: "England",
@@ -189,8 +189,8 @@ final class LegendsManagerIdentityTests: XCTestCase {
 
     /// The edited manager (identity-only change) round-trips through the
     /// profile save format unchanged.
-    func testEditedManagerRoundTripsThroughProfileSave() throws {
-        let store = LegendsStore()
+    func testEditedManagerRoundTripsThroughProfileSave() async throws {
+        let store = await Task { @MainActor in LegendsStore() }.value
         store.profile.managerProfile = establishedManager()
         let dob = Date(timeIntervalSince1970: 473_577_600)
         XCTAssertTrue(store.applyManagerIdentityEdit(firstName: "Nova", surname: "Reyes",
