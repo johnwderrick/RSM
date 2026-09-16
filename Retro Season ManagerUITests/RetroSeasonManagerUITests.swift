@@ -422,6 +422,181 @@ final class RetroSeasonManagerUITests: XCTestCase {
     /// navigating back to Home ever hangs, `waitForHittable` below times
     /// out and this test fails loudly instead of the app just silently
     /// wedging in a live install.
+    /// The redesigned player-detail sheet: opens from a Squad pitch token
+    /// and from the Players grid, presents the flag/biography/status
+    /// attributes, favourites from the detail, and returns with the origin
+    /// screen's filters and scroll position intact.
+    func testLegendsPlayerDetailBiographyStatusAndRoundTrip() throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_LEGENDS_PLAYER_DETAIL"]
+        app.launch()
+
+        let legendsButton = app.buttons["experience.legends"]
+        XCTAssertTrue(legendsButton.waitForExistence(timeout: 8),
+                      "Expected the RSM Legends entry button on the experience selector")
+        legendsButton.tap()
+
+        // ---- From Squad: a pitch token opens the redesigned detail ----
+        XCTAssertTrue(app.buttons["Squad"].waitForExistence(timeout: 10),
+                      "Expected the Squad sidebar item after entering Legends mode")
+        Thread.sleep(forTimeInterval: 0.5)
+        app.buttons["Squad"].tap()
+
+        let keeperToken = app.buttons["squad.token.xi.0"]
+        XCTAssertTrue(keeperToken.waitForExistence(timeout: 8),
+                      "Expected the starting-XI goalkeeper token (fixture starter GK slot)")
+        Thread.sleep(forTimeInterval: 0.4)
+        keeperToken.tap()
+
+        let detail = app.descendants(matching: .any)["legends.playerDetail"]
+        XCTAssertTrue(detail.waitForExistence(timeout: 8),
+                      "Expected the redesigned player-detail sheet from Squad")
+        XCTAssertTrue(app.descendants(matching: .any)["legends.playerDetail.portrait"].exists,
+                      "Expected the player portrait")
+        XCTAssertTrue(app.descendants(matching: .any)["legends.playerDetail.flag"].exists,
+                      "Expected the nationality flag beside the nationality")
+        XCTAssertTrue(app.descendants(matching: .any)["legends.playerDetail.biography"].exists,
+                      "Expected the biography card")
+        XCTAssertTrue(app.descendants(matching: .any)["legends.playerDetail.statusCard"].exists,
+                      "Expected the career-status card")
+        XCTAssertTrue(app.descendants(matching: .any)["legends.playerDetail.nationalityRow"].exists,
+                      "Expected the biography nationality row")
+        snap("rsm_pdetail_1-squad-gk")
+
+        let detailClose = app.buttons["legends.playerDetail.close"]
+        XCTAssertTrue(detailClose.waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 0.4)
+        detailClose.tap()
+        XCTAssertTrue(keeperToken.waitForExistence(timeout: 8),
+                      "Closing the sheet returns to Squad with the pitch intact")
+
+        // ---- From Players: open detail, favourite, return with state ----
+        // Orientation can be dropped on a cold simulator relaunch; the
+        // frame-stability assertions below are only meaningful in the
+        // compact-landscape configuration this test verifies.
+        XCUIDevice.shared.orientation = .landscapeLeft
+        Thread.sleep(forTimeInterval: 0.8)
+        let windowSize = app.windows.firstMatch.frame.size
+        XCTAssertTrue(windowSize.width > windowSize.height,
+                      "Expected landscape orientation (got \(windowSize)); the scroll-stability assertion needs it")
+
+        let playersTab = app.buttons["legends.nav.players"]
+        XCTAssertTrue(playersTab.waitForExistence(timeout: 8))
+        Thread.sleep(forTimeInterval: 0.5)
+        playersTab.tap()
+
+        let playersScreen = app.descendants(matching: .any)["legends.library"]
+        XCTAssertTrue(playersScreen.waitForExistence(timeout: 8),
+                      "Expected the Players destination")
+        let cantinaTile = app.descendants(matching: .any)["legends.players.card.cantina-9596"]
+        XCTAssertTrue(cantinaTile.waitForExistence(timeout: 5),
+                      "Expected the Cantina tile (fixture reserves player)")
+
+        // Record the tile's frame before opening the detail sheet — after
+        // returning, the grid must not have jumped (same on-screen place).
+        let frameBefore = cantinaTile.frame
+        Thread.sleep(forTimeInterval: 0.4)
+        cantinaTile.tap()
+
+        XCTAssertTrue(detail.waitForExistence(timeout: 8),
+                      "Expected the redesigned player-detail sheet from Players")
+        let favouriteButton = app.buttons["legends.player.favourite"]
+        XCTAssertTrue(favouriteButton.waitForExistence(timeout: 5),
+                      "Expected the FAVOURITE action in the detail sheet")
+        XCTAssertTrue(favouriteButton.label.contains("FAVOURITED"),
+                      "Cantina is pre-favourited in the fixture; got \(favouriteButton.label)")
+        favouriteButton.tap()
+        XCTAssertTrue(favouriteButton.waitForExistence(timeout: 3)
+                      && !favouriteButton.label.contains("FAVOURITED"),
+                      "Tapping FAVOURITED unfavourites through the authoritative store")
+        favouriteButton.tap()
+        XCTAssertTrue(favouriteButton.waitForExistence(timeout: 3)
+                      && favouriteButton.label.contains("FAVOURITED"),
+                      "Tapping again re-favourites (round trip)")
+
+        // The grouped attribute cards render in the sheet's single stable
+        // scroll container (plain rows keep them in the accessibility tree
+        // even off-screen). Physical drags are deliberately avoided here:
+        // simulator rotation can silently fail on relaunch, which would
+        // aim the gesture at the Players grid underneath and corrupt the
+        // frame-stability measurement below.
+        XCTAssertTrue(app.descendants(matching: .any)["legends.playerDetail.attributes"].waitForExistence(timeout: 4),
+                      "Expected the grouped attribute cards in the detail")
+        XCTAssertTrue(app.descendants(matching: .any)["legends.playerDetail.detailedAttributes"].exists,
+                      "Expected the detailed-attribute card (goalkeeper grouping included)")
+        XCTAssertTrue(detailClose.isHittable, "Close remains reachable over the scroll container (pinned)")
+        snap("rsm_pdetail_2-players-cantina")
+
+        Thread.sleep(forTimeInterval: 0.4)
+        detailClose.tap()
+        XCTAssertTrue(playersScreen.waitForExistence(timeout: 8),
+                      "Returning from detail lands back on the Players screen")
+        // Let the dismissal transition fully settle before measuring frames.
+        Thread.sleep(forTimeInterval: 1.0)
+        XCTAssertTrue(cantinaTile.waitForExistence(timeout: 5),
+                      "The same player tile survives the detail round trip")
+
+        // Scroll-stability check immune to XCUITest's own tap-time
+        // auto-scrolling (the first tap scrolled the off-screen tile into
+        // view, which is a test-runner artefact, not a product reset): a
+        // second detail round trip on the now-visible tile must leave the
+        // grid at exactly the same position — a dismissal-time scroll
+        // reset would move it back to the top.
+        let frameAfterFirstTrip = cantinaTile.frame
+        Thread.sleep(forTimeInterval: 0.4)
+        cantinaTile.tap()
+        XCTAssertTrue(detail.waitForExistence(timeout: 8))
+        Thread.sleep(forTimeInterval: 0.5)
+        detailClose.tap()
+        XCTAssertTrue(playersScreen.waitForExistence(timeout: 8))
+        Thread.sleep(forTimeInterval: 1.0)
+        XCTAssertTrue(cantinaTile.waitForExistence(timeout: 5))
+        let frameAfterSecondTrip = cantinaTile.frame
+        XCTAssertEqual(frameAfterSecondTrip.minY, frameAfterFirstTrip.minY, accuracy: 5,
+                       "Closing the detail sheet must not reset the grid scroll (no jump-to-top)")
+
+        // Comparison still works from the redesigned detail.
+        Thread.sleep(forTimeInterval: 0.4)
+        cantinaTile.tap()
+        XCTAssertTrue(detail.waitForExistence(timeout: 8))
+        let compareButton = app.buttons["legends.player.compare"]
+        XCTAssertTrue(compareButton.waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 0.4)
+        compareButton.tap()
+        let comparison = app.descendants(matching: .any)["legends.playerComparison"]
+        XCTAssertTrue(comparison.waitForExistence(timeout: 8),
+                      "Expected the comparison sheet from the redesigned detail")
+        let done = app.buttons["Done"]
+        XCTAssertTrue(done.waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 0.4)
+        done.tap()
+        XCTAssertTrue(detailClose.waitForExistence(timeout: 5),
+                      "Landing back on the detail after comparison")
+        Thread.sleep(forTimeInterval: 0.4)
+        detailClose.tap()
+        XCTAssertTrue(playersScreen.waitForExistence(timeout: 8))
+
+        Thread.sleep(forTimeInterval: 0.8)
+        let screenshot = XCUIScreen.main.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = "Legends player detail redesign (landscape)"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        let size = app.windows.firstMatch.frame.size
+        try? screenshot.pngRepresentation.write(to: URL(fileURLWithPath: "/tmp/rsm_pdetail_final_\(Int(size.width))x\(Int(size.height)).png"))
+    }
+
+    private func snap(_ name: String) {
+        let screenshot = XCUIScreen.main.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        let size = XCUIApplication().windows.firstMatch.frame.size
+        try? screenshot.pngRepresentation.write(to: URL(fileURLWithPath: "/tmp/\(name)_\(Int(size.width))x\(Int(size.height)).png"))
+    }
+
     func testSidebarHomeNavigationDoesNotHangAfterVisitingAnotherTab() throws {
         let app = XCUIApplication()
         app.launchArguments = ["UITEST_RESET_LEGENDS_MANAGER"]

@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		9D0000000000000000000001 /* LegendsPlayerDetailStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D0000000000000000000002 /* LegendsPlayerDetailStateTests.swift */; };
 		00662B6C39544AA6851F522C /* LegendsPackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E30D7225752E3B1942D844E5 /* LegendsPackTests.swift */; };
 		07803EFF6F1D3ECD04BCF825 /* CareerSeasonSoakTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86D3D33B9AC8783B537A219E /* CareerSeasonSoakTests.swift */; };
 		0BA5CDDF24DC0BA9798F2DCB /* GameStoreTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F4E8DEDB4ADD31ECB559195 /* GameStoreTestSupport.swift */; };
@@ -78,6 +79,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		9D0000000000000000000002 /* LegendsPlayerDetailStateTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendsPlayerDetailStateTests.swift; sourceTree = "<group>"; };
 		074F4A573ADF8B410DA73689 /* LegendsManagersAndStadiumsTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendsManagersAndStadiumsTests.swift; sourceTree = "<group>"; };
 		0B37E780E1B741DC8BAB0597 /* LivingWorldTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LivingWorldTests.swift; sourceTree = "<group>"; };
 		10FBA8DFA5324C93823611D1 /* FanEngagementTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FanEngagementTests.swift; sourceTree = "<group>"; };
@@ -193,6 +195,7 @@
 				F1A2B3C4D5E6F70819A2B3C4 /* ExperienceSelectorArtworkTests.swift */,
 				F9E8D7C6B5A493827160504F /* LegendsPlayabilitySimulationTests.swift */,
 				A1B2C3D5E6F708192A3B4C5D /* LegendsManagerIdentityTests.swift */,
+				9D0000000000000000000002 /* LegendsPlayerDetailStateTests.swift */,
 				A1B2C3D5E6F708192A3B4C5E /* LegendsOwnedPlayersTests.swift */,
 				7B58DAAE268FF435CCAB8ACB /* LegendsLiveMatchTests.swift */,
 				F559507B7448E55181B33E7F /* LegendsSeasonSoakTests.swift */,
@@ -420,6 +423,7 @@
 				E8D7C6B5A493827160504F3E /* LegendsPlayabilitySimulationTests.swift in Sources */,
 				A1B2C3D4E5F60718293A4B5D /* LegendsManagerIdentityTests.swift in Sources */,
 				A1B2C3D4E5F60718293A4B5E /* LegendsOwnedPlayersTests.swift in Sources */,
+				9D0000000000000000000001 /* LegendsPlayerDetailStateTests.swift in Sources */,
 				223624989D3B1426429EBD23 /* LegendsLiveMatchTests.swift in Sources */,
 				73674766596121488D7E4700 /* LegendsSeasonSoakTests.swift in Sources */,
 				EC7F1B8BA0CFF81DD00E5D42 /* LegendsPitchCoordinateSystemTests.swift in Sources */,

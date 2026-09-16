@@ -386,6 +386,8 @@ struct LegendsSquadView: View {
                 pickerTarget = PickerTarget(kind: .bench(index))
             }
         }
+        .accessibilityLabel(card?.name ?? "Select player for bench slot \(index + 1)")
+        .accessibilityIdentifier("squad.token.bench.\(index)")
     }
 
     private var filledBenchCount: Int { store.profile.benchCardIDs.compactMap { $0 }.count }
@@ -904,6 +906,8 @@ struct LegendsPitchView: View {
                 onTapSlot(index)
             }
         }
+        .accessibilityLabel(card?.name ?? "Select player for \(role.rawValue)")
+        .accessibilityIdentifier("squad.token.xi.\(index)")
         .frame(maxWidth: .infinity)
     }
 }

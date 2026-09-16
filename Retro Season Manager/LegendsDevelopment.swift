@@ -466,6 +466,65 @@ extension LegendsStore {
         persist()
     }
 
+    /// Deterministic UI-test fixture for the redesigned player-detail
+    /// screen: one signed squad holding a starting-XI starter (Buffonte,
+    /// goalkeeper), a bench substitute (starter-squad outfielder), and
+    /// Cantina (reserves, favourited, exact-duplicate twin, final-season
+    /// career with progress) plus the unsigned Maldinho — every state the
+    /// detail screen can present, deterministic and presentation-only.
+    func preparePlayerDetailFixtureForDebug() {
+        profile = .starter()
+        profile.managerProfile = LegendsManagerProfile(
+            firstName: "Test", surname: "Manager", nationalityCode: "GB",
+            dateOfBirth: Date(timeIntervalSince1970: 315_532_800), archetype: .architect)
+        migrateOwnedPlayerRecords()
+
+        // Unsigned: owned but never signed, age frozen.
+        profile.ownedCardIDs.insert("maldinho-9596")
+
+        // Signed states on top of the starter XI: Cantina becomes a
+        // reserves career with a mid-career age and final-season warning,
+        // favourites set, and an exact duplicate twin owned but unsigned.
+        profile.ownedCardIDs.insert("cantina-9596")
+        profile.ownedCardIDs.insert("cantina-9596-retro")
+        signPlayer(cardID: "cantina-9596")
+        profile.favouriteCardIDs.insert("cantina-9596")
+        if var career = profile.playerCareers["cantina-9596"] {
+            // Deterministic mid-career progress: enough for apps, goals,
+            // a season record, milestone, and final-season flagging under
+            // the authoritative isFinalSeason rule (age == intended - 1).
+            career.appearances = 120
+            career.seasonAppearances = 12
+            career.goals = 44
+            career.seasonGoals = 5
+            career.assists = 31
+            career.seasonAssists = 4
+            career.cleanSheets = 6
+            career.seasonCleanSheets = 1
+            career.minutesPlayed = 9_800
+            career.starts = 110
+            career.highestOverall = career.startingOverall + 2
+            career.trainingSessionsThisSeason = 2
+            career.trainingSessions = 9
+            profile.playerCareers["cantina-9596"] = career
+        }
+        // Age the Cantina career to one season before its intended
+        // retirement so the final-season warning is deterministically on
+        // (age is driven by cardAgeOffsets, the same lever the season
+        // rollover uses).
+        if let card = LegendsCardDatabase.all.first(where: { $0.id == "cantina-9596" }),
+           let career = profile.playerCareers["cantina-9596"] {
+            profile.cardAgeOffsets[card.id] = career.intendedRetirementAge - card.age - 1
+        }
+
+        // Duplicate progress on the base Cantina card: one duplicate
+        // already counted toward the next upgrade (never grants one).
+        profile.duplicateProgress["cantina-9596"] = 1
+
+        migrateOwnedPlayerRecords()
+        persist()
+    }
+
     /// Deterministic UI-test fixture for the redesigned Assistants and
     /// Stadiums collections: two owned assistants (first active, second
     /// inactive) and two owned stadiums (second active as home), plus a
