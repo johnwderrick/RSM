@@ -21,6 +21,8 @@ struct LegendsSquadView: View {
     @State private var showClub = false
     @State private var showLibrary = false
     @State private var detailCard: LegendsCard? = nil
+    @State private var moveTarget: MoveTarget? = nil
+    @State private var panelStatus: String? = nil
 
     private struct PickerTarget: Identifiable {
         enum Kind { case xi(Int), bench(Int) }
@@ -33,17 +35,34 @@ struct LegendsSquadView: View {
         }
     }
 
+    /// A pending "move this reserve into a chosen XI/bench slot" action.
+    private struct MoveTarget: Identifiable {
+        enum Kind: Equatable { case xi, bench }
+        let kind: Kind
+        let cardID: String
+        var id: String { "\(kind == .xi ? "xi" : "bench")-\(cardID)" }
+    }
+
     var body: some View {
         LegendsMenuShell(store: store, title: "SQUAD", subtitle: "BUILD YOUR STARTING XI", icon: "person.3.fill", accent: LegendsPalette.blue, onBack: onBack, currentNav: .squad, onNavigate: onNavigate, scrollContent: false, squadPresentation: true) {
             GeometryReader { geo in
                 VStack(spacing: 6) {
                     squadTabs
+                    if let target = moveTarget, let card = card(for: target.cardID) {
+                        assignmentBanner(card: card, target: target)
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
                     HStack(alignment: .top, spacing: 8) {
                         Group {
                             if selectedTab == "SQUAD" {
-                                LegendsPitchView(store: store, onOpenDetail: { detailCard = $0 }) { index in
-                                    pickerTarget = PickerTarget(kind: .xi(index))
-                                }
+                                LegendsPitchView(store: store, onOpenDetail: { detailCard = $0 },
+                                                 onTapSlot: { index in pickerTarget = PickerTarget(kind: .xi(index)) },
+                                                 onMoveToReserves: moveXIPlayerToReserves,
+                                                 assignmentCard: activeAssignmentCard(for: .xi),
+                                                 onAssignSlot: { card, index in
+                                                     moveReserve(card, toXISlot: index)
+                                                     moveTarget = nil
+                                                 })
                             } else {
                                 configurationPanel
                             }
@@ -70,6 +89,7 @@ struct LegendsSquadView: View {
                     .background(.black.opacity(0.18))
                 }
                 .frame(width: geo.size.width, height: geo.size.height)
+                .animation(.easeOut(duration: 0.18), value: moveTarget?.id)
             }
         }
         .sheet(item: $selectedRole) { role in
@@ -92,7 +112,8 @@ struct LegendsSquadView: View {
             LegendsPlayerLibrarySheet(store: store)
         }
         .sheet(item: $detailCard) { card in
-            LegendsPlayerDetailView(store: store, card: card)
+            LegendsPlayerDetailView(store: store, card: card,
+                                    moveToReservesAction: moveToReservesAction(for: card))
         }
         .sheet(item: $pickerTarget) { target in
             switch target.kind {
@@ -110,6 +131,76 @@ struct LegendsSquadView: View {
                 }
             }
         }
+    }
+
+    private func card(for id: String) -> LegendsCard? {
+        LegendsCardDatabase.all.first { $0.id == id }
+    }
+
+    private func activeAssignmentCard(for kind: MoveTarget.Kind) -> LegendsCard? {
+        guard let target = moveTarget, target.kind == kind else { return nil }
+        return card(for: target.cardID)
+    }
+
+    private func moveToReservesAction(for card: LegendsCard) -> (() -> Void)? {
+        let isAssigned = store.profile.startingXICardIDs.contains(card.id)
+            || store.profile.benchCardIDs.contains(card.id)
+        guard isAssigned else { return nil }
+        return {
+            store.moveToReserves(cardID: card.id)
+            announceSection("\(card.name) → RESERVES")
+            detailCard = nil
+        }
+    }
+
+    private func assignmentBanner(card: LegendsCard, target: MoveTarget) -> some View {
+        HStack(spacing: 10) {
+            PlayerPortraitView(name: card.name, position: card.position.broad, nation: card.nation, size: 36)
+                .clipShape(Circle())
+                .overlay(Circle().stroke(.white.opacity(0.9), lineWidth: 2))
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("MOVING \(card.name.uppercased())")
+                    .font(.system(size: 10, weight: .black, design: .monospaced))
+                Text(target.kind == .xi
+                     ? "Choose a highlighted position on the pitch"
+                     : "Choose a highlighted substitute slot")
+                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.78))
+            }
+            Spacer(minLength: 4)
+            Text("\(store.effectiveOverall(for: card))")
+                .font(.system(size: 18, weight: .black, design: .monospaced))
+                .monospacedDigit()
+            Text(card.position.rawValue)
+                .font(.system(size: 8, weight: .black, design: .monospaced))
+                .padding(.horizontal, 6).padding(.vertical, 3)
+                .background(.white.opacity(0.18), in: Capsule())
+            Button {
+                Haptics.tap()
+                moveTarget = nil
+                panelSection = .reserves
+            } label: {
+                Label("CANCEL", systemImage: "xmark")
+                    .font(.system(size: 8, weight: .black, design: .monospaced))
+                    .padding(.horizontal, 9).padding(.vertical, 7)
+                    .background(.white.opacity(0.14), in: RoundedRectangle(cornerRadius: 7))
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("squad.assignment.cancel")
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(
+            LinearGradient(colors: [LegendsPalette.blue.opacity(0.95), LegendsPalette.navy.opacity(0.98)],
+                           startPoint: .leading, endPoint: .trailing),
+            in: RoundedRectangle(cornerRadius: 10)
+        )
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(LegendsPalette.green.opacity(0.9), lineWidth: 1.5))
+        .shadow(color: .black.opacity(0.22), radius: 7, y: 3)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("squad.assignment.banner")
     }
 
 
@@ -281,26 +372,231 @@ struct LegendsSquadView: View {
         }.frame(maxWidth: 150)
     }
 
+    private enum PanelSection: String, CaseIterable, Identifiable {
+        case bench = "BENCH"
+        case reserves = "RESERVES"
+        var id: String { rawValue }
+    }
+
+    /// One row in the RESERVES list: a signed player who is not in the
+    /// Starting XI or on the bench. `condition` is precomputed for the
+    /// availability chip (nil for the small variant when irrelevant).
+    private struct ReserveRow: Identifiable {
+        let card: LegendsCard
+        let overall: Int
+        let condition: LegendsPlayerCondition?
+        var id: String { card.id }
+    }
+
+    @State private var panelSection: PanelSection = .bench
+
     private var sidePanel: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("SUBSTITUTES (\(filledBenchCount)/\(LegendsStore.benchSize))")
-                .font(.system(size: 10, weight: .black, design: .monospaced))
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(8)
-                .background(.green.opacity(0.45))
-            ScrollView {
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                    ForEach(0..<LegendsStore.benchSize, id: \.self) { index in benchToken(index) }
-                }.padding(6)
+            if panelSection == .bench {
+                Text("SUBSTITUTES (\(filledBenchCount)/\(LegendsStore.benchSize))")
+                    .font(.system(size: 10, weight: .black, design: .monospaced))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(8)
+                    .background(.green.opacity(0.45))
+            } else {
+                Text("RESERVES (\(reserveRows.count))")
+                    .font(.system(size: 10, weight: .black, design: .monospaced))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(8)
+                    .background(.blue.opacity(0.55))
             }
-            Text("Drag players to swap")
+            panelSectionPicker
+            ScrollView {
+                Group {
+                    if panelSection == .bench {
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                            ForEach(0..<LegendsStore.benchSize, id: \.self) { index in benchToken(index) }
+                        }
+                        .padding(6)
+                    } else if reserveRows.isEmpty {
+                        reservesEmptyState
+                    } else {
+                        VStack(spacing: 6) {
+                            ForEach(reserveRows) { row in
+                                reserveCard(row)
+                            }
+                        }
+                        .padding(6)
+                    }
+                }
+            }
+            Text(panelSection == .bench ? "Drag players to swap" : "Tap a reserve for full profile")
                 .font(.system(size: 8, weight: .medium))
                 .foregroundStyle(.white.opacity(0.65))
-                .padding(8)
+                .padding(.horizontal, 8)
+                .padding(.top, 8)
+            if let status = panelStatus {
+                Text(status)
+                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                    .foregroundStyle(LegendsPalette.green)
+                    .padding(.horizontal, 8)
+                    .padding(.bottom, 8)
+                    .accessibilityIdentifier("squad.panel.status")
+                    .accessibilityLabel("Squad update: \(status)")
+            } else {
+                Color.clear.frame(height: 8).padding(.horizontal, 8)
+            }
         }
         .foregroundStyle(.white)
         .background(.black.opacity(0.2), in: RoundedRectangle(cornerRadius: 6))
         .overlay(RoundedRectangle(cornerRadius: 6).stroke(.white.opacity(0.16)))
+    }
+
+    /// Moves a reserve into an XI slot through the authoritative assign
+    /// path, reporting any displaced players via the panel status.
+    private func moveReserve(_ card: LegendsCard, toXISlot index: Int) {
+        let evicted = store.assignReportingEvictions(card.id, toXISlot: index)
+        announceMove(card, into: "STARTING XI", slot: index + 1, evicted: evicted)
+    }
+
+    /// Moves a reserve into a bench slot through the authoritative assign
+    /// path, reporting any displaced players via the panel status.
+    private func moveReserve(_ card: LegendsCard, toBenchSlot index: Int) {
+        let evicted = store.assignReportingEvictions(card.id, toBenchSlot: index)
+        announceMove(card, into: "BENCH", slot: index + 1, evicted: evicted)
+    }
+
+    private func announceMove(_ card: LegendsCard, into section: String, slot: Int, evicted: [LegendsCard]) {
+        Haptics.tap()
+        let base = "\(card.name) → \(section) slot \(slot)"
+        panelStatus = evicted.isEmpty ? base : "\(base) · \(evicted.map(\.name).joined(separator: ", ")) to reserves"
+    }
+
+    private var panelSectionPicker: some View {
+        HStack(spacing: 3) {
+            ForEach(PanelSection.allCases) { section in
+                Button { panelSection = section; Haptics.tap() } label: {
+                    Text(section == .bench ? "BENCH" : "RESERVES")
+                        .font(.system(size: 9, weight: .black, design: .monospaced))
+                        .lineLimit(1).minimumScaleFactor(0.8)
+                        .frame(maxWidth: .infinity, minHeight: 26)
+                        .background(panelSection == section ? .white.opacity(0.22) : .white.opacity(0.06),
+                                    in: RoundedRectangle(cornerRadius: 5))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 5)
+                                .stroke(panelSection == section ? .white.opacity(0.85) : .clear, lineWidth: 1.5)
+                        )
+                        .opacity(panelSection == section ? 1 : 0.62)
+                }
+                .accessibilityIdentifier(section == .bench ? "squad.panel.bench" : "squad.panel.reserves")
+                .accessibilityLabel(panelSection == section ? "\(section.rawValue) tab, selected" : "\(section.rawValue) tab")
+                .accessibilityAddTraits(panelSection == section ? [.isSelected] : [])
+            }
+        }
+        .foregroundStyle(.white)
+        .buttonStyle(.plain)
+    }
+
+    /// Signed players not currently in the XI or bench — the authoritative
+    /// `store.reservePlayers`, enriched for presentation. Duplicate ids are
+    /// impossible: the source list already resolves one record per person.
+    private var reserveRows: [ReserveRow] {
+        store.reservePlayers.map { card in
+            ReserveRow(card: card,
+                       overall: store.effectiveOverall(for: card),
+                       condition: store.condition(for: card))
+        }
+    }
+
+    private var reservesEmptyState: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "person.2.slash")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundStyle(.white.opacity(0.5))
+            Text("All signed players are currently assigned to the Starting XI or bench.")
+                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .foregroundStyle(.white.opacity(0.7))
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 22)
+        .padding(.horizontal, 10)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("squad.reserves.empty")
+    }
+
+    private func reserveCard(_ row: ReserveRow) -> some View {
+        let card = row.card
+        return Button { Haptics.tap(); detailCard = card } label: {
+            HStack(spacing: 7) {
+                PlayerPortraitView(name: card.name, position: card.position.broad, nation: card.nation, size: 34)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(card.name)
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .lineLimit(1)
+                        .foregroundStyle(.white)
+                    HStack(spacing: 4) {
+                        Text(card.position.rawValue)
+                            .font(.system(size: 8, weight: .black, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.85))
+                        FlagView(nationality: card.nation, width: 11)
+                    }
+                    if let condition = row.condition {
+                        Text(condition.form < 35 ? "LOW FORM" : "AVAILABLE")
+                            .font(.system(size: 7, weight: .black, design: .monospaced))
+                            .foregroundStyle(condition.form < 35 ? LegendsPalette.orange : LegendsPalette.green)
+                    }
+                }
+                Spacer(minLength: 2)
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("\(row.overall)")
+                        .font(.system(size: 13, weight: .black, design: .monospaced))
+                        .monospacedDigit()
+                        .foregroundStyle(.white)
+                    Text("RESERVE")
+                        .font(.system(size: 6, weight: .black, design: .monospaced))
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 2)
+                        .background(.white.opacity(0.16), in: Capsule())
+                        .foregroundStyle(.white.opacity(0.8))
+                    VStack(alignment: .trailing, spacing: 3) {
+                        Button {
+                            Haptics.tap()
+                            selectedTab = "SQUAD"
+                            moveTarget = MoveTarget(kind: .xi, cardID: card.id)
+                        } label: {
+                            Text("MOVE TO XI")
+                                .font(.system(size: 7, weight: .black, design: .monospaced))
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .background(.green.opacity(0.55), in: Capsule())
+                                .foregroundStyle(.white)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Move \(card.name) to a starting XI slot")
+                        .accessibilityIdentifier("squad.reserve.toxi.\(card.id)")
+                        Button {
+                            Haptics.tap()
+                            selectedTab = "SQUAD"
+                            panelSection = .bench
+                            moveTarget = MoveTarget(kind: .bench, cardID: card.id)
+                        } label: {
+                            Text("MOVE TO BENCH")
+                                .font(.system(size: 7, weight: .black, design: .monospaced))
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .background(.blue.opacity(0.55), in: Capsule())
+                                .foregroundStyle(.white)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Move \(card.name) to a bench slot")
+                        .accessibilityIdentifier("squad.reserve.tobench.\(card.id)")
+                    }
+                }
+            }
+            .padding(7)
+            .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("squad.reserve.\(card.id)")
     }
 
     private var reservesPanel: some View {
@@ -375,19 +671,71 @@ struct LegendsSquadView: View {
         let cardID = store.profile.benchCardIDs[index]
         let card = cardID.flatMap { id in LegendsCardDatabase.all.first { $0.id == id } }
         let slot = LegendsSquadSlot.bench(index)
+        let assignmentCard = activeAssignmentCard(for: .bench)
+        let isAssignmentTarget = assignmentCard != nil
         return LegendsPlayerToken(card: card, role: card?.position ?? .centralMid,
                                    overall: card.map { store.effectiveOverall(for: $0) },
                                    chemistryStars: 0, isCaptain: false, diameter: 30, showChemistry: false, squadStyle: true,
-                                   slot: slot, onSwap: { store.swapSquadSlots($0, $1) }) {
+                                   slot: isAssignmentTarget ? nil : slot,
+                                   onSwap: isAssignmentTarget ? nil : { store.swapSquadSlots($0, $1) }) {
             Haptics.tap()
-            if let card {
+            if let assignmentCard {
+                moveReserve(assignmentCard, toBenchSlot: index)
+                moveTarget = nil
+            } else if let card {
                 detailCard = card
             } else {
                 pickerTarget = PickerTarget(kind: .bench(index))
             }
         }
+        .overlay(alignment: .topTrailing) {
+            if isAssignmentTarget {
+                assignmentTargetBadge(occupied: card != nil, eligible: true)
+                    .offset(x: 4, y: -4)
+            }
+        }
+        .overlay(
+            RoundedRectangle(cornerRadius: 7)
+                .stroke(isAssignmentTarget ? LegendsPalette.green : .clear, lineWidth: 2)
+        )
+        .contextMenu {
+            if let card {
+                Button(role: .destructive) {
+                    moveBenchPlayerToReserves(card)
+                } label: {
+                    Label("MOVE TO RESERVES", systemImage: "person.2")
+                }
+            }
+        }
         .accessibilityLabel(card?.name ?? "Select player for bench slot \(index + 1)")
-        .accessibilityIdentifier("squad.token.bench.\(index)")
+        .accessibilityIdentifier(isAssignmentTarget ? "squad.assignment.bench.\(index)" : "squad.token.bench.\(index)")
+    }
+
+    private func assignmentTargetBadge(occupied: Bool, eligible: Bool) -> some View {
+        Text(occupied ? "SWAP" : "FREE")
+            .font(.system(size: 6, weight: .black, design: .monospaced))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .background(eligible ? LegendsPalette.green : LegendsPalette.orange, in: Capsule())
+            .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
+    }
+
+    // MARK: - Moves to reserves (authoritative store path + feedback)
+
+    private func moveXIPlayerToReserves(_ card: LegendsCard) {
+        store.moveToReserves(cardID: card.id)
+        announceSection("\(card.name) → RESERVES")
+    }
+
+    private func moveBenchPlayerToReserves(_ card: LegendsCard) {
+        store.moveToReserves(cardID: card.id)
+        announceSection("\(card.name) → RESERVES")
+    }
+
+    private func announceSection(_ message: String) {
+        Haptics.tap()
+        panelStatus = message
     }
 
     private var filledBenchCount: Int { store.profile.benchCardIDs.compactMap { $0 }.count }
@@ -839,6 +1187,9 @@ struct LegendsPitchView: View {
     let store: LegendsStore
     let onOpenDetail: (LegendsCard) -> Void
     let onTapSlot: (Int) -> Void
+    var onMoveToReserves: ((LegendsCard) -> Void)? = nil
+    var assignmentCard: LegendsCard? = nil
+    var onAssignSlot: ((LegendsCard, Int) -> Void)? = nil
 
     /// Attack-first, GK-last row order (matches Career's own pitch
     /// convention) — `startingXISlots` itself is stored GK-first, so
@@ -895,19 +1246,52 @@ struct LegendsPitchView: View {
         let card = cardID.flatMap { id in LegendsCardDatabase.all.first { $0.id == id } }
         let isCaptain = cardID != nil && cardID == store.profile.captainCardID
         let slot = LegendsSquadSlot.xi(index)
+        let isAssignmentTarget = assignmentCard != nil
+        let eligible = assignmentCard.map { store.canPlay($0, in: role) } ?? true
         return LegendsPlayerToken(card: card, role: role,
                                    overall: card.map { store.effectiveOverall(for: $0) },
                                    chemistryStars: cardID != nil ? store.chemistryStars(forXISlot: index) : 0,
                                    isCaptain: isCaptain, diameter: diameter, squadStyle: true,
-                                   slot: slot, onSwap: { store.swapSquadSlots($0, $1) }) {
-            if let card {
+                                   slot: isAssignmentTarget ? nil : slot,
+                                   onSwap: isAssignmentTarget ? nil : { store.swapSquadSlots($0, $1) }) {
+            if let assignmentCard {
+                onAssignSlot?(assignmentCard, index)
+            } else if let card {
                 onOpenDetail(card)
             } else {
                 onTapSlot(index)
             }
         }
-        .accessibilityLabel(card?.name ?? "Select player for \(role.rawValue)")
-        .accessibilityIdentifier("squad.token.xi.\(index)")
+        .overlay(alignment: .topTrailing) {
+            if isAssignmentTarget {
+                Text(card == nil ? "FREE" : "SWAP")
+                    .font(.system(size: 6, weight: .black, design: .monospaced))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(eligible ? LegendsPalette.green : LegendsPalette.orange, in: Capsule())
+                    .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
+                    .offset(x: 4, y: -4)
+            }
+        }
+        .overlay(
+            RoundedRectangle(cornerRadius: 7)
+                .stroke(isAssignmentTarget ? (eligible ? LegendsPalette.green : LegendsPalette.orange) : .clear,
+                        lineWidth: 2)
+        )
+        .contextMenu {
+            if let card {
+                Button(role: .destructive) {
+                    onMoveToReserves?(card)
+                } label: {
+                    Label("MOVE TO RESERVES", systemImage: "person.2")
+                }
+            }
+        }
+        .accessibilityLabel(isAssignmentTarget
+                            ? "\(role.rawValue) slot \(index + 1), \(card.map { "occupied by \($0.name), moves to reserves" } ?? "free")"
+                            : (card?.name ?? "Select player for \(role.rawValue)"))
+        .accessibilityIdentifier(isAssignmentTarget ? "squad.assignment.xi.\(index)" : "squad.token.xi.\(index)")
         .frame(maxWidth: .infinity)
     }
 }

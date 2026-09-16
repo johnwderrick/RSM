@@ -667,6 +667,171 @@ final class RetroSeasonManagerUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars.firstMatch.waitForExistence(timeout: 5))
     }
 
+    /// Squad reserves section: BENCH/RESERVES sub-tabs, reserve entries with
+    /// portrait/OVR/position, unsigned exclusion, detail round trip preserving
+    /// the RESERVES selection, stable panel scroll, and the empty state.
+    func testLegendsSquadReservesSectionAndDetailRoundTrip() throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_LEGENDS_SQUAD_RESERVES"]
+        app.launch()
+
+        let legendsButton = app.buttons["experience.legends"]
+        XCTAssertTrue(legendsButton.waitForExistence(timeout: 8),
+                      "Expected the RSM Legends entry button on the experience selector")
+        legendsButton.tap()
+
+        XCTAssertTrue(app.buttons["Squad"].waitForExistence(timeout: 10),
+                      "Expected the Squad sidebar item after entering Legends mode")
+        Thread.sleep(forTimeInterval: 0.5)
+        app.buttons["Squad"].tap()
+
+        // Switch to RESERVES; the unsigned Cantina card must be excluded.
+        let reservesTab = app.buttons["squad.panel.reserves"]
+        XCTAssertTrue(reservesTab.waitForExistence(timeout: 8), "Expected the RESERVES sub-tab")
+        Thread.sleep(forTimeInterval: 0.3)
+        reservesTab.tap()
+        XCTAssertTrue(reservesTab.isSelected, "RESERVES should be selected after tapping")
+
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "RESERVES (")).firstMatch.waitForExistence(timeout: 5),
+                      "Expected the reserves count header")
+        XCTAssertFalse(app.descendants(matching: .any)["squad.reserves.empty"].exists,
+                       "The fixture has two signed reserves, so the empty state must not show")
+        XCTAssertFalse(app.descendants(matching: .any)["squad.reserve.maldinho-9596"].exists,
+                       "Unsigned collection cards must never appear as reserves")
+
+        // The reserve container uses .accessibilityElement(children: .contain),
+        // so it surfaces as a generic element, not a button.
+        let reserve = app.descendants(matching: .any)["squad.reserve.neuwald-2223"]
+        XCTAssertTrue(reserve.waitForExistence(timeout: 5),
+                      "Expected the favourited reserve (Neuwald) entry")
+        let card = app.descendants(matching: .any)["squad.reserve.cantina-9596"]
+        XCTAssertTrue(card.waitForExistence(timeout: 5), "Expected the signed reserve (Cantina) entry")
+        snap("rsm_reserves_1-list")
+
+        // Detail round trip from a reserve; the RESERVES tab must survive.
+        Thread.sleep(forTimeInterval: 0.3)
+        card.tap()
+        let detail = app.descendants(matching: .any)["legends.playerDetail"]
+        XCTAssertTrue(detail.waitForExistence(timeout: 8),
+                      "Expected the player-detail sheet to open from a reserve entry")
+        snap("rsm_reserves_2-detail")
+        let close = app.buttons["legends.playerDetail.close"]
+        XCTAssertTrue(close.waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 0.4)
+        close.tap()
+        XCTAssertTrue(app.buttons["squad.panel.reserves"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["squad.panel.reserves"].isSelected,
+                      "Closing Player Detail must return to the same RESERVES subsection")
+        XCTAssertTrue(app.descendants(matching: .any)["squad.reserve.cantina-9596"].exists,
+                      "Reserve entries must still be listed after the detail round trip")
+
+        // ---- Reserve → occupied XI slot: premium pitch targeting ----
+        let toXI = app.descendants(matching: .any)["squad.reserve.toxi.cantina-9596"]
+        XCTAssertTrue(toXI.waitForExistence(timeout: 5), "Expected the MOVE TO XI action on a reserve row")
+        Thread.sleep(forTimeInterval: 0.3)
+        toXI.tap()
+
+        let assignmentBanner = app.descendants(matching: .any)["squad.assignment.banner"]
+        XCTAssertTrue(assignmentBanner.waitForExistence(timeout: 6),
+                      "Expected the premium assignment banner above the live squad")
+        let occupiedRow = app.buttons["squad.assignment.xi.0"]
+        XCTAssertTrue(occupiedRow.waitForExistence(timeout: 5))
+        XCTAssertTrue(occupiedRow.label.localizedCaseInsensitiveContains("occupied by"),
+                      "Occupied targets must name the player who will move to reserves; got: \(occupiedRow.label)")
+        let secondTarget = app.buttons["squad.assignment.xi.10"]
+        XCTAssertTrue(secondTarget.waitForExistence(timeout: 3),
+                      "Every live XI position must become a direct target")
+        snap("rsm_reserves_4-pitch-targeting")
+
+        // Cancellation returns cleanly to RESERVES without changing the squad.
+        let cancelAssignment = app.buttons["squad.assignment.cancel"]
+        XCTAssertTrue(cancelAssignment.waitForExistence(timeout: 3))
+        cancelAssignment.tap()
+        XCTAssertFalse(assignmentBanner.waitForExistence(timeout: 1))
+        XCTAssertTrue(app.descendants(matching: .any)["squad.reserve.cantina-9596"].exists)
+        XCTAssertTrue(app.buttons["squad.panel.reserves"].isSelected)
+        app.descendants(matching: .any)["squad.reserve.toxi.cantina-9596"].tap()
+        XCTAssertTrue(occupiedRow.waitForExistence(timeout: 4))
+        Thread.sleep(forTimeInterval: 0.3)
+        occupiedRow.tap()
+
+        let status = app.descendants(matching: .any)["squad.panel.status"]
+        XCTAssertTrue(status.waitForExistence(timeout: 6),
+                      "Expected confirmation feedback naming the move")
+        XCTAssertTrue(status.label.contains("→ STARTING XI slot 1"), "Status must name the destination; got: \(status.label)")
+        XCTAssertTrue(status.label.contains("to reserves"), "Status must name the displaced player; got: \(status.label)")
+        XCTAssertFalse(app.descendants(matching: .any)["squad.reserve.cantina-9596"].exists,
+                       "The moved reserve must leave the reserves list")
+        XCTAssertTrue(app.buttons["squad.panel.reserves"].isSelected,
+                      "XI targeting must return to the RESERVES list after a move")
+
+        // ---- Reserve → bench slot: direct targeting in the live bench ----
+        let toBench = app.descendants(matching: .any)["squad.reserve.tobench.neuwald-2223"]
+        XCTAssertTrue(toBench.waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 0.3)
+        toBench.tap()
+        XCTAssertTrue(assignmentBanner.waitForExistence(timeout: 6))
+        XCTAssertTrue(app.buttons["squad.panel.bench"].isSelected,
+                      "Bench targeting should reveal the live BENCH panel")
+        let benchRow = app.buttons["squad.assignment.bench.0"]
+        XCTAssertTrue(benchRow.waitForExistence(timeout: 3))
+        Thread.sleep(forTimeInterval: 0.3)
+        benchRow.tap()
+        XCTAssertTrue(status.waitForExistence(timeout: 6))
+        XCTAssertTrue(status.label.contains("→ BENCH slot 1"), "Bench move feedback missing; got: \(status.label)")
+        XCTAssertFalse(app.descendants(matching: .any)["squad.reserve.neuwald-2223"].waitForExistence(timeout: 3),
+                       "The moved reserve must leave the reserves list")
+
+        // Bench remains visible after placement, using the normal token UI.
+        let benchTab = app.buttons["squad.panel.bench"]
+        XCTAssertTrue(benchTab.waitForExistence(timeout: 5))
+        XCTAssertTrue(benchTab.isSelected)
+        XCTAssertTrue(app.descendants(matching: .any)["squad.token.bench.0"].waitForExistence(timeout: 5),
+                      "Expected the existing bench slots under BENCH")
+
+        // A selected XI/bench player exposes an obvious move action in the
+        // accepted Player Detail presentation; it is not hidden behind a
+        // long-press context menu.
+        let benchPlayer = app.descendants(matching: .any)["squad.token.bench.0"]
+        benchPlayer.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["legends.playerDetail"].waitForExistence(timeout: 6))
+        XCTAssertTrue(app.buttons["legends.playerDetail.moveToReserves"].waitForExistence(timeout: 4),
+                      "Assigned players must expose a visible MOVE TO RESERVES action")
+        app.buttons["legends.playerDetail.close"].tap()
+
+        let size = app.windows.firstMatch.frame.size
+        let shot = XCUIScreen.main.screenshot()
+        try? shot.pngRepresentation.write(to: URL(fileURLWithPath: "/tmp/rsm_reserves_3-bench_\(Int(size.width))x\(Int(size.height)).png"))
+    }
+
+    /// The reserves empty state: with every signed player assigned to the XI
+    /// or bench, the panel explains the situation instead of showing a blank.
+    func testLegendsSquadReservesEmptyStateExplainsAssignment() throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_LEGENDS_SQUAD_RESERVES_EMPTY"]
+        app.launch()
+
+        let legendsButton = app.buttons["experience.legends"]
+        XCTAssertTrue(legendsButton.waitForExistence(timeout: 8))
+        legendsButton.tap()
+        XCTAssertTrue(app.buttons["Squad"].waitForExistence(timeout: 10))
+        Thread.sleep(forTimeInterval: 0.5)
+        app.buttons["Squad"].tap()
+
+        let reservesTab = app.buttons["squad.panel.reserves"]
+        XCTAssertTrue(reservesTab.waitForExistence(timeout: 8))
+        Thread.sleep(forTimeInterval: 0.3)
+        reservesTab.tap()
+
+        let empty = app.staticTexts["squad.reserves.empty"]
+        XCTAssertTrue(empty.waitForExistence(timeout: 5),
+                      "Expected the explanatory empty state when no signed reserves exist")
+        XCTAssertTrue(empty.label.contains("All signed players are currently assigned to the Starting XI or bench."),
+                      "Empty state must explain the assignment situation; got: \(empty.label)")
+    }
+
     /// Captures the polished Legends pre-kickoff composition on a real
     /// landscape device and proves the primary action remains reachable after
     /// the dashboard-to-match navigation.

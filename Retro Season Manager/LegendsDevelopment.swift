@@ -525,6 +525,42 @@ extension LegendsStore {
         persist()
     }
 
+    /// Deterministic UI-test fixture for the Squad reserves section: two
+    /// signed players held outside the XI and bench (one favourited), plus
+    /// one owned-but-unsigned card that must never surface as a reserve.
+    /// Presentation only — the starter squad keeps its default XI and bench
+    /// (buffonte-0506 is the starter goalkeeper, and one-card-per-person
+    /// rules out any starter's other-season card, so reserves use Cantina
+    /// and Neuwald — neither shares a person with the starter squad).
+    func prepareReservesFixtureForDebug() {
+        profile = .starter()
+        profile.managerProfile = LegendsManagerProfile(
+            firstName: "Test", surname: "Manager", nationalityCode: "GB",
+            dateOfBirth: Date(timeIntervalSince1970: 315_532_800), archetype: .architect
+        )
+        migrateOwnedPlayerRecords()
+
+        // The empty variant keeps the starter squad untouched: every signed
+        // player is already in the XI or bench, so reserves are empty.
+        if ProcessInfo.processInfo.arguments.contains("UITEST_LEGENDS_SQUAD_RESERVES_EMPTY") {
+            persist()
+            return
+        }
+
+        profile.ownedCardIDs.insert("cantina-9596")
+        profile.ownedCardIDs.insert("maldinho-9596")
+        profile.ownedCardIDs.insert("neuwald-2223")
+
+        signPlayer(cardID: "cantina-9596")
+        signPlayer(cardID: "neuwald-2223")
+        profile.favouriteCardIDs.insert("neuwald-2223")
+        // maldinho-9596 stays owned but unsigned: the reserves list must
+        // exclude it even though it is visible in the collection.
+
+        migrateOwnedPlayerRecords()
+        persist()
+    }
+
     /// Deterministic UI-test fixture for the redesigned Assistants and
     /// Stadiums collections: two owned assistants (first active, second
     /// inactive) and two owned stadiums (second active as home), plus a

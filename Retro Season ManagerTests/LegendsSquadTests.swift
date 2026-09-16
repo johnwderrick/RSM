@@ -333,4 +333,188 @@ final class LegendsSquadTests: XCTestCase {
 
         XCTAssertEqual(store.profile.startingXICardIDs[0], card.id)
     }
+
+    // MARK: - Reserves (signed players outside XI and bench)
+
+    func testReservesContainExactlySignedPlayersOutsideXIAndBench() async {
+        let store = await freshStore()
+        let cards = LegendsCardDatabase.all.filter { store.profile.ownedCardIDs.contains($0.id) }
+        // Six signed players leave 14 reserves from the 20 signed.
+        for (offset, card) in cards.prefix(6).enumerated() {
+            if offset < 4 { store.assign(cardID: card.id, toXISlot: offset) }
+            else { store.assign(cardID: card.id, toBenchSlot: offset - 4) }
+        }
+
+        let reserveIDs = Set(store.reservePlayers.map(\.id))
+        let signedIDs = Set(store.activeClubPlayers.map(\.id))
+        let assignedIDs = Set(store.profile.startingXICardIDs.compactMap(\.self))
+            .union(store.profile.benchCardIDs.compactMap(\.self))
+
+        XCTAssertEqual(reserveIDs, signedIDs.subtracting(assignedIDs))
+        XCTAssertEqual(reserveIDs.count, 14)
+    }
+
+    func testReservesAreDisjointFromXIAndBenchAndEverySignedPlayerIsSomewhere() async {
+        let store = await freshStore()
+        let cards = LegendsCardDatabase.all.filter { store.profile.ownedCardIDs.contains($0.id) }
+        // Fill all 18 matchday slots (11 XI + 7 bench); the two remaining
+        // signed players must land in reserves.
+        for (offset, card) in cards.prefix(18).enumerated() {
+            if offset < 11 { store.assign(cardID: card.id, toXISlot: offset) }
+            else { store.assign(cardID: card.id, toBenchSlot: offset - 11) }
+        }
+
+        let xi = Set(store.profile.startingXICardIDs.compactMap(\.self))
+        let bench = Set(store.profile.benchCardIDs.compactMap(\.self))
+        let reserves = Set(store.reservePlayers.map(\.id))
+        XCTAssertEqual(reserves, Set(cards.suffix(2).map(\.id)), "The two unassigned signed players are the reserves")
+        XCTAssertEqual(xi.intersection(bench), [])
+        XCTAssertEqual(xi.union(bench).intersection(reserves), [])
+        XCTAssertEqual(xi.union(bench).union(reserves), Set(store.activeClubPlayers.map(\.id)), "Every signed player appears in exactly one section")
+    }
+
+    func testMovingAReserveToBenchUsesAuthoritativeAssignmentAndRemovesItFromReserves() async {
+        let store = await freshStore()
+        let cards = LegendsCardDatabase.all.filter { store.profile.ownedCardIDs.contains($0.id) }
+        let starter = cards[0]
+        store.assign(cardID: starter.id, toXISlot: 0)
+        XCTAssertFalse(store.reservePlayers.contains { $0.id == starter.id })
+
+        // Return the starter to the reserves: they leave the XI and the
+        // authoritative store path persists the move.
+        store.clearXISlot(0)
+        XCTAssertTrue(store.reservePlayers.contains { $0.id == starter.id })
+        let encoded = try! JSONEncoder().encode(store.profile)
+        let decoded = try! JSONDecoder().decode(LegendsProfile.self, from: encoded)
+        XCTAssertTrue(decoded.startingXICardIDs.allSatisfy { $0 == nil })
+    }
+
+    func testUnsignedCardsNeverAppearAsReserves() async {
+        let store = await freshStore()
+        // five more owned-but-unsigned cards must never surface as reserves.
+        let extra = LegendsCardDatabase.all.filter { !store.profile.ownedCardIDs.contains($0.id) }.prefix(5)
+        store.profile.ownedCardIDs.formUnion(extra.map(\.id))
+        // Two of the signed players occupy matchday slots.
+        let cards = LegendsCardDatabase.all.filter { store.profile.ownedCardIDs.contains($0.id) }
+        store.assign(cardID: cards[0].id, toXISlot: 0)
+        store.assign(cardID: cards[1].id, toBenchSlot: 0)
+
+        let signedIDs = Set(store.activeClubPlayers.map(\.id))
+        let reserves = Set(store.reservePlayers.map(\.id))
+        XCTAssertTrue(reserves.isSubset(of: signedIDs), "Reserves must only contain signed players")
+        XCTAssertEqual(reserves.count, signedIDs.count - 2)
+    }
+
+    // MARK: - Moving players between XI, bench and reserves
+
+    /// Builds a full matchday squad (11 XI + 7 bench) from the owned cards,
+    /// leaving exactly two signed reserves. Returns (store, cards, the
+    /// first reserve). The reserve indexes are deterministic: cards[18]
+    /// and cards[19] are never assigned by this helper.
+    private func storeWithTwoReserves() async -> (LegendsStore, [LegendsCard], LegendsCard) {
+        let store = await freshStore()
+        let cards = LegendsCardDatabase.all.filter { store.profile.ownedCardIDs.contains($0.id) }
+        for (offset, card) in cards.prefix(18).enumerated() {
+            if offset < 11 { store.assign(cardID: card.id, toXISlot: offset) }
+            else { store.assign(cardID: card.id, toBenchSlot: offset - 11) }
+        }
+        let reserve = cards[18]
+        XCTAssertTrue(store.reservePlayers.contains { $0.id == reserve.id })
+        return (store, cards, reserve)
+    }
+
+    func testReserveMovesIntoFreeXISlotAndLeavesReserves() async {
+        let (store, _, reserve) = await storeWithTwoReserves()
+        store.clearXISlot(10)
+
+        store.assign(cardID: reserve.id, toXISlot: 10)
+
+        XCTAssertEqual(store.profile.startingXICardIDs[10], reserve.id)
+        XCTAssertFalse(store.reservePlayers.contains { $0.id == reserve.id })
+        // No duplicates: every section still partitions the signed players.
+        let xi = Set(store.profile.startingXICardIDs.compactMap(\.self))
+        let bench = Set(store.profile.benchCardIDs.compactMap(\.self))
+        XCTAssertEqual(xi.intersection(bench), [])
+        XCTAssertEqual(xi.union(bench).union(Set(store.reservePlayers.map(\.id))), Set(store.activeClubPlayers.map(\.id)))
+    }
+
+    func testReserveIntoOccupiedXISlotDisplacesOccupantToReserves() async {
+        let (store, cards, reserve) = await storeWithTwoReserves()
+        let occupantID = try! XCTUnwrap(store.profile.startingXICardIDs[3], "XI slot 3 must be filled by the helper")
+        let occupant = cards.first { $0.id == occupantID }!
+
+        let evicted = store.assignReportingEvictions(reserve.id, toXISlot: 3)
+
+        XCTAssertEqual(store.profile.startingXICardIDs[3], reserve.id)
+        XCTAssertEqual(evicted.map(\.id), [occupant.id], "The slot's occupant is the only eviction")
+        XCTAssertTrue(store.reservePlayers.contains { $0.id == occupant.id }, "The displaced player becomes a reserve")
+        XCTAssertFalse(store.reservePlayers.contains { $0.id == reserve.id })
+        let assigned = Set(store.profile.startingXICardIDs.compactMap(\.self)).union(store.profile.benchCardIDs.compactMap(\.self))
+        XCTAssertEqual(assigned.intersection(Set(store.reservePlayers.map(\.id))), [], "No player in two sections")
+    }
+
+    func testReserveMovesIntoFreeAndOccupiedBenchSlots() async {
+        let (store, cards, reserve) = await storeWithTwoReserves()
+
+        // Free bench slot: plain move.
+        store.clearBenchSlot(0)
+        store.assign(cardID: reserve.id, toBenchSlot: 0)
+        XCTAssertEqual(store.profile.benchCardIDs[0], reserve.id)
+        XCTAssertFalse(store.reservePlayers.contains { $0.id == reserve.id })
+
+        // Occupied bench slot: the occupant is displaced to reserves.
+        let benchOccupantID = try! XCTUnwrap(store.profile.benchCardIDs[2], "Bench slot 2 must be filled by the helper")
+        let benchOccupant = cards.first { $0.id == benchOccupantID }!
+        store.assign(cardID: reserve.id, toBenchSlot: 2)
+        XCTAssertEqual(store.profile.benchCardIDs[2], reserve.id)
+        XCTAssertTrue(store.reservePlayers.contains { $0.id == benchOccupant.id })
+        XCTAssertFalse(store.reservePlayers.contains { $0.id == reserve.id })
+        let assigned = Set(store.profile.startingXICardIDs.compactMap(\.self)).union(store.profile.benchCardIDs.compactMap(\.self))
+        XCTAssertEqual(assigned.intersection(Set(store.reservePlayers.map(\.id))), [])
+    }
+
+    func testXIAndBenchPlayersMoveToReserves() async {
+        let store = await freshStore()
+        let cards = LegendsCardDatabase.all.filter { store.profile.ownedCardIDs.contains($0.id) }
+        let starter = cards[0]
+        let sub = cards[11]
+
+        store.moveToReserves(cardID: starter.id)
+        store.moveToReserves(cardID: sub.id)
+
+        XCTAssertFalse(store.profile.startingXICardIDs.contains(starter.id))
+        XCTAssertFalse(store.profile.benchCardIDs.contains(sub.id))
+        XCTAssertTrue(store.reservePlayers.contains { $0.id == starter.id })
+        XCTAssertTrue(store.reservePlayers.contains { $0.id == sub.id })
+    }
+
+    func testReserveMovePersistsAcrossSaveRoundTrip() async throws {
+        let (store, _, reserve) = await storeWithTwoReserves()
+        store.assign(cardID: reserve.id, toXISlot: 7)
+
+        let encoded = try JSONEncoder().encode(store.profile)
+        let decoded = try JSONDecoder().decode(LegendsProfile.self, from: encoded)
+
+        XCTAssertEqual(decoded.startingXICardIDs[7], reserve.id)
+        XCTAssertFalse(decoded.benchCardIDs.contains(reserve.id))
+    }
+
+    func testCaptainAndSetPieceRolesFallBackWhenAssignedPlayerLeavesXI() async {
+        let store = await freshStore()
+        let cards = LegendsCardDatabase.all.filter { store.profile.ownedCardIDs.contains($0.id) }
+        let captain = cards[0]
+        store.assign(cardID: captain.id, toXISlot: 0)
+        store.setCaptain(cardID: captain.id)
+        store.setSquadRole(.penalties, cardID: captain.id)
+        store.setSquadRole(.leftCorner, cardID: captain.id)
+        XCTAssertEqual(store.squadRoleCardID(.penalties), captain.id)
+
+        store.moveToReserves(cardID: captain.id)
+
+        XCTAssertNil(store.profile.captainCardID, "Captaincy must clear when the captain leaves the XI")
+        XCTAssertNil(store.squadRoleCardID(.penalties), "Set-piece role must fall back (be pruned) when the taker leaves the XI")
+        XCTAssertNil(store.squadRoleCardID(.leftCorner))
+        XCTAssertTrue(store.profile.squadRoleAssignments.isEmpty)
+        XCTAssertTrue(store.reservePlayers.contains { $0.id == captain.id })
+    }
 }

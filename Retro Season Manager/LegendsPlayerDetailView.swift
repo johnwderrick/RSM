@@ -18,6 +18,7 @@ import SwiftUI
 struct LegendsPlayerDetailView: View {
     let store: LegendsStore
     let card: LegendsCard
+    var moveToReservesAction: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var confirmingSign = false
     @State private var showingWelcome = false
@@ -244,19 +245,29 @@ struct LegendsPlayerDetailView: View {
     // MARK: - Actions
 
     private var actionBar: some View {
-        HStack(spacing: 8) {
-            if owned && !retired {
-                actionButton(label: favourite ? "FAVOURITED" : "FAVOURITE",
-                             icon: favourite ? "star.fill" : "star",
-                             tint: LegendsPalette.goldDeep, filled: favourite) {
-                    store.toggleFavourite(cardID: card.id)
+        VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                if owned && !retired {
+                    actionButton(label: favourite ? "FAVOURITED" : "FAVOURITE",
+                                 icon: favourite ? "star.fill" : "star",
+                                 tint: LegendsPalette.goldDeep, filled: favourite) {
+                        store.toggleFavourite(cardID: card.id)
+                    }
+                    .accessibilityIdentifier("legends.player.favourite")
                 }
-                .accessibilityIdentifier("legends.player.favourite")
+                actionButton(label: "COMPARE", icon: "rectangle.split.2x1", tint: LegendsPalette.blue, filled: false) {
+                    showingComparison = true
+                }
+                .accessibilityIdentifier("legends.player.compare")
             }
-            actionButton(label: "COMPARE", icon: "rectangle.split.2x1", tint: LegendsPalette.blue, filled: false) {
-                showingComparison = true
+            if let moveToReservesAction {
+                actionButton(label: "MOVE TO RESERVES", icon: "person.2.fill",
+                             tint: LegendsPalette.orange, filled: false) {
+                    moveToReservesAction()
+                    dismiss()
+                }
+                .accessibilityIdentifier("legends.playerDetail.moveToReserves")
             }
-            .accessibilityIdentifier("legends.player.compare")
         }
         .sheet(isPresented: $showingComparison) {
             LegendsPlayerComparisonView(store: store, primary: card)

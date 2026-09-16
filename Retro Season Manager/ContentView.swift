@@ -51,6 +51,12 @@ struct ContentView: View {
         if ProcessInfo.processInfo.arguments.contains("UITEST_LEGENDS_PLAYER_DETAIL") {
             legends.preparePlayerDetailFixtureForDebug()
         }
+        if ProcessInfo.processInfo.arguments.contains("UITEST_LEGENDS_SQUAD_RESERVES") {
+            legends.prepareReservesFixtureForDebug()
+        }
+        if ProcessInfo.processInfo.arguments.contains("UITEST_LEGENDS_SQUAD_RESERVES_EMPTY") {
+            legends.prepareReservesFixtureForDebug()
+        }
         if ProcessInfo.processInfo.arguments.contains("UITEST_LEGENDS_HALL") {
             legends.prepareHallFixtureForDebug()
         }

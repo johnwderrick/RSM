@@ -313,6 +313,42 @@ extension LegendsStore {
         return !isRetired(card)
     }
 
+    /// Non-mutating preview for the slot chooser: the card currently
+    /// occupying the target slot, if any. The authoritative assign path
+    /// may additionally evict same-person duplicates from other slots;
+    /// the post-move feedback reports those rather than the preview.
+    func occupantOfXISlot(_ index: Int) -> LegendsCard? {
+        guard profile.startingXICardIDs.indices.contains(index), let id = profile.startingXICardIDs[index] else { return nil }
+        return LegendsCardDatabase.all.first { $0.id == id }
+    }
+
+    func occupantOfBenchSlot(_ index: Int) -> LegendsCard? {
+        guard profile.benchCardIDs.indices.contains(index), let id = profile.benchCardIDs[index] else { return nil }
+        return LegendsCardDatabase.all.first { $0.id == id }
+    }
+
+    /// Assigns through the authoritative `assign(cardID:...)` path and
+    /// reports the previously-assigned cards the move evicted (the target
+    /// slot's occupant, plus any same-person duplicates the name rule
+    /// removes). The diff is computed against the squad before/after the
+    /// real assignment, so UI feedback can never drift from the rules.
+    @discardableResult
+    func assignReportingEvictions(_ cardID: String, toXISlot index: Int) -> [LegendsCard] {
+        evictedByAssign { assign(cardID: cardID, toXISlot: index) }
+    }
+
+    @discardableResult
+    func assignReportingEvictions(_ cardID: String, toBenchSlot index: Int) -> [LegendsCard] {
+        evictedByAssign { assign(cardID: cardID, toBenchSlot: index) }
+    }
+
+    private func evictedByAssign(_ assign: () -> Void) -> [LegendsCard] {
+        let before = Set((profile.startingXICardIDs + profile.benchCardIDs).compactMap { $0 })
+        assign()
+        let after = Set((profile.startingXICardIDs + profile.benchCardIDs).compactMap { $0 })
+        return before.subtracting(after).compactMap { id in LegendsCardDatabase.all.first { $0.id == id } }
+    }
+
     func assign(cardID: String, toXISlot index: Int) {
         guard isAssignable(cardID), profile.startingXICardIDs.indices.contains(index),
               let card = LegendsCardDatabase.all.first(where: { $0.id == cardID }), isSigned(card) else { return }
