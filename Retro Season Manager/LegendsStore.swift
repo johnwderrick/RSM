@@ -150,6 +150,9 @@ struct LegendsProfile: Codable {
     var clubName: String
     var crestShort: String
     var crestColorRGB: [Double]
+    /// Explicit artwork choice for the user's Legends club. Older saves keep
+    /// this nil and use the stable name-derived fallback until the user picks.
+    var crestBadgeIndex: Int? = nil
     var managerLevel: Int
     var managerXP: Int
     var coins: Int
@@ -330,7 +333,7 @@ struct LegendsProfile: Codable {
     // pattern — so a field added in a later phase never breaks loading
     // an existing Legends save.
     enum CodingKeys: String, CodingKey {
-        case clubName, crestShort, crestColorRGB, managerLevel, managerXP
+        case clubName, crestShort, crestColorRGB, crestBadgeIndex, managerLevel, managerXP
         case coins, packTokens, division, teamRating, ownedCardIDs, activatedCardIDs
         case playerCareers, legendsHall, clubRecords, lastSeasonReview
         case duplicateProgress, cardUpgrades
@@ -346,7 +349,7 @@ struct LegendsProfile: Codable {
         case libraryCapacityBonus, favouriteCardIDs, seasonReports, playerIdentityProfiles, presentedSeasonReportSeasons
     }
 
-    init(clubName: String, crestShort: String, crestColorRGB: [Double],
+    init(clubName: String, crestShort: String, crestColorRGB: [Double], crestBadgeIndex: Int? = nil,
          managerLevel: Int, managerXP: Int, coins: Int, packTokens: Int,
          division: LegendsDivision, teamRating: Int, ownedCardIDs: Set<String> = [],
          activatedCardIDs: Set<String> = [], playerCareers: [String: LegendsPlayerCareer] = [:],
@@ -375,6 +378,7 @@ struct LegendsProfile: Codable {
         self.clubName = clubName
         self.crestShort = crestShort
         self.crestColorRGB = crestColorRGB
+        self.crestBadgeIndex = crestBadgeIndex.map(ClubBadgeCatalog.normalized)
         self.managerLevel = managerLevel
         self.managerXP = managerXP
         self.coins = coins
@@ -435,6 +439,7 @@ struct LegendsProfile: Codable {
         clubName = try c.decodeIfPresent(String.self, forKey: .clubName) ?? "RSM Legends FC"
         crestShort = try c.decodeIfPresent(String.self, forKey: .crestShort) ?? "RSM"
         crestColorRGB = try c.decodeIfPresent([Double].self, forKey: .crestColorRGB) ?? [0.10, 0.76, 0.35]
+        crestBadgeIndex = try c.decodeIfPresent(Int.self, forKey: .crestBadgeIndex).map(ClubBadgeCatalog.normalized)
         managerLevel = try c.decodeIfPresent(Int.self, forKey: .managerLevel) ?? 1
         managerXP = try c.decodeIfPresent(Int.self, forKey: .managerXP) ?? 0
         coins = try c.decodeIfPresent(Int.self, forKey: .coins) ?? 0
@@ -714,6 +719,17 @@ final class LegendsStore {
     /// Squad screen, editable again mid-match on the live match screen.
     func setPreferredMentality(_ mentality: Mentality) {
         profile.preferredMentality = mentality
+        persist()
+    }
+
+    var resolvedCrestBadgeIndex: Int {
+        profile.crestBadgeIndex ?? ClubBadgeCatalog.deterministicIndex(for: profile.clubName)
+    }
+
+    /// Applies and immediately persists the user's cosmetic badge choice.
+    /// Invalid external values are clamped to the shipped artwork catalogue.
+    func setCrestBadge(index: Int) {
+        profile.crestBadgeIndex = ClubBadgeCatalog.normalized(index)
         persist()
     }
 

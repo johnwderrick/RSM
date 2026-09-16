@@ -118,9 +118,10 @@ struct CrestView: View {
     let shortName: String
     let size: CGFloat
     var color: Color = Retro.accent
+    var badgeIndex: Int? = nil
 
     var body: some View {
-        ClubBadgeView(name: shortName, shortName: shortName, size: size, primaryColor: color)
+        ClubBadgeView(name: shortName, shortName: shortName, size: size, primaryColor: color, badgeIndex: badgeIndex)
     }
 }
 
@@ -376,4 +377,3 @@ struct MatchFlashOverlay: View {
         }
     }
 }
-

@@ -329,20 +329,39 @@ struct ClubBadgeView: View {
     let shortName: String
     let size: CGFloat
     var primaryColor: Color = Retro.emerald
+    var badgeIndex: Int? = nil
 
-    private static let badgeCount = 24
-
-    private var badgeIndex: Int {
-        var gen = SeededGenerator(seed: name)
-        return Int.random(in: 1...Self.badgeCount, using: &gen)
+    private var resolvedBadgeIndex: Int {
+        ClubBadgeCatalog.normalized(badgeIndex ?? ClubBadgeCatalog.deterministicIndex(for: name))
     }
 
     var body: some View {
-        Image("ClubBadge\(String(format: "%02d", badgeIndex))")
+        Image("ClubBadge\(String(format: "%02d", resolvedBadgeIndex))")
             .resizable()
             .scaledToFit()
             .frame(width: size, height: size)
             .shadow(color: .black.opacity(0.35), radius: size * 0.08, y: size * 0.03)
+    }
+}
+
+/// Shared catalogue metadata for club badge artwork. The original badge
+/// fallback used Swift's `Hasher`, whose random process seed changes between
+/// launches. FNV-1a gives the same club name the same fallback badge on every
+/// device and launch, while an explicit Legends selection can override it.
+enum ClubBadgeCatalog {
+    nonisolated static let count = 24
+
+    nonisolated static func normalized(_ index: Int) -> Int {
+        min(count, max(1, index))
+    }
+
+    nonisolated static func deterministicIndex(for seed: String) -> Int {
+        var hash: UInt64 = 14_695_981_039_346_656_037
+        for byte in seed.utf8 {
+            hash ^= UInt64(byte)
+            hash &*= 1_099_511_628_211
+        }
+        return Int(hash % UInt64(count)) + 1
     }
 }
 

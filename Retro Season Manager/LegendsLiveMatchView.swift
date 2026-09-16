@@ -375,7 +375,8 @@ struct LegendsLiveMatchView: View {
     private var scoreBar: some View {
         VStack(spacing: 6) {
             HStack(spacing: 10) {
-                CrestView(shortName: store.profile.crestShort, size: 34, color: Color(rgb: store.profile.crestColorRGB))
+                CrestView(shortName: store.profile.crestShort, size: 34, color: Color(rgb: store.profile.crestColorRGB),
+                          badgeIndex: store.resolvedCrestBadgeIndex)
                 Text(store.profile.clubName)
                     .font(.system(.caption, design: .monospaced).bold())
                     .foregroundStyle(Retro.text)

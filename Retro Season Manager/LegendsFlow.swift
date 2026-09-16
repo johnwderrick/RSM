@@ -425,7 +425,7 @@ enum LegendsNavItem: String, CaseIterable, Identifiable {
 /// the dashboard itself; the other cases are the full-screen menus that
 /// previously used modal covers.
 enum LegendsScreen {
-    case squad, training, packs, collection, match, challenges, table, club, facilities, managers, stadiums, hall, profile, settings, planning, reports
+    case squad, training, packs, collection, match, challenges, table, club, facilities, managers, stadiums, badge, hall, profile, settings, planning, reports
 }
 
 /// The real RSM Legends home screen. All displayed progression values are
@@ -484,7 +484,7 @@ struct LegendsHomeView: View {
                 case .club:
                     LegendsClubHubView(store: store, onNavigate: { item in
                         navigateFromDestination(item, current: .club)
-                    }, onOpenManagers: { screen = .managers }, onOpenStadiums: { screen = .stadiums }, onOpenFacilities: { screen = .facilities }) { requestExit() }
+                    }, onOpenManagers: { screen = .managers }, onOpenStadiums: { screen = .stadiums }, onOpenFacilities: { screen = .facilities }, onOpenBadge: { screen = .badge }) { requestExit() }
                 case .facilities:
                     LegendsFacilitiesView(store: store, onNavigate: { item in
                         if item == .club { screen = .club }
@@ -497,6 +497,11 @@ struct LegendsHomeView: View {
                     }) { requestExit() }
                 case .stadiums:
                     LegendsStadiumsView(store: store, onNavigate: { item in
+                        if item == .club { screen = .club }
+                        else { navigateFromDestination(item, current: .club) }
+                    }) { requestExit() }
+                case .badge:
+                    LegendsClubBadgeView(store: store, onNavigate: { item in
                         if item == .club { screen = .club }
                         else { navigateFromDestination(item, current: .club) }
                     }) { requestExit() }
@@ -651,7 +656,8 @@ struct LegendsHomeView: View {
                 HStack(alignment: .center, spacing: 20) {
                     VStack(alignment: .leading, spacing: 9) {
                         HStack(spacing: 12) {
-                            CrestView(shortName: store.profile.crestShort, size: isCompact ? 52 : 66, color: crestColor)
+                            CrestView(shortName: store.profile.crestShort, size: isCompact ? 52 : 66, color: crestColor,
+                                      badgeIndex: store.resolvedCrestBadgeIndex)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("RSM")
                                     .font(.system(size: isCompact ? 18 : 24, weight: .black, design: .rounded))
@@ -1853,6 +1859,7 @@ struct LegendsClubHubView: View {
     var onOpenManagers: () -> Void
     var onOpenStadiums: () -> Void
     var onOpenFacilities: () -> Void
+    var onOpenBadge: () -> Void
     let onBack: () -> Void
 
     var body: some View {
@@ -1868,8 +1875,12 @@ struct LegendsClubHubView: View {
                     clubDestination(title: "STADIUMS", subtitle: "GROW YOUR HOME ADVANTAGE", icon: "building.2.fill", color: LegendsPalette.blue,
                                     value: "\(store.profile.ownedStadiumIDs.count) / \(LegendsStadiumDatabase.all.count) OWNED", action: onOpenStadiums)
                 }
-                clubDestination(title: "FACILITIES", subtitle: "UPGRADE THE CLUB WITH BALANCE", icon: "building.2.crop.circle.fill", color: LegendsPalette.goldDeep,
-                                value: "\(store.profile.coins) BALANCE", action: onOpenFacilities)
+                HStack(spacing: 12) {
+                    clubDestination(title: "FACILITIES", subtitle: "UPGRADE THE CLUB WITH BALANCE", icon: "building.2.crop.circle.fill", color: LegendsPalette.goldDeep,
+                                    value: "\(store.profile.coins) BALANCE", action: onOpenFacilities)
+                    clubDestination(title: "BADGE", subtitle: "CHOOSE YOUR CLUB IDENTITY", icon: "shield.lefthalf.filled", color: LegendsPalette.purple,
+                                    value: "BADGE \(store.resolvedCrestBadgeIndex) OF \(ClubBadgeCatalog.count)", action: onOpenBadge)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .top)
         }

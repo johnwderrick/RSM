@@ -40,6 +40,7 @@ final class LegendsProfileRoundTripTests: XCTestCase {
         store.profile.ownedCardIDs = ["ronaldo-2004", "messi-2011"]
         store.profile.totalWins = 17
         store.profile.clubName = "Round Trip FC"
+        store.profile.crestBadgeIndex = 19
         store.profile.preferredMentality = .attacking
         let lifecycleCard = LegendsCardDatabase.all.first { $0.id == "miessi-0506" }!
         let lifecycle = LegendsStore.makeCareerState(for: lifecycleCard, signedSeason: 2)
@@ -61,6 +62,8 @@ final class LegendsProfileRoundTripTests: XCTestCase {
         XCTAssertEqual(reloaded.profile.ownedCardIDs, ["ronaldo-2004", "messi-2011"])
         XCTAssertEqual(reloaded.profile.totalWins, 17)
         XCTAssertEqual(reloaded.profile.clubName, "Round Trip FC")
+        XCTAssertEqual(reloaded.profile.crestBadgeIndex, 19)
+        XCTAssertEqual(reloaded.resolvedCrestBadgeIndex, 19)
         XCTAssertEqual(reloaded.profile.preferredMentality, .attacking)
         XCTAssertEqual(reloaded.profile.playerCareers[lifecycleCard.id]?.potential, lifecycle.potential)
         XCTAssertEqual(reloaded.profile.playerCareers[lifecycleCard.id]?.developmentProgress, lifecycle.developmentProgress)
@@ -95,6 +98,7 @@ final class LegendsProfileRoundTripTests: XCTestCase {
         XCTAssertEqual(profile.clubName, "Old Save FC")
         XCTAssertEqual(profile.coins, 1200)
         XCTAssertEqual(profile.division, .division5)
+        XCTAssertNil(profile.crestBadgeIndex, "Older saves should use the stable name-derived badge fallback")
 
         // Everything added in a later phase falls back to its documented default.
         XCTAssertEqual(profile.ownedCardIDs, [], "ownedCardIDs should default to empty when absent")
@@ -120,6 +124,26 @@ final class LegendsProfileRoundTripTests: XCTestCase {
         XCTAssertEqual(profile.ownedStadiumIDs, [])
         XCTAssertNil(profile.activeStadiumID)
         XCTAssertEqual(profile.preferredMentality, .balanced, "preferredMentality should default to .balanced when absent")
+    }
+
+    func testBadgeFallbackIsStableAndExplicitSelectionIsClamped() async {
+        let first = ClubBadgeCatalog.deterministicIndex(for: "RSM Legends FC")
+        let second = ClubBadgeCatalog.deterministicIndex(for: "RSM Legends FC")
+        XCTAssertEqual(first, second)
+        XCTAssertTrue((1...ClubBadgeCatalog.count).contains(first))
+
+        let store = await Task { @MainActor in LegendsStore() }.value
+        let original = store.profile
+        defer {
+            Task { @MainActor in
+                let restore = LegendsStore()
+                restore.profile = original
+                restore.persist()
+            }
+        }
+        store.setCrestBadge(index: ClubBadgeCatalog.count + 50)
+        XCTAssertEqual(store.profile.crestBadgeIndex, ClubBadgeCatalog.count)
+        XCTAssertEqual(store.resolvedCrestBadgeIndex, ClubBadgeCatalog.count)
     }
 
     /// A brand-new club (`.starter()` — used both on first launch and by
