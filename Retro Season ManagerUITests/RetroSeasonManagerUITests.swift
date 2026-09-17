@@ -901,7 +901,9 @@ final class RetroSeasonManagerUITests: XCTestCase {
         let start = app.buttons["legends.training.start"]
         XCTAssertTrue(start.waitForExistence(timeout: 4))
         start.tap()
-        XCTAssertTrue(app.staticTexts["1/3 sessions this season"].waitForExistence(timeout: 4))
+        let trainingSessions = app.staticTexts["legends.playerDetail.trainingSessions"]
+        XCTAssertTrue(trainingSessions.waitForExistence(timeout: 4))
+        XCTAssertEqual(trainingSessions.label, "1/3 THIS SEASON")
 
         app.buttons["Close player details"].tap()
         let homeTab = app.buttons["legends.nav.home"]
@@ -912,8 +914,9 @@ final class RetroSeasonManagerUITests: XCTestCase {
         XCTAssertTrue(player.waitForExistence(timeout: 6))
         player.tap()
 
-        XCTAssertTrue(app.staticTexts["1/3 sessions this season"].waitForExistence(timeout: 4),
-                      "The selected focus and consumed session should persist after navigation")
+        XCTAssertTrue(trainingSessions.waitForExistence(timeout: 4),
+                      "The consumed session should persist after navigation")
+        XCTAssertEqual(trainingSessions.label, "1/3 THIS SEASON")
         XCTAssertTrue(app.buttons["legends.training.focusPicker"].label.contains("PASSING"))
     }
 

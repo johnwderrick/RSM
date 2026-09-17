@@ -252,9 +252,15 @@ struct SeededGenerator: RandomNumberGenerator {
     private var state: UInt64
 
     init(seed: String) {
-        var hasher = Hasher()
-        hasher.combine(seed)
-        let value = UInt64(bitPattern: Int64(hasher.finalize()))
+        // Swift's `Hasher` deliberately randomises its key for every process,
+        // so it cannot back anything that promises the same result across
+        // launches or machines. FNV-1a gives these lightweight procedural
+        // visuals and synthetic rosters a small, fixed 64-bit seed instead.
+        var value: UInt64 = 14_695_981_039_346_656_037
+        for byte in seed.utf8 {
+            value ^= UInt64(byte)
+            value &*= 1_099_511_628_211
+        }
         state = value == 0 ? 0x9E3779B97F4A7C15 : value
     }
 

@@ -337,7 +337,9 @@ struct LegendsPlayerDetailView: View {
             }
             statRow("SQUAD STATUS", assignment.rawValue, valueID: "legends.playerDetail.squadStatus")
             statRow("AVAILABILITY", retired ? "UNAVAILABLE · RETIRED" : (signed ? "AVAILABLE FOR SELECTION" : "NOT SIGNED"))
-            statRow("TRAINING SESSIONS", career.map { "\($0.trainingSessionsThisSeason)/\(LegendsStore.maxTrainingSessionsPerSeason) THIS SEASON" } ?? "—")
+            statRow("TRAINING SESSIONS",
+                    career.map { "\($0.trainingSessionsThisSeason)/\(LegendsStore.maxTrainingSessionsPerSeason) THIS SEASON" } ?? "—",
+                    valueID: "legends.playerDetail.trainingSessions")
             statRow("TRAINING FOCUS", career?.trainingPlan.focus.rawValue ?? "—")
             statRow("INTENSITY", career?.trainingPlan.intensity.rawValue ?? "—")
             if signed, let condition = conditionValues {
