@@ -374,7 +374,7 @@ struct LegendsChallengesView: View {
 
     private func rewardLabel(_ challenge: LegendsChallenge) -> String {
         var parts: [String] = []
-        if challenge.coinReward > 0 { parts.append("+\(challenge.coinReward) Balance") }
+        if challenge.coinReward > 0 { parts.append("+\(LegendsBalance.spoken(challenge.coinReward)) Balance") }
         if challenge.tokenReward > 0 { parts.append("+\(challenge.tokenReward) pack token\(challenge.tokenReward == 1 ? "" : "s")") }
         return parts.isEmpty ? "No reward" : "Reward \(parts.joined(separator: ", "))"
     }
@@ -383,23 +383,23 @@ struct LegendsChallengesView: View {
         HStack(spacing: 10) {
             if challenge.coinReward > 0 {
                 HStack(spacing: 3) {
-                    Text("+\(challenge.coinReward)")
-                    Image(systemName: "dollarsign.circle.fill")
-                        .foregroundStyle(LegendsPalette.gold)
-                }
-                .font(.system(size: 10, weight: .black, design: .monospaced))
-                .monospacedDigit()
-                .foregroundStyle(LegendsPalette.goldDeep)
-            }
-            if challenge.tokenReward > 0 {
-                HStack(spacing: 3) {
-                    Text("+\(challenge.tokenReward)")
-                    Image(systemName: "cube.fill")
+                    Text("+\(LegendsBalance.compact(challenge.coinReward))")
+                    Image(systemName: "banknote.fill")
                         .foregroundStyle(LegendsPalette.green)
                 }
                 .font(.system(size: 10, weight: .black, design: .monospaced))
                 .monospacedDigit()
                 .foregroundStyle(LegendsPalette.green)
+            }
+            if challenge.tokenReward > 0 {
+                HStack(spacing: 3) {
+                    Text("+\(challenge.tokenReward)")
+                    Image(systemName: "cube.fill")
+                        .foregroundStyle(LegendsPalette.orange)
+                }
+                .font(.system(size: 10, weight: .black, design: .monospaced))
+                .monospacedDigit()
+                .foregroundStyle(LegendsPalette.orange)
             }
             if challenge.coinReward == 0 && challenge.tokenReward == 0 {
                 Text("NO REWARD")

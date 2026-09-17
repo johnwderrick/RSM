@@ -57,7 +57,7 @@ final class LegendsManagerIdentityTests: XCTestCase {
         let starter = LegendsProfile.starter()
         XCTAssertNil(starter.managerProfile)
         XCTAssertEqual(starter.managerLevel, 1)
-        XCTAssertEqual(starter.coins, 500)
+        XCTAssertEqual(starter.coins, 500 * LegendsBalance.legacyUnitScale)
         let data = try JSONEncoder().encode(starter)
         let decoded = try JSONDecoder().decode(LegendsProfile.self, from: data)
         XCTAssertNil(decoded.managerProfile)

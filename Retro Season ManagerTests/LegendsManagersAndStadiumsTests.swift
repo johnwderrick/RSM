@@ -167,19 +167,19 @@ final class LegendsFacilitiesTests: XCTestCase {
 
     func testUpgradeDeductsExactBalanceOnceAndNeverSpendsPackTokens() async {
         let store = await freshStore()
-        store.profile.coins = 1_000
+        store.profile.coins = 1_000 * LegendsBalance.legacyUnitScale
         store.profile.packTokens = 7
 
-        guard case .upgraded(.trainingCentre, from: 0, to: 1, cost: 100) = store.upgradeFacility(.trainingCentre) else {
-            return XCTFail("The first Training Centre upgrade should cost exactly 100 Balance")
+        guard case .upgraded(.trainingCentre, from: 0, to: 1, cost: 100 * LegendsBalance.legacyUnitScale) = store.upgradeFacility(.trainingCentre) else {
+            return XCTFail("The first Training Centre upgrade should cost exactly £1,000,000 Balance")
         }
-        XCTAssertEqual(store.profile.coins, 900)
+        XCTAssertEqual(store.profile.coins, 900 * LegendsBalance.legacyUnitScale)
         XCTAssertEqual(store.profile.packTokens, 7)
 
-        guard case .upgraded(.trainingCentre, from: 1, to: 2, cost: 200) = store.upgradeFacility(.trainingCentre) else {
-            return XCTFail("The second Training Centre upgrade should cost exactly 200 Balance")
+        guard case .upgraded(.trainingCentre, from: 1, to: 2, cost: 200 * LegendsBalance.legacyUnitScale) = store.upgradeFacility(.trainingCentre) else {
+            return XCTFail("The second Training Centre upgrade should cost exactly £2,000,000 Balance")
         }
-        XCTAssertEqual(store.profile.coins, 700)
+        XCTAssertEqual(store.profile.coins, 700 * LegendsBalance.legacyUnitScale)
         XCTAssertEqual(store.profile.packTokens, 7)
         XCTAssertEqual(store.facilityLevel(.trainingCentre), 2)
     }
@@ -199,12 +199,12 @@ final class LegendsFacilitiesTests: XCTestCase {
 
     func testMaximumLevelRejectsUpgradeWithoutMutation() async {
         let store = await freshStore()
-        store.profile.coins = 99_999
+        store.profile.coins = 99_999 * LegendsBalance.legacyUnitScale
         store.profile.facilityLevels[LegendsFacilityKind.scoutingNetwork.rawValue] = LegendsFacilityKind.scoutingNetwork.maxLevel
 
         XCTAssertEqual(store.upgradeFacility(.scoutingNetwork), .maximumLevel)
         XCTAssertEqual(store.facilityLevel(.scoutingNetwork), LegendsFacilityKind.scoutingNetwork.maxLevel)
-        XCTAssertEqual(store.profile.coins, 99_999)
+        XCTAssertEqual(store.profile.coins, 99_999 * LegendsBalance.legacyUnitScale)
     }
 
     func testFacilityLevelsPersistThroughSaveAndLoad() async {
@@ -216,14 +216,14 @@ final class LegendsFacilitiesTests: XCTestCase {
         }
 
         store.profile.facilityLevels = [:]
-        store.profile.coins = 500
+        store.profile.coins = 500 * LegendsBalance.legacyUnitScale
         _ = store.upgradeFacility(.trainingCentre)
         _ = store.upgradeFacility(.youthAcademy)
 
         let reloaded = await Task { @MainActor in LegendsStore() }.value
         XCTAssertEqual(reloaded.profile.facilityLevels[LegendsFacilityKind.trainingCentre.rawValue], 1)
         XCTAssertEqual(reloaded.profile.facilityLevels[LegendsFacilityKind.youthAcademy.rawValue], 1)
-        XCTAssertEqual(reloaded.profile.coins, 280)
+        XCTAssertEqual(reloaded.profile.coins, 280 * LegendsBalance.legacyUnitScale)
     }
 
     func testTrainingCentreBenefitRaisesTrainingProgressMultiplier() async {

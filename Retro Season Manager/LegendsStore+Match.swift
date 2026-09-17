@@ -196,9 +196,9 @@ extension LegendsStore {
         let tokens: Int
         let xp: Int
         switch result.outcome {
-        case .win: coins = 50; tokens = 1; xp = 30
-        case .draw: coins = 20; tokens = 0; xp = 10
-        case .loss: coins = 10; tokens = 0; xp = 5
+        case .win: coins = 50 * LegendsBalance.legacyUnitScale; tokens = 1; xp = 30
+        case .draw: coins = 20 * LegendsBalance.legacyUnitScale; tokens = 0; xp = 10
+        case .loss: coins = 10 * LegendsBalance.legacyUnitScale; tokens = 0; xp = 5
         }
         profile.coins += coins
         profile.packTokens += tokens

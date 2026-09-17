@@ -178,7 +178,7 @@ final class LegendsStoreMatchTests: XCTestCase {
         XCTAssertEqual(store.divisionMatchesPlayed, 0)
         XCTAssertEqual(store.divisionFixturesRemaining, store.divisionMatchCount)
         let reward = completedSeason!.divisionSeasonResult!.reward
-        XCTAssertGreaterThanOrEqual(reward.coins, 50)
+        XCTAssertGreaterThanOrEqual(reward.coins, 50 * LegendsBalance.legacyUnitScale)
         XCTAssertEqual(store.profile.lastDivisionSeasonResult?.season, initialSeason)
     }
 
@@ -190,10 +190,10 @@ final class LegendsStoreMatchTests: XCTestCase {
     }
 
     func testSeasonRewardValuesReflectTheFinalOutcome() {
-        XCTAssertEqual(LegendsStore.seasonReward(for: .champion), LegendsSeasonReward(coins: 300, tokens: 3, managerXP: 100))
-        XCTAssertEqual(LegendsStore.seasonReward(for: .promoted), LegendsSeasonReward(coins: 220, tokens: 2, managerXP: 80))
-        XCTAssertEqual(LegendsStore.seasonReward(for: .retained), LegendsSeasonReward(coins: 100, tokens: 1, managerXP: 40))
-        XCTAssertEqual(LegendsStore.seasonReward(for: .relegated), LegendsSeasonReward(coins: 50, tokens: 0, managerXP: 20))
+        XCTAssertEqual(LegendsStore.seasonReward(for: .champion), LegendsSeasonReward(coins: 300 * LegendsBalance.legacyUnitScale, tokens: 3, managerXP: 100))
+        XCTAssertEqual(LegendsStore.seasonReward(for: .promoted), LegendsSeasonReward(coins: 220 * LegendsBalance.legacyUnitScale, tokens: 2, managerXP: 80))
+        XCTAssertEqual(LegendsStore.seasonReward(for: .retained), LegendsSeasonReward(coins: 100 * LegendsBalance.legacyUnitScale, tokens: 1, managerXP: 40))
+        XCTAssertEqual(LegendsStore.seasonReward(for: .relegated), LegendsSeasonReward(coins: 50 * LegendsBalance.legacyUnitScale, tokens: 0, managerXP: 20))
     }
 
     func testDivisionBoundariesPreventPromotionPastWorldLeagueAndRelegationPastDivisionTen() async {
@@ -285,9 +285,9 @@ final class LegendsStoreMatchTests: XCTestCase {
 
         let (expectedCoins, expectedTokens, expectedXP): (Int, Int, Int)
         switch summary.result.outcome {
-        case .win: (expectedCoins, expectedTokens, expectedXP) = (50, 1, 30)
-        case .draw: (expectedCoins, expectedTokens, expectedXP) = (20, 0, 10)
-        case .loss: (expectedCoins, expectedTokens, expectedXP) = (10, 0, 5)
+        case .win: (expectedCoins, expectedTokens, expectedXP) = (50 * LegendsBalance.legacyUnitScale, 1, 30)
+        case .draw: (expectedCoins, expectedTokens, expectedXP) = (20 * LegendsBalance.legacyUnitScale, 0, 10)
+        case .loss: (expectedCoins, expectedTokens, expectedXP) = (10 * LegendsBalance.legacyUnitScale, 0, 5)
         }
         XCTAssertEqual(summary.coinsEarned, expectedCoins)
         XCTAssertEqual(summary.tokensEarned, expectedTokens)
@@ -343,10 +343,10 @@ final class LegendsStoreMatchTests: XCTestCase {
         let win = LegendsMatchEngine.Result(teamGoals: 2, opponentGoals: 0)
         let summary = store.applyMatchOutcome(opponent: opponent, result: win)
 
-        XCTAssertEqual(summary.coinsEarned, 50)
+        XCTAssertEqual(summary.coinsEarned, 50 * LegendsBalance.legacyUnitScale)
         XCTAssertEqual(summary.tokensEarned, 1)
         XCTAssertEqual(summary.xpEarned, 30)
-        XCTAssertEqual(store.profile.coins, 50)
+        XCTAssertEqual(store.profile.coins, 50 * LegendsBalance.legacyUnitScale)
         XCTAssertEqual(store.profile.packTokens, 1)
         XCTAssertEqual(store.profile.divisionWins, 1)
     }

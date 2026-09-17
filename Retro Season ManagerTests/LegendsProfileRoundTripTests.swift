@@ -33,7 +33,7 @@ final class LegendsProfileRoundTripTests: XCTestCase {
         }
 
         let store = await Task { @MainActor in LegendsStore() }.value
-        store.profile.coins = 4242
+        store.profile.coins = 4242 * LegendsBalance.legacyUnitScale
         store.profile.packTokens = 9
         store.profile.division = .division3
         store.profile.teamRating = 81
@@ -55,7 +55,7 @@ final class LegendsProfileRoundTripTests: XCTestCase {
         store.persist()
 
         let reloaded = await Task { @MainActor in LegendsStore() }.value
-        XCTAssertEqual(reloaded.profile.coins, 4242)
+        XCTAssertEqual(reloaded.profile.coins, 4242 * LegendsBalance.legacyUnitScale)
         XCTAssertEqual(reloaded.profile.packTokens, 9)
         XCTAssertEqual(reloaded.profile.division, .division3)
         XCTAssertEqual(reloaded.profile.teamRating, 81)
@@ -96,7 +96,7 @@ final class LegendsProfileRoundTripTests: XCTestCase {
 
         // Fields present in the JSON decode as written.
         XCTAssertEqual(profile.clubName, "Old Save FC")
-        XCTAssertEqual(profile.coins, 1200)
+        XCTAssertEqual(profile.coins, 12_000_000, "A legacy unit-credit save (1200 coins) migrates once to the pounds scale on decode")
         XCTAssertEqual(profile.division, .division5)
         XCTAssertNil(profile.crestBadgeIndex, "Older saves should use the stable name-derived badge fallback")
 

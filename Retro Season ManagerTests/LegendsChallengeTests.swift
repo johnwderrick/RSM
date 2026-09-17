@@ -72,14 +72,14 @@ final class LegendsStoreChallengeTests: XCTestCase {
     private func winSummary(teamGoals: Int = 2, opponentGoals: Int = 0, promoted: Bool = false) -> LegendsMatchOutcomeSummary {
         LegendsMatchOutcomeSummary(opponent: LegendsOpponent(name: "Rival XI", rating: 50),
                                     result: LegendsMatchEngine.Result(teamGoals: teamGoals, opponentGoals: opponentGoals),
-                                    coinsEarned: 50, tokensEarned: 1, xpEarned: 30,
+                                    coinsEarned: 50 * LegendsBalance.legacyUnitScale, tokensEarned: 1, xpEarned: 30,
                                     leveledUp: false, promoted: promoted, newDivision: .division10)
     }
 
     private func lossSummary() -> LegendsMatchOutcomeSummary {
         LegendsMatchOutcomeSummary(opponent: LegendsOpponent(name: "Rival XI", rating: 90),
                                     result: LegendsMatchEngine.Result(teamGoals: 0, opponentGoals: 2),
-                                    coinsEarned: 10, tokensEarned: 0, xpEarned: 5,
+                                    coinsEarned: 10 * LegendsBalance.legacyUnitScale, tokensEarned: 0, xpEarned: 5,
                                     leveledUp: false, promoted: false, newDivision: .division10)
     }
 
@@ -223,7 +223,7 @@ final class LegendsStoreChallengeTests: XCTestCase {
         let weakerOpponentSummary = LegendsMatchOutcomeSummary(
             opponent: LegendsOpponent(name: "Rival XI", rating: rating - 5),
             result: LegendsMatchEngine.Result(teamGoals: 2, opponentGoals: 0),
-            coinsEarned: 50, tokensEarned: 1, xpEarned: 30,
+            coinsEarned: 50 * LegendsBalance.legacyUnitScale, tokensEarned: 1, xpEarned: 30,
             leveledUp: false, promoted: false, newDivision: .division10)
         let notCompleted = store.recordMatchResult(weakerOpponentSummary)
         XCTAssertFalse(notCompleted.contains { $0.challenge.id == "giant-killer" }, "Beating a weaker-rated opponent shouldn't count")
@@ -231,7 +231,7 @@ final class LegendsStoreChallengeTests: XCTestCase {
         let strongerOpponentSummary = LegendsMatchOutcomeSummary(
             opponent: LegendsOpponent(name: "Rival XI", rating: rating + 5),
             result: LegendsMatchEngine.Result(teamGoals: 2, opponentGoals: 0),
-            coinsEarned: 50, tokensEarned: 1, xpEarned: 30,
+            coinsEarned: 50 * LegendsBalance.legacyUnitScale, tokensEarned: 1, xpEarned: 30,
             leveledUp: false, promoted: false, newDivision: .division10)
         let completed = store.recordMatchResult(strongerOpponentSummary)
         XCTAssertTrue(completed.contains { $0.challenge.id == "giant-killer" })

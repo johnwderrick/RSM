@@ -379,7 +379,7 @@ extension LegendsStore {
         // Balances chosen to make specific shelf states deterministic:
         // bronze/silver/gold affordable while the premium packs are not.
         // The club balance is intentionally unrelated to pack access.
-        profile.coins = 300
+        profile.coins = 300 * LegendsBalance.legacyUnitScale
         profile.packTokens = 3
         profile.pendingPackID = "starter"
         profile.pendingPackCardIDs = ["miessi-0506", "maldinho-9596", "batigora-9596"]
@@ -572,7 +572,7 @@ extension LegendsStore {
             firstName: "Test", surname: "Manager", nationalityCode: "GB",
             dateOfBirth: Date(timeIntervalSince1970: 315_532_800), archetype: .architect
         )
-        profile.coins = 500
+        profile.coins = 500 * LegendsBalance.legacyUnitScale
         profile.packTokens = 7
         profile.ownedManagerIDs = ["fergunson", "guardiablo"]
         profile.activeManagerID = "fergunson"
@@ -591,7 +591,7 @@ extension LegendsStore {
             firstName: "Test", surname: "Manager", nationalityCode: "GB",
             dateOfBirth: Date(timeIntervalSince1970: 315_532_800), archetype: .architect
         )
-        profile.coins = 500
+        profile.coins = 500 * LegendsBalance.legacyUnitScale
         profile.packTokens = 7
         profile.facilityLevels = [:]
         persist()
@@ -736,9 +736,9 @@ extension LegendsStore {
         // Completed permanent challenges. Rewards were already granted
         // through the real grant path in earlier sessions; the fixture
         // restores the resulting balances alongside the completed set.
-        //   first-win  — Balance-only (100 coins)
+        //   first-win  — Balance-only (£1,000,000)
         //   collector-10 — token-only (1 pack token)
-        //   clean-sheet — mixed (100 coins + 1 token)
+        //   clean-sheet — mixed (£1,000,000 + 1 token)
         profile.completedPermanentChallengeIDs = ["first-win", "collector-10", "clean-sheet"]
         profile.completedDailyChallengeIDs = ["daily-match"]
         profile.completedWeeklyChallengeIDs = []

@@ -249,6 +249,11 @@ struct LegendsProfile: Codable {
     /// The user's persistent manager identity. Nil means this Legends save
     /// still needs the one-time manager creation flow.
     var managerProfile: LegendsManagerProfile? = nil
+    /// Economy marker: which Balance scale this save uses. 0 = legacy unit
+    /// credits, 1 = pounds scale (see `LegendsBalance`). Profiles decoding
+    /// below the current version migrate their Balance exactly once; new
+    /// profiles are created directly at the current version.
+    var balanceEconomyVersion: Int = LegendsBalance.currentEconomyVersion
     /// One record per owned career instance. The legacy ID sets remain
     /// decoded for compatibility and are reconciled into this registry.
     var ownedPlayerRecords: [String: LegendsOwnedPlayerRecord] = [:]
@@ -267,7 +272,7 @@ struct LegendsProfile: Codable {
         var profile = LegendsProfile(clubName: "RSM Legends FC", crestShort: "RSM",
                                       crestColorRGB: [0.10, 0.76, 0.35],
                                       managerLevel: 1, managerXP: 0,
-                                      coins: 500, packTokens: 3,
+                                      coins: 500 * LegendsBalance.legacyUnitScale, packTokens: 3,
                                       division: .division10, teamRating: 0,
                                       ownedCardIDs: squad.owned,
                                       activatedCardIDs: squad.owned,
@@ -344,6 +349,7 @@ struct LegendsProfile: Codable {
         case completedPermanentChallengeIDs, completedDailyChallengeIDs, completedWeeklyChallengeIDs
         case ownedManagerIDs, activeManagerID, ownedStadiumIDs, activeStadiumID, facilityLevels
         case currentSeason, matchesPlayedThisSeason, cardAgeOffsets
+        case balanceEconomyVersion
         case preferredMentality
         case pendingPackID, pendingPackCardIDs, hasClaimedStarterPack, managerProfile, ownedPlayerRecords
         case libraryCapacityBonus, favouriteCardIDs, seasonReports, playerIdentityProfiles, presentedSeasonReportSeasons
@@ -370,6 +376,7 @@ struct LegendsProfile: Codable {
          ownedStadiumIDs: Set<String> = [], activeStadiumID: String? = nil,
          facilityLevels: [String: Int] = [:],
          currentSeason: Int = 1, matchesPlayedThisSeason: Int = 0, cardAgeOffsets: [String: Int] = [:],
+         balanceEconomyVersion: Int = LegendsBalance.currentEconomyVersion,
          preferredMentality: Mentality = .balanced, pendingPackID: String? = nil,
          pendingPackCardIDs: [String] = [], hasClaimedStarterPack: Bool = false,
          managerProfile: LegendsManagerProfile? = nil,
@@ -421,6 +428,7 @@ struct LegendsProfile: Codable {
         self.currentSeason = currentSeason
         self.matchesPlayedThisSeason = matchesPlayedThisSeason
         self.cardAgeOffsets = cardAgeOffsets
+        self.balanceEconomyVersion = balanceEconomyVersion
         self.preferredMentality = preferredMentality
         self.pendingPackID = pendingPackID
         self.pendingPackCardIDs = pendingPackCardIDs
@@ -487,7 +495,18 @@ struct LegendsProfile: Codable {
         currentSeason = try c.decodeIfPresent(Int.self, forKey: .currentSeason) ?? 1
         matchesPlayedThisSeason = try c.decodeIfPresent(Int.self, forKey: .matchesPlayedThisSeason) ?? 0
         cardAgeOffsets = try c.decodeIfPresent([String: Int].self, forKey: .cardAgeOffsets) ?? [:]
+        balanceEconomyVersion = try c.decodeIfPresent(Int.self, forKey: .balanceEconomyVersion) ?? 0
         preferredMentality = try c.decodeIfPresent(Mentality.self, forKey: .preferredMentality) ?? .balanced
+
+        // One-time Balance economy migration. Saves without the marker
+        // decode at version 0 (legacy unit credits) and convert to the
+        // pounds scale here. `coins` is already decoded above, so this
+        // sees the raw stored value exactly once per save; the migrated
+        // version is written back by encode so a second decode is a no-op.
+        if balanceEconomyVersion < LegendsBalance.currentEconomyVersion {
+            coins = coins * LegendsBalance.legacyUnitScale
+            balanceEconomyVersion = LegendsBalance.currentEconomyVersion
+        }
         pendingPackID = try c.decodeIfPresent(String.self, forKey: .pendingPackID)
         pendingPackCardIDs = try c.decodeIfPresent([String].self, forKey: .pendingPackCardIDs) ?? []
         hasClaimedStarterPack = try c.decodeIfPresent(Bool.self, forKey: .hasClaimedStarterPack) ?? false
@@ -532,11 +551,14 @@ final class LegendsStore {
     }
 
     static func seasonReward(for outcome: LegendsDivisionSeasonOutcome) -> LegendsSeasonReward {
+        // Balance amounts keep the accepted progression (champion > promoted
+        // > retained > relegated) at the pounds scale — the legacy unit
+        // values × `LegendsBalance.legacyUnitScale`.
         switch outcome {
-        case .champion: return LegendsSeasonReward(coins: 300, tokens: 3, managerXP: 100)
-        case .promoted: return LegendsSeasonReward(coins: 220, tokens: 2, managerXP: 80)
-        case .retained: return LegendsSeasonReward(coins: 100, tokens: 1, managerXP: 40)
-        case .relegated: return LegendsSeasonReward(coins: 50, tokens: 0, managerXP: 20)
+        case .champion: return LegendsSeasonReward(coins: 300 * LegendsBalance.legacyUnitScale, tokens: 3, managerXP: 100)
+        case .promoted: return LegendsSeasonReward(coins: 220 * LegendsBalance.legacyUnitScale, tokens: 2, managerXP: 80)
+        case .retained: return LegendsSeasonReward(coins: 100 * LegendsBalance.legacyUnitScale, tokens: 1, managerXP: 40)
+        case .relegated: return LegendsSeasonReward(coins: 50 * LegendsBalance.legacyUnitScale, tokens: 0, managerXP: 20)
         }
     }
 

@@ -29,7 +29,7 @@ final class LegendsPoint2SeasonAwardsTests: XCTestCase {
         LegendsDivisionSeasonResult(season: season, finalRank: 1, totalTeams: 8,
                                     outcome: .champion, previousDivision: .division5,
                                     newDivision: .division4,
-                                    reward: LegendsSeasonReward(coins: 300, tokens: 3, managerXP: 100))
+                                    reward: LegendsSeasonReward(coins: 300 * LegendsBalance.legacyUnitScale, tokens: 3, managerXP: 100))
     }
 
     /// A real `settleDivisionSeason()` result flows through
@@ -90,7 +90,7 @@ final class LegendsPoint2SeasonAwardsTests: XCTestCase {
         let retained = LegendsDivisionSeasonResult(season: store.profile.currentSeason, finalRank: 5,
                                                    totalTeams: 8, outcome: .retained,
                                                    previousDivision: .division5, newDivision: .division5,
-                                                   reward: LegendsSeasonReward(coins: 100, tokens: 1, managerXP: 40))
+                                                   reward: LegendsSeasonReward(coins: 100 * LegendsBalance.legacyUnitScale, tokens: 1, managerXP: 40))
         _ = rollSeason(store, divisionResult: retained)
 
         XCTAssertEqual(store.profile.playerCareers[card.id]?.honours, [])

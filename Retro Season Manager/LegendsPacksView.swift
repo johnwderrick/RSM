@@ -107,13 +107,13 @@ struct LegendsPacksView: View {
     /// store-front version.
     private var summaryBand: some View {
         HStack(spacing: 8) {
-            balanceStat(value: "\(store.profile.coins)",
+            balanceStat(value: LegendsBalance.compact(store.profile.coins),
                         label: "BALANCE",
-                        color: LegendsPalette.goldDeep,
+                        color: LegendsPalette.green,
                         identifier: "legends.packs.summary.balance")
             balanceStat(value: "\(store.profile.packTokens)",
                         label: "PACK TOKENS",
-                        color: LegendsPalette.green,
+                        color: LegendsPalette.orange,
                         identifier: "legends.packs.summary.tokens")
         }
         .padding(10)
@@ -128,7 +128,7 @@ struct LegendsPacksView: View {
 
     private func balanceStat(value: String, label: String, color: Color, identifier: String) -> some View {
         HStack(spacing: 8) {
-            Image(systemName: label == "BALANCE" ? "dollarsign.circle.fill" : "shippingbox.fill")
+            Image(systemName: label == "BALANCE" ? "banknote.fill" : "shippingbox.fill")
                 .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(color)
             VStack(alignment: .leading, spacing: 1) {

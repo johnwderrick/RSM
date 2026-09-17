@@ -132,7 +132,7 @@ final class LegendsLifecyclePhase2Tests: XCTestCase {
         let seasonResult = LegendsDivisionSeasonResult(season: 1, finalRank: 2, totalTeams: 8,
                                                        outcome: .promoted, previousDivision: .division9,
                                                        newDivision: .division8,
-                                                       reward: LegendsSeasonReward(coins: 100, tokens: 2, managerXP: 40))
+                                                       reward: LegendsSeasonReward(coins: 100 * LegendsBalance.legacyUnitScale, tokens: 2, managerXP: 40))
         let first = playSeason(store, xiIDs: [young.id], divisionResult: seasonResult)
         XCTAssertTrue(first?.newMilestones[young.id]?.contains(.firstTrophy) == true, "First completed division season earns FIRST TROPHY")
 

@@ -39,13 +39,17 @@ enum LegendsFacilityKind: String, Codable, CaseIterable, Identifiable, Equatable
     }
 
     /// Base prices deliberately use Balance only. Pack tokens never enter
-    /// this table or the upgrade transaction.
+    /// this table or the upgrade transaction. Costs keep the accepted
+    /// relative order (Training Centre < Youth Academy < Scouting Network
+    /// < Club Stadium) at the pounds scale — the legacy unit values ×
+    /// `LegendsBalance.legacyUnitScale` — so the cheapest upgrade is a
+    /// £1,000,000 commitment and the Club Stadium starts at £1,600,000.
     var baseUpgradeCost: Int {
         switch self {
-        case .trainingCentre: return 100
-        case .youthAcademy: return 120
-        case .scoutingNetwork: return 140
-        case .clubStadium: return 160
+        case .trainingCentre: return 100 * LegendsBalance.legacyUnitScale
+        case .youthAcademy: return 120 * LegendsBalance.legacyUnitScale
+        case .scoutingNetwork: return 140 * LegendsBalance.legacyUnitScale
+        case .clubStadium: return 160 * LegendsBalance.legacyUnitScale
         }
     }
 
@@ -157,22 +161,23 @@ struct LegendsFacilitiesView: View {
     private var balanceSummary: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 12) {
-                Image(systemName: "dollarsign.circle.fill")
+                Image(systemName: "banknote.fill")
                     .font(.system(size: 28, weight: .black))
-                    .foregroundStyle(LegendsPalette.goldDeep)
+                    .foregroundStyle(LegendsPalette.green)
                     .frame(width: 48, height: 48)
-                    .background(LegendsPalette.goldWash)
+                    .background(LegendsPalette.greenWash)
                     .clipShape(Circle())
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text("CLUB BALANCE")
                         .font(.system(size: 10, weight: .black, design: .monospaced))
                         .foregroundStyle(LegendsPalette.navy.opacity(0.62))
-                    Text("\(store.profile.coins)")
+                    Text(LegendsBalance.compact(store.profile.coins))
                         .font(.system(size: 28, weight: .black, design: .rounded))
                         .monospacedDigit()
                         .foregroundStyle(LegendsPalette.navy)
                         .accessibilityIdentifier("legends.facilities.balance")
+                        .accessibilityLabel("Club Balance \(LegendsBalance.spoken(store.profile.coins))")
                 }
 
                 Spacer(minLength: 8)
@@ -197,7 +202,7 @@ struct LegendsFacilitiesView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.white)
         .clipShape(RoundedRectangle(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(LegendsPalette.gold.opacity(0.32), lineWidth: 1.2))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(LegendsPalette.green.opacity(0.32), lineWidth: 1.2))
         .shadow(color: LegendsPalette.navy.opacity(0.09), radius: 8, y: 4)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("legends.facilities.summary")
@@ -300,7 +305,7 @@ struct LegendsFacilitiesView: View {
                         .font(.system(size: 8, weight: .black, design: .monospaced))
                         .foregroundStyle(LegendsPalette.navy.opacity(0.55))
                     if let cost {
-                        Text("\(cost) BALANCE")
+                        Text(LegendsBalance.compact(cost) + " BALANCE")
                             .font(.system(size: 12, weight: .black, design: .monospaced))
                             .monospacedDigit()
                             .foregroundStyle(canUpgrade ? LegendsPalette.navy : LegendsPalette.orange)
@@ -330,7 +335,7 @@ struct LegendsFacilitiesView: View {
                 .buttonStyle(PressableButtonStyle())
                 .disabled(!canUpgrade)
                 .accessibilityIdentifier("legends.facilities.upgrade.\(kind.rawValue)")
-                .accessibilityLabel(isMaxed ? "\(kind.displayName), maximum level reached" : canUpgrade ? "Upgrade \(kind.displayName) for \(cost ?? 0) Balance" : "\(kind.displayName), need \(missing) more Balance")
+                .accessibilityLabel(isMaxed ? "\(kind.displayName), maximum level reached" : canUpgrade ? "Upgrade \(kind.displayName) for \(LegendsBalance.spoken(cost ?? 0))" : "\(kind.displayName), need \(LegendsBalance.spoken(missing)) more Balance")
             }
 
             Text(availabilityText(isMaxed: isMaxed, canUpgrade: canUpgrade, missing: missing))
@@ -361,22 +366,22 @@ struct LegendsFacilitiesView: View {
     private func actionTitle(isMaxed: Bool, canUpgrade: Bool, missing: Int) -> String {
         if isMaxed { return "MAXED" }
         if canUpgrade { return "UPGRADE" }
-        return "NEED \(missing) MORE"
+        return "NEED \(LegendsBalance.compact(missing)) MORE"
     }
 
     private func availabilityText(isMaxed: Bool, canUpgrade: Bool, missing: Int) -> String {
         if isMaxed { return "AVAILABLE STATE · MAXIMUM LEVEL" }
         if canUpgrade { return "AVAILABLE · BALANCE COVERS THIS UPGRADE" }
-        return "UNAVAILABLE · NEED \(missing) MORE BALANCE"
+        return "UNAVAILABLE · NEED \(LegendsBalance.compact(missing)) MORE BALANCE"
     }
 
     private func handle(_ result: LegendsFacilityUpgradeResult) {
         switch result {
         case .upgraded(let kind, _, let to, let cost):
             Haptics.success()
-            feedback = "\(kind.displayName.uppercased()) UPGRADED TO LEVEL \(to). \(cost) BALANCE SPENT."
+            feedback = "\(kind.displayName.uppercased()) UPGRADED TO LEVEL \(to). \(LegendsBalance.full(cost)) SPENT."
         case .insufficientBalance(let required, let available):
-            feedback = "UPGRADE UNAVAILABLE. NEED \(required - available) MORE BALANCE."
+            feedback = "UPGRADE UNAVAILABLE. NEED \(LegendsBalance.full(required - available)) MORE BALANCE."
         case .maximumLevel:
             feedback = "THIS FACILITY IS ALREADY AT MAXIMUM LEVEL."
         }

@@ -1402,7 +1402,7 @@ final class RetroSeasonManagerUITests: XCTestCase {
         let packsScreen = app.descendants(matching: .any)["legends.packs.screen"]
         XCTAssertTrue(packsScreen.waitForExistence(timeout: 8), "Expected the Packs shelf")
 
-        // Resources mirror the fixture profile (300 club balance, 3 tokens).
+        // Resources mirror the fixture profile (£3,000,000 club balance, 3 tokens).
         XCTAssertTrue(app.descendants(matching: .any)["legends.packs.summary.balance"].waitForExistence(timeout: 6),
                       "Expected the club balance stat")
         XCTAssertTrue(app.descendants(matching: .any)["legends.packs.summary.tokens"].exists,
@@ -1564,8 +1564,8 @@ final class RetroSeasonManagerUITests: XCTestCase {
                       "Expected the Facilities destination")
         let balance = app.descendants(matching: .any)["legends.facilities.balance"]
         XCTAssertTrue(balance.waitForExistence(timeout: 5), "Expected the Club Balance summary")
-        XCTAssertTrue(balance.label.contains("500"),
-                      "The fixture should expose the initial 500 Balance")
+        XCTAssertTrue(balance.label.contains("£5,000,000"),
+                      "The fixture should expose the initial £5,000,000 Balance; got \(balance.label)")
 
         let trainingLevel = app.descendants(matching: .any)["legends.facilities.level.trainingCentre"]
         XCTAssertTrue(trainingLevel.waitForExistence(timeout: 5),
@@ -1595,8 +1595,8 @@ final class RetroSeasonManagerUITests: XCTestCase {
         XCTAssertTrue(trainingLevel.label.contains("LV 1/5"),
                       "A successful upgrade should advance the Training Centre to level one")
         XCTAssertTrue(balance.waitForExistence(timeout: 5))
-        XCTAssertTrue(balance.label.contains("400"),
-                      "The exact 100 Balance upgrade cost should be deducted once")
+        XCTAssertTrue(balance.label.contains("£4,000,000"),
+                      "The exact £1,000,000 upgrade cost should be deducted once; got \(balance.label)")
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "UPGRADED TO LEVEL 1")).firstMatch.waitForExistence(timeout: 5),
                       "A successful upgrade should provide visible confirmation")
 
@@ -1637,8 +1637,8 @@ final class RetroSeasonManagerUITests: XCTestCase {
 
         XCTAssertTrue(facilitiesScreen.waitForExistence(timeout: 8),
                       "Facilities should reopen cleanly after navigation away")
-        XCTAssertTrue(balance.waitForExistence(timeout: 5) && balance.label.contains("400"),
-                      "The updated Balance should remain visible after reopening")
+        XCTAssertTrue(balance.waitForExistence(timeout: 5) && balance.label.contains("£4,000,000"),
+                      "The updated Balance should remain visible after reopening; got \(balance.label)")
         XCTAssertTrue(trainingLevel.waitForExistence(timeout: 5) && trainingLevel.label.contains("LV 1/5"),
                       "The upgraded facility level should remain visible after reopening")
 
@@ -2229,10 +2229,10 @@ final class RetroSeasonManagerUITests: XCTestCase {
         // Reward labels: Balance-only, token-only and mixed examples.
         let dailyMatchReward = app.descendants(matching: .any)["legends.challenges.reward.daily-match"]
         XCTAssertTrue(dailyMatchReward.waitForExistence(timeout: 5))
-        XCTAssertTrue(dailyMatchReward.label.contains("+30 Balance"), "Got \(dailyMatchReward.label)")
+        XCTAssertTrue(dailyMatchReward.label.contains("+£300,000 Balance"), "Got \(dailyMatchReward.label)")
         let dailyWinReward = app.descendants(matching: .any)["legends.challenges.reward.daily-win"]
         XCTAssertTrue(dailyWinReward.waitForExistence(timeout: 5))
-        XCTAssertTrue(dailyWinReward.label.contains("+50 Balance") && dailyWinReward.label.contains("1 pack token"),
+        XCTAssertTrue(dailyWinReward.label.contains("+£500,000 Balance") && dailyWinReward.label.contains("1 pack token"),
                       "Got \(dailyWinReward.label)")
 
         // Progress labels reflect the fixture counters.
@@ -2299,7 +2299,7 @@ final class RetroSeasonManagerUITests: XCTestCase {
         XCTAssertTrue(firstWinCard.label.contains("completed"), "Got \(firstWinCard.label)")
         let firstWinReward = app.descendants(matching: .any)["legends.challenges.reward.first-win"]
         XCTAssertTrue(firstWinReward.waitForExistence(timeout: 5))
-        XCTAssertTrue(firstWinReward.label.contains("+100 Balance"), "Got \(firstWinReward.label)")
+        XCTAssertTrue(firstWinReward.label.contains("+£1,000,000 Balance"), "Got \(firstWinReward.label)")
         let collectorCard = app.descendants(matching: .any)["legends.challenges.card.collector-10"]
         XCTAssertTrue(collectorCard.waitForExistence(timeout: 5))
         let collectorReward = app.descendants(matching: .any)["legends.challenges.reward.collector-10"]
@@ -2308,7 +2308,7 @@ final class RetroSeasonManagerUITests: XCTestCase {
                       "Token-only reward; got \(collectorReward.label)")
         let cleanSheetReward = app.descendants(matching: .any)["legends.challenges.reward.clean-sheet"]
         XCTAssertTrue(cleanSheetReward.waitForExistence(timeout: 5))
-        XCTAssertTrue(cleanSheetReward.label.contains("+100 Balance") && cleanSheetReward.label.contains("1 pack token"),
+        XCTAssertTrue(cleanSheetReward.label.contains("+£1,000,000 Balance") && cleanSheetReward.label.contains("1 pack token"),
                       "Mixed reward; got \(cleanSheetReward.label)")
 
         // Scroll the permanent list — the badge collection is long.

@@ -584,8 +584,8 @@ struct LegendsHomeView: View {
 
     private var resourceBar: some View {
         HStack(spacing: isCompact ? 8 : 14) {
-            LegendsMiniResource(icon: "dollarsign.circle.fill", value: "\(store.profile.coins)", label: "BALANCE", color: LegendsPalette.gold)
-            LegendsMiniResource(icon: "cube.fill", value: "\(store.profile.packTokens)", label: "TOKENS", color: LegendsPalette.green)
+            LegendsMiniResource(icon: "banknote.fill", value: LegendsBalance.compact(store.profile.coins), label: "BALANCE", color: LegendsPalette.green)
+            LegendsMiniResource(icon: "cube.fill", value: "\(store.profile.packTokens)", label: "TOKENS", color: LegendsPalette.orange)
             LegendsMiniResource(icon: "star.fill", value: ratingText, label: "RATING", color: LegendsPalette.blue)
             LegendsMiniResource(icon: "trophy.fill", value: divisionShortName, label: "DIVISION", color: LegendsPalette.purple)
         }
@@ -702,8 +702,8 @@ struct LegendsHomeView: View {
 
     private var resourceSummary: some View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: isCompact ? 2 : 4), spacing: 12) {
-            LegendsResourceCard(icon: "dollarsign.circle.fill", value: "\(store.profile.coins)", label: "BALANCE", color: LegendsPalette.gold, background: LegendsPalette.goldWash)
-            LegendsResourceCard(icon: "cube.fill", value: "\(store.profile.packTokens)", label: "TOKENS", color: LegendsPalette.green, background: LegendsPalette.greenWash)
+            LegendsResourceCard(icon: "banknote.fill", value: LegendsBalance.compact(store.profile.coins), label: "BALANCE", color: LegendsPalette.green, background: LegendsPalette.greenWash)
+            LegendsResourceCard(icon: "cube.fill", value: "\(store.profile.packTokens)", label: "TOKENS", color: LegendsPalette.orange, background: LegendsPalette.orange.opacity(0.12))
             LegendsResourceCard(icon: "star.fill", value: ratingText, label: "TEAM RATING", color: LegendsPalette.blue, background: LegendsPalette.blueWash)
             LegendsResourceCard(icon: "trophy.fill", value: divisionShortName, label: "DIVISION", color: LegendsPalette.purple, background: LegendsPalette.purpleWash)
         }
@@ -794,9 +794,17 @@ struct LegendsHomeView: View {
                         .font(.system(size: 10, weight: .bold, design: .monospaced))
                         .foregroundStyle(LegendsPalette.navy)
                 }
-                Text("REWARD  \(challenge.coinReward) BALANCE\(challenge.tokenReward > 0 ? " + \(challenge.tokenReward) TOKEN" : "")")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundStyle(LegendsPalette.goldDeep)
+                HStack(spacing: 7) {
+                    if challenge.coinReward > 0 {
+                        Label("\(LegendsBalance.full(challenge.coinReward)) BALANCE", systemImage: "banknote.fill")
+                            .foregroundStyle(LegendsPalette.green)
+                    }
+                    if challenge.tokenReward > 0 {
+                        Label("\(challenge.tokenReward) TOKEN", systemImage: "cube.fill")
+                            .foregroundStyle(LegendsPalette.orange)
+                    }
+                }
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
             } else {
                 Text("ALL DAILY OBJECTIVES COMPLETE")
                     .font(.system(.headline, design: .rounded).weight(.black))
@@ -1088,8 +1096,8 @@ struct LegendsMenuShell<Content: View>: View {
 
     private var resourceSummary: some View {
         HStack(spacing: compactHeight ? 6 : 8) {
-            LegendsMiniResource(icon: "dollarsign.circle.fill", value: "\(store.profile.coins)", label: "BALANCE", color: LegendsPalette.gold)
-            LegendsMiniResource(icon: "cube.fill", value: "\(store.profile.packTokens)", label: "TOKENS", color: LegendsPalette.green)
+            LegendsMiniResource(icon: "banknote.fill", value: LegendsBalance.compact(store.profile.coins), label: "BALANCE", color: LegendsPalette.green)
+            LegendsMiniResource(icon: "cube.fill", value: "\(store.profile.packTokens)", label: "TOKENS", color: LegendsPalette.orange)
             LegendsMiniResource(icon: "star.fill", value: store.currentTeamRating > 0 ? "\(store.currentTeamRating)" : "--", label: "RATING", color: LegendsPalette.blue)
         }
         .padding(.horizontal, compactHeight ? 7 : 9)
@@ -1877,7 +1885,7 @@ struct LegendsClubHubView: View {
                 }
                 HStack(spacing: 12) {
                     clubDestination(title: "FACILITIES", subtitle: "UPGRADE THE CLUB WITH BALANCE", icon: "building.2.crop.circle.fill", color: LegendsPalette.goldDeep,
-                                    value: "\(store.profile.coins) BALANCE", action: onOpenFacilities)
+                                    value: "\(LegendsBalance.compact(store.profile.coins)) BALANCE", action: onOpenFacilities)
                     clubDestination(title: "BADGE", subtitle: "CHOOSE YOUR CLUB IDENTITY", icon: "shield.lefthalf.filled", color: LegendsPalette.purple,
                                     value: "BADGE \(store.resolvedCrestBadgeIndex) OF \(ClubBadgeCatalog.count)", action: onOpenBadge)
                 }

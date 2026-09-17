@@ -50,7 +50,7 @@ final class LegendsStorePackOpeningTests: XCTestCase {
     // it here too. See makeTestStore() in GameStoreTestSupport.swift.
     private func freshStore() async -> LegendsStore {
         let store = await Task { @MainActor in LegendsStore() }.value
-        store.profile.coins = 100_000
+        store.profile.coins = 100_000 * LegendsBalance.legacyUnitScale
         store.profile.packTokens = 1_000
         store.profile.ownedCardIDs = []
         store.profile.duplicateProgress = [:]
