@@ -22,6 +22,12 @@ final class LegendsSquadTests: XCTestCase {
         var seenNames = Set<String>()
         let uniqueCards = LegendsCardDatabase.all.filter { seenNames.insert($0.name).inserted }
         store.profile.ownedCardIDs = Set(uniqueCards.prefix(20).map(\.id))
+        // `LegendsStore()` loads the persisted profile shared by the test host.
+        // Keep this fixture independent from aging tests that may have left
+        // career records or age offsets behind, otherwise an intended squad
+        // player can already be retired before this test starts.
+        store.profile.playerCareers = [:]
+        store.profile.cardAgeOffsets = [:]
         store.signAllOwnedCardsForTesting()
         store.profile.startingXICardIDs = Array(repeating: nil, count: 11)
         store.profile.benchCardIDs = Array(repeating: nil, count: LegendsStore.benchSize)
