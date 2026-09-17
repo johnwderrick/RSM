@@ -28,6 +28,7 @@ final class LegendsSquadTests: XCTestCase {
         // player can already be retired before this test starts.
         store.profile.playerCareers = [:]
         store.profile.cardAgeOffsets = [:]
+        store.profile.legendsHall = []
         store.signAllOwnedCardsForTesting()
         store.profile.startingXICardIDs = Array(repeating: nil, count: 11)
         store.profile.benchCardIDs = Array(repeating: nil, count: LegendsStore.benchSize)
