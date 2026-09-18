@@ -804,5 +804,40 @@ extension LegendsStore {
         persist()
     }
 
+    /// Deterministic UI-test fixture for the redesigned Settings screen:
+    /// an established manager and club (real name, level, division, crest)
+    /// so the summary card has authoritative values to show.
+    ///
+    /// Seeds once per app install (same pattern as the manager-edit
+    /// fixture): the persistence UI test relaunches the app and must
+    /// observe a changed presentation preference loaded back from user
+    /// defaults, so only the first launch resets presentation defaults —
+    /// a UserDefaults marker outside the save distinguishes the run's
+    /// first launch from its relaunches.
+    func prepareSettingsFixtureForDebug() {
+        let seededKey = "rsm.uitest.settingsSeeded"
+        if UserDefaults.standard.bool(forKey: seededKey) == false {
+            UserDefaults.standard.set(true, forKey: seededKey)
+            // Presentation memory lives outside the save; clear it so the
+            // fixture always starts from the accepted defaults even when a
+            // previous UI-test run flipped a preference.
+            LegendsPresentation.restoreDefaults()
+        }
+        // Auto-Save always starts on for the fixture: no test expects it to
+        // persist across relaunches, and an interrupted previous run could
+        // otherwise leave it off (which would also suppress the save below).
+        UserDefaults.standard.set(true, forKey: LegendsPresentation.autosaveKey)
+
+        profile = .starter()
+        profile.managerProfile = LegendsManagerProfile(
+            firstName: "Test", surname: "Manager", nationalityCode: "GB",
+            dateOfBirth: Date(timeIntervalSince1970: 315_532_800), archetype: .architect
+        )
+        profile.managerLevel = 4
+        profile.managerXP = 230
+        migrateOwnedPlayerRecords()
+        persist()
+    }
+
     #endif
 }

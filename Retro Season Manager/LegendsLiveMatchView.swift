@@ -465,7 +465,7 @@ struct LegendsLiveMatchView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach(Array(live.commentary.enumerated()), id: \.offset) { index, line in
                         Text(line.text)
-                            .font(.system(.footnote, design: .monospaced).weight(line.text.contains("GOAL") ? .bold : .regular))
+                            .font(.system(LegendsPresentation.commentaryTextSize.textStyle, design: .monospaced).weight(line.text.contains("GOAL") ? .bold : .regular))
                             .foregroundStyle(commentaryColor(line.text))
                             .multilineTextAlignment(commentaryAlignment(line.side))
                             .frame(maxWidth: .infinity, alignment: commentaryFrameAlignment(line.side))
@@ -633,6 +633,7 @@ struct LegendsLiveMatchView: View {
                     }
                     .buttonStyle(PressableButtonStyle())
                     .disabled(hasFinishedHandoff)
+                    .accessibilityIdentifier("legends.live.continue")
                 }
             }
             .frame(maxWidth: 380)

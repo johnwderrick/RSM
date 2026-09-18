@@ -308,7 +308,8 @@ struct LegendsManagerOnboardingView: View {
         guard let selected = archetype else { return }
         hasCompletedCreation = true
         store.profile.managerProfile = LegendsManagerProfile(firstName: cleanFirstName, surname: cleanSurname, nationalityCode: nationality, dateOfBirth: dateOfBirth, archetype: selected)
-        store.persist()
+        // Critical one-time action: always written, even with Auto-Save off.
+        store.persistNow()
         Haptics.success()
         onComplete()
     }

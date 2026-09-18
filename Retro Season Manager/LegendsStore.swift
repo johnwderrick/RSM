@@ -765,20 +765,69 @@ final class LegendsStore {
         return try? JSONDecoder().decode(LegendsProfile.self, from: data)
     }
 
+    /// Writes the whole profile to disk. Legends autosaves after every
+    /// change — each completed match (instant or live 2D), plus squad
+    /// moves, training, transfers, packs, facilities, challenges and
+    /// identity edits — so callers never need to think about saving.
+    ///
+    /// With Auto-Save off (Settings → SAVE & DATA) routine progress is
+    /// kept in memory only and this becomes a no-op; `persistNow()`
+    /// bypasses the preference for critical one-time actions, and turning
+    /// autosave back on checkpoints everything immediately.
     func persist() {
+        guard autosaveEnabled else { return }
         sanitizeSquadRoleAssignments()
         guard let data = try? JSONEncoder().encode(profile) else { return }
         try? data.write(to: Self.fileURL)
     }
 
+    /// Forces a save regardless of the Auto-Save preference — used for
+    /// critical one-time actions (manager creation, manager editing,
+    /// deleting the club) that must never risk being lost, and for the
+    /// checkpoint made when the Auto-Save preference itself changes.
+    func persistNow() {
+        sanitizeSquadRoleAssignments()
+        guard let data = try? JSONEncoder().encode(profile) else { return }
+        try? data.write(to: Self.fileURL)
+    }
+
+    /// The Settings → SAVE & DATA Auto-Save preference. Defaults to on:
+    /// every change saves immediately, the original behaviour. Lives in
+    /// UserDefaults (like the other presentation preferences) so it is
+    /// independent of the save file itself.
+    var autosaveEnabled: Bool {
+        UserDefaults.standard.object(forKey: LegendsPresentation.autosaveKey) as? Bool ?? true
+    }
+
+    /// When the club was last written to disk, taken from the save
+    /// file's own modification date so it always reflects reality —
+    /// including saves made with autosave off (`persistNow`) and
+    /// background checkpoints. `nil` means no save exists yet (a brand
+    /// new club before its first write, or autosave paused with no
+    /// critical action taken).
+    var lastSavedDate: Date? {
+        let attributes = try? FileManager.default.attributesOfItem(atPath: Self.fileURL.path)
+        return attributes?[.modificationDate] as? Date
+    }
+
+    /// Updates the Auto-Save preference and always saves the current
+    /// state: turning autosave off checkpoints progress before pausing,
+    /// and turning it back on saves everything that accumulated while
+    /// paused. The preference change itself therefore never loses data.
+    func setAutosaveEnabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: LegendsPresentation.autosaveKey)
+        persistNow()
+    }
+
     /// Wipes the save file and resets in-memory state back to a fresh
     /// starter club — Legends has just one save slot, so "delete" is a
-    /// full reset rather than removing one of several files.
+    /// full reset rather than removing one of several files. Always
+    /// writes immediately, even with Auto-Save off.
     func deleteClub() {
         try? FileManager.default.removeItem(at: Self.fileURL)
         profile = .starter()
         migrateLegacyCareerStates()
         migrateOwnedPlayerRecords()
-        persist()
+        persistNow()
     }
 }

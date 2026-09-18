@@ -83,7 +83,13 @@ struct ExperienceSelectView: View {
     @Binding var experience: GameExperience?
     @State private var appeared = false
     @State private var showingSettings = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+
+    /// Legends Reduce-Interface-Motion preference layered over the system
+    /// Reduce Motion setting (the system setting always wins).
+    private var reduceMotion: Bool {
+        LegendsPresentation.motionSuppressed(systemReduceMotion: systemReduceMotion)
+    }
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     private enum ExperienceType {
@@ -283,7 +289,13 @@ private struct ExperienceEntryButton: View {
     let appeared: Bool
     let action: () -> Void
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+
+    /// Legends Reduce-Interface-Motion preference layered over the system
+    /// Reduce Motion setting (the system setting always wins).
+    private var reduceMotion: Bool {
+        LegendsPresentation.motionSuppressed(systemReduceMotion: systemReduceMotion)
+    }
 
     var body: some View {
         // Two-state artwork matching SettingsButtonStyle: the normal and
@@ -307,7 +319,13 @@ private struct ExperienceEntryButton: View {
 private struct EntryArtworkButtonStyle: ButtonStyle {
     let entry: ExperienceSelectorArtwork.Entry
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+
+    /// Legends Reduce-Interface-Motion preference layered over the system
+    /// Reduce Motion setting (the system setting always wins).
+    private var reduceMotion: Bool {
+        LegendsPresentation.motionSuppressed(systemReduceMotion: systemReduceMotion)
+    }
 
     func makeBody(configuration: Configuration) -> some View {
         ZStack {
@@ -341,7 +359,13 @@ private struct EntryArtworkButtonStyle: ButtonStyle {
 private struct SettingsButtonStyle: ButtonStyle {
     let compact: Bool
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+
+    /// Legends Reduce-Interface-Motion preference layered over the system
+    /// Reduce Motion setting (the system setting always wins).
+    private var reduceMotion: Bool {
+        LegendsPresentation.motionSuppressed(systemReduceMotion: systemReduceMotion)
+    }
 
     func makeBody(configuration: Configuration) -> some View {
         ZStack {
@@ -375,7 +399,13 @@ private struct SettingsButtonStyle: ButtonStyle {
 }
 
 private struct ExperienceEntryButtonStyle: ButtonStyle {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+
+    /// Legends Reduce-Interface-Motion preference layered over the system
+    /// Reduce Motion setting (the system setting always wins).
+    private var reduceMotion: Bool {
+        LegendsPresentation.motionSuppressed(systemReduceMotion: systemReduceMotion)
+    }
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label

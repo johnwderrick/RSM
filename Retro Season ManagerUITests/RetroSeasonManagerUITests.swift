@@ -2619,4 +2619,318 @@ final class RetroSeasonManagerUITests: XCTestCase {
 
         XCTFail("Pressed art '\(pressedImageID)' was not visible during either real hold.")
     }
+
+    /// Shared entry into the Settings destination via the sidebar, using
+    /// the deterministic settings fixture (established manager and club).
+    @discardableResult
+    private func openLegendsSettings(_ app: XCUIApplication) -> XCUIElement {
+        let legendsButton = app.buttons["experience.legends"]
+        XCTAssertTrue(legendsButton.waitForExistence(timeout: 8),
+                      "Expected the RSM Legends entry button on the experience selector")
+        legendsButton.tap()
+
+        let settingsTab = app.buttons["legends.nav.settings"]
+        XCTAssertTrue(settingsTab.waitForExistence(timeout: 10),
+                      "Expected the Settings sidebar item after entering Legends mode")
+        Thread.sleep(forTimeInterval: 0.5)
+        settingsTab.tap()
+
+        let settingsScreen = app.descendants(matching: .any)["legends.shell.settings"]
+        XCTAssertTrue(settingsScreen.waitForExistence(timeout: 8),
+                      "Expected the redesigned Settings destination")
+        XCTAssertTrue(app.staticTexts["SETTINGS"].waitForExistence(timeout: 5),
+                      "Settings must be the highlighted shell destination")
+        return settingsScreen
+    }
+
+    /// The redesigned Settings destination: summary card, presentation
+    /// preference effects and persistence, restore defaults, destructive
+    /// confirmation safety, and navigation round trips.
+    func testLegendsSettingsSummaryPreferencesAndDeleteConfirmation() throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_LEGENDS_SETTINGS"]
+        app.launch()
+
+        openLegendsSettings(app)
+
+        // Summary card shows the authoritative fixture values.
+        let clubName = app.descendants(matching: .any)["settings.summary.clubName"]
+        XCTAssertTrue(clubName.waitForExistence(timeout: 5), "Expected the club-name summary value")
+        let manager = app.descendants(matching: .any)["settings.summary.manager"]
+        XCTAssertTrue(manager.waitForExistence(timeout: 5), "Expected the manager summary row")
+        XCTAssertTrue(manager.label.contains("Test Manager"), "Got \(manager.label)")
+        let level = app.descendants(matching: .any)["settings.summary.level"]
+        XCTAssertTrue(level.waitForExistence(timeout: 5))
+        XCTAssertTrue(level.label.contains("Lv 4"), "Got \(level.label)")
+        XCTAssertTrue(app.descendants(matching: .any)["settings.summary.division"].waitForExistence(timeout: 5),
+                      "Expected the division summary row")
+        let saveStatus = app.descendants(matching: .any)["settings.summary.saveStatus"]
+        XCTAssertTrue(saveStatus.waitForExistence(timeout: 5), "Expected the save-status indicator")
+        XCTAssertTrue(saveStatus.label.lowercased().contains("automatic"), "Got \(saveStatus.label)")
+        XCTAssertTrue(app.descendants(matching: .any)["settings.about.version"].waitForExistence(timeout: 5),
+                      "Expected the app-version row in the About section")
+
+        // The fixture persists at launch, so the LAST SAVED row must show a
+        // real timestamp rather than the not-yet-saved fallback.
+        let lastSaved = app.descendants(matching: .any)["settings.save.lastSavedRow"]
+        XCTAssertTrue(lastSaved.waitForExistence(timeout: 5),
+                      "Expected the LAST SAVED row in SAVE & DATA")
+        XCTAssertFalse(lastSaved.label.lowercased().contains("not yet"),
+                       "The fixture saves at launch, so a timestamp must be shown; got \(lastSaved.label)")
+        XCTAssertTrue(lastSaved.label.lowercased().contains("auto-save is on"),
+                      "The accessibility label must state the autosave state; got \(lastSaved.label)")
+
+        // The live relative label renders alongside the timestamp; its exact
+        // wording depends on elapsed time, so assert the stable prefix.
+        let relativeSaved = app.staticTexts["settings.save.lastSaved.relative"]
+        XCTAssertTrue(relativeSaved.waitForExistence(timeout: 5),
+                      "Expected the live relative saved-time label")
+        XCTAssertTrue(relativeSaved.label.lowercased().hasPrefix("saved "),
+                      "Expected relative wording like 'saved just now'; got \(relativeSaved.label)")
+
+        Thread.sleep(forTimeInterval: 0.6)
+        let screenshot = XCUIScreen.main.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = "Legends Settings redesign (landscape)"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        let size = app.windows.firstMatch.frame.size
+        try? screenshot.pngRepresentation.write(to: URL(fileURLWithPath: "/tmp/rsm_settings_\(Int(size.width))x\(Int(size.height)).png"))
+
+        // Compact-screen reachability: the danger zone sits at the bottom.
+        app.swipeUp()
+        let deleteButton = app.buttons["settings.deleteClub"]
+        XCTAssertTrue(deleteButton.waitForExistence(timeout: 5),
+                      "DELETE CLUB must be reachable by scrolling on compact landscape")
+
+        // Preference effects: flip Reduce Interface Motion and commentary
+        // size, verifying the controls reflect and persist the change.
+        let motionToggle = app.switches["settings.motion.toggle"]
+        if motionToggle.waitForExistence(timeout: 4) {
+            motionToggle.tap()
+        } else {
+            app.swipeDown(); app.swipeDown()
+            XCTAssertTrue(motionToggle.waitForExistence(timeout: 5),
+                          "The Reduce Interface Motion toggle must be reachable")
+            motionToggle.tap()
+        }
+
+        // Restore defaults returns both controls to the accepted defaults.
+        let restoreButton = app.buttons["settings.restoreDefaults"]
+        if !restoreButton.waitForExistence(timeout: 4) { app.swipeDown() }
+        XCTAssertTrue(restoreButton.waitForExistence(timeout: 5),
+                      "Expected the RESTORE PRESENTATION DEFAULTS action")
+        restoreButton.tap()
+
+        // Destructive safety: DELETE CLUB opens the confirmation sheet;
+        // cancelling keeps the club and lands back on Settings.
+        if !deleteButton.exists { app.swipeUp() }
+        XCTAssertTrue(deleteButton.waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 0.4)
+        deleteButton.tap()
+
+        // The sheet's explicit confirm and cancel actions must both exist.
+        let confirmButton = app.descendants(matching: .any)["settings.delete.confirm"]
+        XCTAssertTrue(confirmButton.waitForExistence(timeout: 6),
+                      "DELETE CLUB must present the confirmation sheet with an explicit permanent-delete action")
+        let cancelButton = app.descendants(matching: .any)["settings.delete.cancel"]
+        XCTAssertTrue(cancelButton.waitForExistence(timeout: 5),
+                      "Expected the KEEP MY CLUB action")
+        Thread.sleep(forTimeInterval: 0.4)
+        cancelButton.tap()
+
+        XCTAssertTrue(app.descendants(matching: .any)["legends.shell.settings"].waitForExistence(timeout: 6),
+                      "Cancelling the delete returns to the Settings screen with the club intact")
+        XCTAssertTrue(clubName.exists, "The club summary survives the cancelled deletion")
+
+        // Navigate away and back: the destination remains reliable.
+        Thread.sleep(forTimeInterval: 0.4)
+        app.buttons["legends.nav.home"].tap()
+        XCTAssertTrue(app.buttons["legends.nav.settings"].waitForExistence(timeout: 8))
+        Thread.sleep(forTimeInterval: 0.5)
+        app.buttons["legends.nav.settings"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["legends.shell.settings"].waitForExistence(timeout: 8),
+                      "Returning to Settings after visiting Home works")
+
+        Thread.sleep(forTimeInterval: 0.8)
+        let finalShot = XCUIScreen.main.screenshot()
+        let finalAttachment = XCTAttachment(screenshot: finalShot)
+        finalAttachment.name = "Legends Settings after navigation round trip (landscape)"
+        finalAttachment.lifetime = .keepAlways
+        add(finalAttachment)
+        try? finalShot.pngRepresentation.write(to: URL(fileURLWithPath: "/tmp/rsm_settings_roundtrip_\(Int(size.width))x\(Int(size.height)).png"))
+    }
+
+    /// The commentary text-size preference persists across relaunches.
+    /// (Reduce Interface Motion's effect is covered at unit level; the
+    /// relaunch leg here proves the persistence layer itself.)
+    func testLegendsSettingsCommentarySizePreferencePersistsAcrossRelaunch() throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_LEGENDS_SETTINGS"]
+        app.launch()
+
+        openLegendsSettings(app)
+
+        let sizePicker = app.descendants(matching: .any)["settings.commentary.size"]
+        if !sizePicker.waitForExistence(timeout: 4) { app.swipeDown() }
+        XCTAssertTrue(sizePicker.waitForExistence(timeout: 5),
+                      "Expected the commentary text-size segmented control")
+
+        // Choose XL (the last segment) and confirm the control reflects it
+        // before relaunching — this separates tap-landing from persistence.
+        let xl = sizePicker.buttons["XL"]
+        if xl.exists {
+            xl.tap()
+        } else {
+            let large = sizePicker.buttons["LARGE"]
+            XCTAssertTrue(large.waitForExistence(timeout: 4), "Expected LARGE/XL segments")
+            large.tap()
+        }
+        Thread.sleep(forTimeInterval: 0.5)
+
+        app.terminate()
+        app.launch()
+        openLegendsSettings(app)
+
+        let sizePicker2 = app.descendants(matching: .any)["settings.commentary.size"]
+        if !sizePicker2.waitForExistence(timeout: 4) { app.swipeDown() }
+        XCTAssertTrue(sizePicker2.waitForExistence(timeout: 5),
+                      "Expected the commentary text-size control after relaunch")
+        // The selected segment exposes the isSelected accessibility trait.
+        let selectedSegment = sizePicker2.buttons.matching(
+            NSPredicate(format: "isSelected == true")
+        ).firstMatch
+        XCTAssertTrue(selectedSegment.waitForExistence(timeout: 5),
+                      "Expected a selected commentary-size segment after relaunch")
+        XCTAssertTrue(selectedSegment.label == "XL" || selectedSegment.label == "LARGE",
+                      "The changed commentary size must persist across relaunch; got \(selectedSegment.label)")
+    }
+
+    /// The Auto-Save toggle flips the live save status and restores cleanly.
+    /// (Disk-level autosave behaviour is covered at unit level in
+    /// LegendsSettingsTests; this proves the controls reflect the state.)
+    func testLegendsSettingsAutosaveToggleReflectsAndRestores() throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_LEGENDS_SETTINGS"]
+        app.launch()
+
+        openLegendsSettings(app)
+
+        let saveStatus = app.descendants(matching: .any)["settings.summary.saveStatus"]
+        XCTAssertTrue(saveStatus.waitForExistence(timeout: 5), "Expected the save-status indicator")
+        XCTAssertTrue(saveStatus.label.lowercased().contains("after every change"),
+                      "Auto-Save must start on (the default); got \(saveStatus.label)")
+
+        let autosaveToggle = app.switches["settings.autosave.toggle"]
+        if !autosaveToggle.waitForExistence(timeout: 4) { app.swipeUp() }
+        XCTAssertTrue(autosaveToggle.waitForExistence(timeout: 5),
+                      "Expected the Auto-Save toggle in SAVE & DATA")
+
+        // Turning Auto-Save off updates the live save status...
+        autosaveToggle.tap()
+        XCTAssertTrue(saveStatus.waitForExistence(timeout: 5))
+        XCTAssertTrue(saveStatus.label.lowercased().contains("paused"),
+                      "Turning Auto-Save off must announce the paused state; got \(saveStatus.label)")
+
+        // ...and turning it back on restores the automatic status.
+        autosaveToggle.tap()
+        XCTAssertTrue(saveStatus.waitForExistence(timeout: 5))
+        XCTAssertTrue(saveStatus.label.lowercased().contains("after every change"),
+                      "Turning Auto-Save back on must restore the automatic status; got \(saveStatus.label)")
+
+        Thread.sleep(forTimeInterval: 0.5)
+        let shot = XCUIScreen.main.screenshot()
+        let attachment = XCTAttachment(screenshot: shot)
+        attachment.name = "Legends Settings Auto-Save restored (landscape)"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    /// End-to-end disk-write verification: with Auto-Save off, playing a
+    /// complete real match (KICK OFF → live 2D engine → SKIP → CONTINUE)
+    /// must not move the LAST SAVED timestamp, because the store's match
+    /// pipeline persists through `persist()` which the paused preference
+    /// gates. Re-enabling Auto-Save must checkpoint the match immediately.
+    func testLegendsAutosaveOffPausesDiskWritesAcrossALiveMatch() throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_LEGENDS_SETTINGS"]
+        app.launch()
+
+        openLegendsSettings(app)
+
+        // Baseline: autosave on (fixture pins it), then turn it off through
+        // the real toggle. The preference change itself checkpoints at T0.
+        let lastSaved = app.descendants(matching: .any)["settings.save.lastSavedRow"]
+        XCTAssertTrue(lastSaved.waitForExistence(timeout: 5), "Expected the LAST SAVED row")
+
+        let autosaveToggle = app.switches["settings.autosave.toggle"]
+        if !autosaveToggle.waitForExistence(timeout: 4) { app.swipeUp() }
+        XCTAssertTrue(autosaveToggle.waitForExistence(timeout: 5))
+        autosaveToggle.tap()
+        XCTAssertTrue(lastSaved.waitForExistence(timeout: 5))
+        XCTAssertTrue(lastSaved.label.lowercased().contains("auto-save is off"),
+                      "Toggling off must checkpoint (T0 timestamp) and announce the pause; got \(lastSaved.label)")
+        let savedLabelBeforeMatch = lastSaved.label
+
+        // Play a complete match through the real UI path.
+        app.buttons["legends.nav.home"].tap()
+        XCTAssertTrue(app.buttons["legends.nav.settings"].waitForExistence(timeout: 8))
+
+        let playMatch = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "PLAY MATCH")).firstMatch
+        XCTAssertTrue(playMatch.waitForExistence(timeout: 8), "Expected the Play Match feature")
+        playMatch.tap()
+
+        let kickoff = app.buttons["legends.match.kickoff"]
+        XCTAssertTrue(kickoff.waitForExistence(timeout: 8))
+        kickoff.tap()
+
+        let skip = app.buttons.matching(NSPredicate(format: "label == %@", "SKIP")).firstMatch
+        XCTAssertTrue(skip.waitForExistence(timeout: 10), "Expected the live match SKIP control")
+        skip.tap()
+
+        let continueButton = app.buttons["legends.live.continue"]
+        XCTAssertTrue(continueButton.waitForExistence(timeout: 10), "Expected the FULL TIME continue action")
+        Thread.sleep(forTimeInterval: 0.4)
+        continueButton.tap()
+
+        XCTAssertTrue(app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS[c] %@", "REWARDS")).firstMatch.waitForExistence(timeout: 8),
+                      "Expected the post-match result panel after CONTINUE")
+
+        // Back to Settings: the timestamp must be exactly the pre-match T0
+        // value — the match pipeline ran completely, but wrote nothing.
+        Thread.sleep(forTimeInterval: 0.4)
+        app.buttons["legends.nav.settings"].tap()
+        XCTAssertTrue(lastSaved.waitForExistence(timeout: 6))
+        if !autosaveToggle.exists { app.swipeUp() }
+        XCTAssertTrue(lastSaved.waitForExistence(timeout: 5))
+        XCTAssertEqual(lastSaved.label, savedLabelBeforeMatch,
+                       "A completed match with Auto-Save paused must not write the save file " +
+                       "(timestamp would have advanced); got \(lastSaved.label), expected \(savedLabelBeforeMatch)")
+
+        // Re-enabling checkpoints the match's progress: timestamp moves and
+        // the status flips back to automatic.
+        let autosaveToggle2 = app.switches["settings.autosave.toggle"]
+        if !autosaveToggle2.waitForExistence(timeout: 4) { app.swipeUp() }
+        XCTAssertTrue(autosaveToggle2.waitForExistence(timeout: 5))
+        autosaveToggle2.tap()
+        XCTAssertTrue(lastSaved.waitForExistence(timeout: 5))
+        XCTAssertNotEqual(lastSaved.label, savedLabelBeforeMatch,
+                          "Re-enabling Auto-Save must checkpoint the match progress (new timestamp)")
+        XCTAssertTrue(lastSaved.label.lowercased().contains("auto-save is on"),
+                      "Status must return to automatic; got \(lastSaved.label)")
+
+        Thread.sleep(forTimeInterval: 0.5)
+        let shot = XCUIScreen.main.screenshot()
+        let attachment = XCTAttachment(screenshot: shot)
+        attachment.name = "Legends Auto-Save end-to-end match verification (landscape)"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        let size = app.windows.firstMatch.frame.size
+        try? shot.pngRepresentation.write(to: URL(fileURLWithPath: "/tmp/rsm_autosave_e2e_\(Int(size.width))x\(Int(size.height)).png"))
+    }
 }

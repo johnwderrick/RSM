@@ -282,7 +282,8 @@ extension LegendsStore {
                                         nationalityCode: nationalityCode,
                                         dateOfBirth: dateOfBirth, archetype: archetype) else { return false }
         profile.managerProfile = manager
-        persist()
+        // Critical one-time action: always written, even with Auto-Save off.
+        persistNow()
         return true
     }
 }
