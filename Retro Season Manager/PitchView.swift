@@ -14,6 +14,7 @@ struct PitchView: View {
     let store: GameStore
     @Binding var message: String?
     @State private var pickerTarget: SlotPickerTarget?
+    @State private var profile: ProfileContext?
     @State private var draggingKey: String?
 
     var body: some View {
@@ -42,6 +43,9 @@ struct PitchView: View {
                 store.toggleStarter(player)
                 message = "\(surname(player.name)) dropped to the bench."
             }
+        }
+        .sheet(item: $profile) { context in
+            PlayerProfileSheet(store: store, context: context) { message = $0 }
         }
     }
 
@@ -120,7 +124,10 @@ struct PitchView: View {
             player: player,
             role: role.rawValue,
             fitLevel: player?.fitLevel(for: role) ?? .confident,
-            onTap: { pickerTarget = SlotPickerTarget(role: role, currentPlayerID: player?.id) }
+            onSelectSlot: { pickerTarget = SlotPickerTarget(role: role, currentPlayerID: player?.id) },
+            onOpenProfile: {
+                if let player { profile = .squad(player) }
+            }
         )
         .frame(maxWidth: .infinity)
         .opacity(draggingKey == key ? 0.5 : 1)
@@ -434,20 +441,30 @@ struct PlayerToken: View {
     let player: Player?
     let role: String
     var fitLevel: PositionFitLevel = .confident
-    let onTap: () -> Void
+    let onSelectSlot: () -> Void
+    let onOpenProfile: () -> Void
 
     var body: some View {
-        Button(action: onTap) {
-            VStack(spacing: 3) {
-                Text(role)
-                    .font(.system(size: 8, weight: .bold, design: .monospaced))
-                    .foregroundStyle(Retro.background)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 1)
-                    .background(Retro.highlight)
-                    .clipShape(RoundedRectangle(cornerRadius: 3))
+        VStack(spacing: 3) {
+            Button(action: onSelectSlot) {
+                HStack(spacing: 3) {
+                    Text(role)
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 6, weight: .black))
+                }
+                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                .foregroundStyle(CareerPalette.ink)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 2)
+                .background(Retro.highlight)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Change \(role) player")
+            .accessibilityIdentifier("career.squad.pitch.slot.\(role.lowercased())")
 
-                if let player {
+            if let player {
+                Button(action: onOpenProfile) {
                     VStack(spacing: 1) {
                         HStack(spacing: 3) {
                             Circle()
@@ -465,24 +482,35 @@ struct PlayerToken: View {
                     }
                     .padding(.horizontal, 6)
                     .padding(.vertical, 5)
-                    .frame(minWidth: 52)
-                    .background(Retro.token)
+                    .frame(minWidth: 58)
+                    .background(
+                        LinearGradient(colors: [Retro.token, Retro.token.opacity(0.78)],
+                                       startPoint: .topLeading, endPoint: .bottomTrailing)
+                    )
                     .overlay(RoundedRectangle(cornerRadius: 8)
-                        .stroke(fitLevel == .poor ? fitLevel.color : Retro.tokenEdge, lineWidth: fitLevel == .poor ? 1.5 : 1))
+                        .stroke(fitLevel == .poor ? fitLevel.color : Retro.tokenEdge,
+                                lineWidth: fitLevel == .poor ? 1.5 : 1))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
-                } else {
+                    .shadow(color: .black.opacity(0.16), radius: 3, y: 2)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Open \(player.name), rating \(player.rating), \(role)")
+                .accessibilityIdentifier("career.squad.pitch.player")
+            } else {
+                Button(action: onSelectSlot) {
                     Image(systemName: "plus")
                         .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.7))
-                        .frame(width: 52, height: 30)
+                        .foregroundStyle(.white.opacity(0.8))
+                        .frame(width: 58, height: 30)
                         .background(Color.black.opacity(0.25))
                         .overlay(RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.white.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [4])))
+                            .stroke(Color.white.opacity(0.55), style: StrokeStyle(lineWidth: 1, dash: [4])))
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Select \(role) player")
             }
         }
-        .buttonStyle(.plain)
     }
 }
 
@@ -567,16 +595,21 @@ struct SquadListPanel: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("SQUAD")
-                    .foregroundStyle(Retro.accent)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("TEAM SHEET")
+                        .foregroundStyle(CareerPalette.ink)
+                    Text("Tap a player to move between XI and bench")
+                        .font(.system(size: 7, weight: .medium, design: .monospaced))
+                        .foregroundStyle(CareerPalette.mutedInk)
+                }
                 Spacer()
                 Text("ROLE")
-                    .foregroundStyle(Retro.text.opacity(0.7))
+                    .foregroundStyle(CareerPalette.mutedInk)
             }
             .font(.system(.caption, design: .monospaced).bold())
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            .background(Retro.panel)
+            .background(CareerPalette.surface)
 
             ScrollView {
                 VStack(spacing: 2) {
@@ -591,10 +624,13 @@ struct SquadListPanel: View {
                         .buttonStyle(.plain)
                     }
                 }
-                .padding(.vertical, 4)
+                .padding(6)
             }
         }
-        .background(Retro.background)
+        .background(CareerPalette.canvas)
+        .overlay(alignment: .leading) {
+            Rectangle().fill(CareerPalette.line.opacity(0.14)).frame(width: 1)
+        }
     }
 
     private var sortedPlayers: [Player] {
@@ -622,7 +658,7 @@ struct SquadListRow: View {
         HStack(spacing: 8) {
             Text(player.careerPositionLabel)
                 .font(.system(size: 9, weight: .bold, design: .monospaced))
-                .foregroundStyle(Retro.background)
+                .foregroundStyle(.white)
                 .frame(width: 32)
                 .padding(.vertical, 3)
                 .background(positionColor)
@@ -631,7 +667,7 @@ struct SquadListRow: View {
             Circle()
                 .fill(player.isInjured ? Color.red
                       : (player.isSuspended ? Color.orange
-                         : (isStarter ? Retro.accent : Color.green.opacity(0.5))))
+                         : (isStarter ? CareerPalette.line : CareerPalette.mutedInk.opacity(0.45))))
                 .frame(width: 8, height: 8)
 
             VStack(alignment: .leading, spacing: 0) {
@@ -643,7 +679,7 @@ struct SquadListRow: View {
                     ForEach(markers, id: \.self) { marker in
                         Text(marker)
                             .font(.system(size: 7, weight: .bold, design: .monospaced))
-                            .foregroundStyle(Retro.background)
+                            .foregroundStyle(.white)
                             .padding(.horizontal, 3).padding(.vertical, 1)
                             .background(Retro.highlight)
                             .clipShape(RoundedRectangle(cornerRadius: 2))
@@ -657,31 +693,37 @@ struct SquadListRow: View {
 
             Text(player.detailedPosition.rawValue)
                 .font(.system(size: 9, weight: .bold, design: .monospaced))
-                .foregroundStyle(isStarter ? Retro.background : Retro.text)
+                .foregroundStyle(isStarter ? .white : CareerPalette.ink)
                 .padding(.horizontal, 5)
                 .padding(.vertical, 2)
-                .background(isStarter ? Retro.highlight : Retro.panel)
+                .background(isStarter ? CareerPalette.line : CareerPalette.canvas)
                 .clipShape(RoundedRectangle(cornerRadius: 3))
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
         .frame(maxWidth: .infinity)
-        .background(isStarter ? Retro.token.opacity(0.35) : Color.clear)
-        .foregroundStyle(Retro.text)
+        .background(isStarter ? CareerPalette.line.opacity(0.10) : CareerPalette.surface)
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(isStarter ? CareerPalette.line : Color.clear)
+                .frame(width: 3)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .foregroundStyle(CareerPalette.ink)
     }
 
     private var subtitle: Text {
         if player.isInjured {
-            return Text("Injured \(player.injuryWeeks)w").foregroundStyle(Retro.text.opacity(0.7))
+            return Text("Injured \(player.injuryWeeks)w").foregroundStyle(CareerPalette.mutedInk)
         }
         if player.isSuspended {
-            return Text("Suspended \(player.suspensionMatches)").foregroundStyle(Retro.text.opacity(0.7))
+            return Text("Suspended \(player.suspensionMatches)").foregroundStyle(CareerPalette.mutedInk)
         }
-        let base = Text("R\(player.rating) · Age \(player.age) · ").foregroundStyle(Retro.text.opacity(0.7))
+        let base = Text("R\(player.rating) · Age \(player.age) · ").foregroundStyle(CareerPalette.mutedInk)
         let contract = Text(player.contractYears <= 1 ? "Exp" : "\(player.contractYears)y")
-            .foregroundStyle(player.contractYears <= 1 ? Color(red: 0.95, green: 0.45, blue: 0.35) : Retro.text.opacity(0.7))
+            .foregroundStyle(player.contractYears <= 1 ? Color(red: 0.82, green: 0.32, blue: 0.22) : CareerPalette.mutedInk)
         let goals = player.goals > 0
-            ? Text(" · \(player.goals)⚽︎").foregroundStyle(Retro.text.opacity(0.7))
+            ? Text(" · \(player.goals)⚽︎").foregroundStyle(CareerPalette.mutedInk)
             : Text("")
         let fitness = player.fitness < 75
             ? Text(" · \(player.fitness)%").foregroundStyle(Color(red: 0.95, green: 0.55, blue: 0.35))
@@ -698,4 +740,3 @@ struct SquadListRow: View {
         }
     }
 }
-

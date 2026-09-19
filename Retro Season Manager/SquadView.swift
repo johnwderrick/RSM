@@ -24,13 +24,7 @@ struct SquadView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Picker("", selection: $mode) {
-                ForEach(SquadViewMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, 12)
-            .padding(.top, 10)
-            .padding(.bottom, 4)
+            squadHeader
 
             if mode == .tactics {
                 tacticsToolbar
@@ -59,13 +53,69 @@ struct SquadView: View {
                 SquadTableView(store: store)
             }
         }
-        .background(Retro.background)
+        .background(CareerPalette.canvas)
         .sheet(isPresented: $showingDepth) {
             SquadDepthSheet(store: store)
         }
         .sheet(isPresented: $showingTeamSetup) {
             TeamSetupSheet(store: store, message: $message)
         }
+    }
+
+    private var squadHeader: some View {
+        HStack(spacing: 12) {
+            HStack(spacing: 4) {
+                ForEach(SquadViewMode.allCases, id: \.self) { item in
+                    Button {
+                        Haptics.tap()
+                        mode = item
+                    } label: {
+                        Text(item.rawValue)
+                            .font(.system(size: 10, weight: .black, design: .monospaced))
+                            .foregroundStyle(mode == item ? .white : CareerPalette.mutedInk)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background(mode == item ? Retro.darkGreen : Color.clear)
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("career.squad.mode.\(item == .tactics ? "tactics" : "list")")
+                    .accessibilityAddTraits(mode == item ? .isSelected : [])
+                }
+            }
+            .padding(4)
+            .frame(maxWidth: 360)
+            .background(CareerPalette.canvas)
+            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+
+            Spacer(minLength: 0)
+
+            summaryMetric("PLAYERS", "\(store.userClub.players.count)")
+            summaryMetric("XI", "\(store.userStarterIDs.count)/11")
+            summaryMetric("AVG OVR", "\(averageRating)")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(CareerPalette.surface)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(CareerPalette.line.opacity(0.16)).frame(height: 1)
+        }
+    }
+
+    private func summaryMetric(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .trailing, spacing: 1) {
+            Text(label)
+                .font(.system(size: 7, weight: .black, design: .monospaced))
+                .foregroundStyle(CareerPalette.mutedInk)
+            Text(value)
+                .font(.system(size: 12, weight: .black, design: .monospaced))
+                .foregroundStyle(CareerPalette.ink)
+        }
+    }
+
+    private var averageRating: Int {
+        guard !store.userClub.players.isEmpty else { return 0 }
+        return store.userClub.players.map(\.rating).reduce(0, +) / store.userClub.players.count
     }
 
     /// A slim, single-row toolbar replacing what used to be a permanently
@@ -86,8 +136,8 @@ struct SquadView: View {
                     .font(.system(.caption, design: .monospaced).bold())
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
-                    .background(Retro.panel)
-                    .foregroundStyle(Retro.text)
+                    .background(CareerPalette.canvas)
+                    .foregroundStyle(CareerPalette.ink)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
                 .buttonStyle(PressableButtonStyle())
@@ -101,7 +151,7 @@ struct SquadView: View {
                         .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(needs.isEmpty ? Retro.accent : Color(red: 0.95, green: 0.55, blue: 0.35))
                         .padding(8)
-                        .background(Retro.panel)
+                        .background(CareerPalette.canvas)
                         .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
                 .buttonStyle(PressableButtonStyle())
@@ -118,7 +168,7 @@ struct SquadView: View {
 
                 Text("XI \(store.userStarterIDs.count)/11")
                     .font(.system(.caption, design: .monospaced).bold())
-                    .foregroundStyle(store.userStarterIDs.count == 11 ? Retro.accent : Retro.highlight)
+                    .foregroundStyle(store.userStarterIDs.count == 11 ? CareerPalette.line : Retro.highlight)
             }
             if store.isFormationBeddingIn {
                 Text("Formation still bedding in — performance dips slightly for a few matches after a switch.")
@@ -129,7 +179,10 @@ struct SquadView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(Retro.panel.opacity(0.5))
+        .background(CareerPalette.surface)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(CareerPalette.line.opacity(0.12)).frame(height: 1)
+        }
     }
 }
 
@@ -222,4 +275,3 @@ struct SquadDepthSheet: View {
         }
     }
 }
-

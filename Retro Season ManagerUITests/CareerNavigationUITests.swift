@@ -194,6 +194,46 @@ final class CareerNavigationUITests: XCTestCase {
         relaunched.terminate()
     }
 
+    // MARK: - Squad pitch + player profile
+
+    func testCareerSquadPitchOpensPremiumPlayerProfileAndReturnsIntact() throws {
+        let app = launch()
+        XCTAssertTrue(screenVisible(app, "home", timeout: 10), "Career fixture should reach Home")
+
+        gotoSidebar(app, "squad")
+        XCTAssertTrue(screenVisible(app, "squad", timeout: 8), "Squad destination missing")
+
+        let tactics = app.buttons["career.squad.mode.tactics"]
+        XCTAssertTrue(tactics.waitForExistence(timeout: 6) && tactics.isSelected,
+                      "Squad should open on the tactics board")
+
+        let player = app.buttons.matching(identifier: "career.squad.pitch.player").firstMatch
+        XCTAssertTrue(player.waitForExistence(timeout: 8), "A starting-XI player should be tappable on the pitch")
+        player.tap()
+
+        let profile = app.descendants(matching: .any)["career.playerProfile.screen"]
+        XCTAssertTrue(profile.waitForExistence(timeout: 8), "Pitch player should open the redesigned profile")
+        XCTAssertTrue(app.descendants(matching: .any)["career.playerProfile.nationality"].waitForExistence(timeout: 5),
+                      "Player biography should expose nationality beside its flag")
+
+        shot(app, "squad_player_profile")
+
+        let close = app.buttons["career.playerProfile.close"]
+        XCTAssertTrue(close.waitForExistence(timeout: 5), "Pinned profile close action missing")
+        close.tap()
+        XCTAssertTrue(screenVisible(app, "squad", timeout: 8), "Closing profile should return to Squad")
+        XCTAssertTrue(tactics.exists && tactics.isSelected,
+                      "Closing a player profile should preserve the tactics board")
+
+        // The small role control remains a separate path for changing the
+        // player, preventing the profile tap from altering the team sheet.
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@",
+                                                       "career.squad.pitch.slot.")).firstMatch.waitForExistence(timeout: 5),
+                      "Pitch roles should retain their change-player controls")
+        shot(app, "squad_return")
+        app.terminate()
+    }
+
     // MARK: - B. Home scrolling + no jump-to-top
 
     func testCareerHomeScrollsToLowerContentAndHoldsPosition() throws {

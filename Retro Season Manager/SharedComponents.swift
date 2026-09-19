@@ -159,7 +159,47 @@ struct FlagView: View {
                 .frame(width: width, height: width * 0.68)
                 .clipShape(RoundedRectangle(cornerRadius: 2))
                 .overlay(RoundedRectangle(cornerRadius: 2).stroke(.black.opacity(0.25), lineWidth: 0.5))
+                .accessibilityLabel("\(nationality) flag")
+        } else if ["England", "Scotland", "Northern Ireland"].contains(nationality) {
+            HomeNationFlag(nation: nationality)
+                .frame(width: width, height: width * 0.68)
+                .clipShape(RoundedRectangle(cornerRadius: 2))
+                .overlay(RoundedRectangle(cornerRadius: 2).stroke(.black.opacity(0.25), lineWidth: 0.5))
+                .accessibilityLabel("\(nationality) flag")
         }
+    }
+}
+
+/// Code-drawn fallbacks for the UK home nations absent from the bundled
+/// FIFA flag sheet. Keeping these vector-based avoids a broken or blank
+/// biography row without introducing another raster-asset dependency.
+private struct HomeNationFlag: View {
+    let nation: String
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack {
+                Rectangle().fill(nation == "Scotland" ? Color(red: 0.05, green: 0.32, blue: 0.66) : .white)
+                if nation == "Scotland" {
+                    saltire(in: geo.size)
+                        .stroke(.white, style: StrokeStyle(lineWidth: max(2, geo.size.height * 0.18), lineCap: .square))
+                } else {
+                    Rectangle().fill(Color.red)
+                        .frame(width: geo.size.width, height: max(2, geo.size.height * 0.18))
+                    Rectangle().fill(Color.red)
+                        .frame(width: max(2, geo.size.width * 0.12), height: geo.size.height)
+                }
+            }
+        }
+    }
+
+    private func saltire(in size: CGSize) -> Path {
+        var path = Path()
+        path.move(to: .zero)
+        path.addLine(to: CGPoint(x: size.width, y: size.height))
+        path.move(to: CGPoint(x: size.width, y: 0))
+        path.addLine(to: CGPoint(x: 0, y: size.height))
+        return path
     }
 }
 
