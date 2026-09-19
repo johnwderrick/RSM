@@ -24,6 +24,8 @@ struct PreMatchHubView: View {
                 }
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("career.prematch.screen")
     }
 
     private var topBar: some View {
@@ -54,6 +56,7 @@ struct PreMatchHubView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 8))
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier("career.match.kickoff")
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
     }
@@ -976,6 +979,7 @@ struct MatchView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 5))
         }
         .buttonStyle(PressableButtonStyle())
+        .accessibilityIdentifier(title == "SKIP" ? "career.match.skip" : "career.match.bar.\(title)")
     }
 
     // MARK: Full time

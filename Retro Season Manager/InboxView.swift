@@ -227,6 +227,9 @@ struct InboxView: View {
         .background(unread ? Retro.token.opacity(0.3) : Retro.panel.opacity(0.6))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(unread ? Retro.highlight.opacity(0.35) : .clear, lineWidth: 1))
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        // Stable row selector so tests can open a specific article
+        // regardless of ordering: the fixture's long article sets this.
+        .accessibilityIdentifier(item.stableRowIdentifier)
     }
 }
 
@@ -307,55 +310,65 @@ struct NewsDetailSheet: View {
 
     /// The original plain layout — kept as a fallback for the (minor,
     /// routine) stories that don't earn a generated front page.
+    /// One authoritative vertical scroll container for the whole sheet:
+    /// the body used to sit in its own cramped inner ScrollView beside the
+    /// player card, which pinched long articles into a small box on
+    /// compact landscape screens. Now the page scrolls as one region.
     private var plainContent: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Text(item.category.glyph)
-                    .font(.system(size: 30))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(item.category.sender)
-                        .font(.system(.callout, design: .monospaced).bold())
-                        .foregroundStyle(Retro.highlight)
-                    Text(item.date.formatted(.dateTime.weekday(.wide).day().month(.wide).year()))
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(Retro.text.opacity(0.7))
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack {
+                    Text(item.category.glyph)
+                        .font(.system(size: 30))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(item.category.sender)
+                            .font(.system(.callout, design: .monospaced).bold())
+                            .foregroundStyle(Retro.highlight)
+                        Text(item.date.formatted(.dateTime.weekday(.wide).day().month(.wide).year()))
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(Retro.text.opacity(0.7))
+                    }
+                    Spacer()
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 24))
+                            .foregroundStyle(Retro.text.opacity(0.5))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("career.inbox.article.close")
                 }
-                Spacer()
-                Button { dismiss() } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 24))
-                        .foregroundStyle(Retro.text.opacity(0.5))
+
+                Divider().overlay(Retro.accent.opacity(0.25))
+
+                Text(item.title)
+                    .font(.system(.title2, design: .monospaced).bold())
+                    .foregroundStyle(Retro.accent)
+
+                if item.playerName != nil {
+                    tagRow
                 }
-                .buttonStyle(.plain)
-            }
 
-            Divider().overlay(Retro.accent.opacity(0.25))
-
-            Text(item.title)
-                .font(.system(.title2, design: .monospaced).bold())
-                .foregroundStyle(Retro.accent)
-
-            if item.playerName != nil {
-                tagRow
-            }
-
-            HStack(alignment: .top, spacing: 16) {
-                ScrollView {
+                HStack(alignment: .top, spacing: 16) {
                     Text(item.body)
                         .font(.system(.body, design: .monospaced))
                         .foregroundStyle(Retro.text)
                         .lineSpacing(6)
                         .frame(maxWidth: .infinity, alignment: .leading)
+
+                    if item.playerName != nil {
+                        playerCard
+                    }
                 }
 
-                if item.playerName != nil {
-                    playerCard
-                }
+                // Scroll-depth marker: proves the article's lower content
+                // is reachable in the sheet's single scroll container.
+                Text("END OF ARTICLE")
+                    .font(.system(.caption2, design: .monospaced).bold())
+                    .foregroundStyle(Retro.text.opacity(0.55))
+                    .accessibilityIdentifier("career.inbox.article.end")
             }
-
-            Spacer(minLength: 0)
+            .padding(24)
         }
-        .padding(24)
     }
 
     private var tagRow: some View {

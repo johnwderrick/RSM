@@ -172,6 +172,7 @@ struct SettingsMenuView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier(CareerIdentifiers.settingsSaveExit)
             }
             .padding()
         }
@@ -201,6 +202,9 @@ struct SettingsMenuView: View {
             .clipShape(RoundedRectangle(cornerRadius: 8))
         }
         .buttonStyle(PressableButtonStyle())
+        // Stable per-destination selector derived from the enum raw value,
+        // so menu wording changes can't silently move test anchors.
+        .accessibilityIdentifier(CareerIdentifiers.settingsRow(destination))
     }
 }
 
@@ -235,6 +239,7 @@ struct SettingsDetailView: View {
                 }
                 .buttonStyle(.plain)
                 .frame(minHeight: 44)
+                .accessibilityIdentifier(CareerIdentifiers.settingsBack)
 
                 content
             }

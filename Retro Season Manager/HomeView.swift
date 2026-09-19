@@ -10,29 +10,31 @@ import SwiftUI
 
 // MARK: - Home / manager's office
 
-/// Career dashboard card: keeps the established readable dark-green surface,
-/// but adds the raised, edged treatment used by the redesigned mode screens.
+/// The shared Career dashboard card. Career keeps its deep-green identity in
+/// the chrome and accents while the working surface stays light and readable.
 struct CareerPanel<Content: View>: View {
     let title: String
     @ViewBuilder let content: () -> Content
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.system(.caption, design: .monospaced).bold())
-                .foregroundStyle(Retro.emerald)
+            HStack(spacing: 8) {
+                Capsule()
+                    .fill(Retro.accent)
+                    .frame(width: 4, height: 18)
+                Text(title)
+                    .font(.system(.caption, design: .monospaced).bold())
+                    .foregroundStyle(CareerPalette.ink)
+            }
             content()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
-        .background(
-            LinearGradient(colors: [Retro.forest, Retro.darkGreen],
-                           startPoint: .topLeading, endPoint: .bottomTrailing)
-        )
+        .background(CareerPalette.surface)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .stroke(Retro.emerald.opacity(0.22), lineWidth: 1))
-        .shadow(color: Retro.darkGreen.opacity(0.18), radius: 8, y: 4)
+            .stroke(CareerPalette.line.opacity(0.2), lineWidth: 1))
+        .shadow(color: CareerPalette.ink.opacity(0.09), radius: 9, y: 4)
     }
 }
 
@@ -50,8 +52,7 @@ struct HomeView: View {
         ScrollView {
             VStack(spacing: isCompact ? 10 : 14) {
                 careerHero
-                dayStrip
-                boardStrip
+                commandStrip
                 seasonObjectivesStrip
                 WorldPulsePanel(store: store, section: $section)
                 dashboardPanels
@@ -76,10 +77,10 @@ struct HomeView: View {
                     .opacity(0.18)
                 HStack(spacing: isCompact ? 12 : 18) {
                     CrestView(shortName: store.userClub.shortName,
-                              size: isCompact ? 58 : 76,
+                              size: isCompact ? 54 : 70,
                               color: store.userColor)
                     VStack(alignment: .leading, spacing: 5) {
-                        Text("MANAGER'S DESK")
+                        Text("CAREER COMMAND CENTRE")
                             .font(.system(size: 10, weight: .black, design: .monospaced))
                             .foregroundStyle(Retro.gold)
                         Text(store.userClub.name.uppercased())
@@ -100,28 +101,11 @@ struct HomeView: View {
                         }
                     }
                     Spacer(minLength: 0)
-                    if !isCompact || geo.size.width > 620 {
-                        VStack(alignment: .trailing, spacing: 8) {
-                            Text(store.isUserMatchToday ? "MATCHDAY" : "NEXT TARGET")
-                                .font(.system(size: 9, weight: .black, design: .monospaced))
-                                .foregroundStyle(store.isUserMatchToday ? Retro.gold : .white.opacity(0.65))
-                            Text(store.nextUserMatchInfo?.label.uppercased() ?? "SEASON COMPLETE")
-                                .font(.system(size: 15, weight: .black, design: .rounded))
-                                .foregroundStyle(.white)
-                                .multilineTextAlignment(.trailing)
-                            Text("BOARD CONFIDENCE \(store.boardConfidence)%")
-                                .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                .foregroundStyle(.white.opacity(0.72))
-                            GeometryReader { progressGeo in
-                                Capsule()
-                                    .fill(.white.opacity(0.22))
-                                    .overlay(alignment: .leading) {
-                                        Capsule()
-                                            .fill(store.boardConfidence >= 50 ? Retro.emerald : Retro.highlight)
-                                            .frame(width: progressGeo.size.width * CGFloat(store.boardConfidence) / 100)
-                                    }
-                            }
-                            .frame(width: isCompact ? 140 : 190, height: 7)
+                    if geo.size.width > 600 {
+                        HStack(spacing: 10) {
+                            heroMetric("BOARD", "\(store.boardConfidence)%", confidenceColor(store.boardConfidence))
+                            heroMetric("BUDGET", formatMoney(store.userClub.transferBudget), Retro.gold)
+                            heroMetric("FANS", store.fanMoodLabel.uppercased(), Retro.emerald)
                         }
                     }
                 }
@@ -131,7 +115,40 @@ struct HomeView: View {
             .overlay(RoundedRectangle(cornerRadius: 18).stroke(Retro.emerald.opacity(0.55), lineWidth: 1))
             .shadow(color: Retro.darkGreen.opacity(0.22), radius: 12, y: 6)
         }
-        .frame(height: isCompact ? 142 : 168)
+        .frame(height: isCompact ? 132 : 154)
+    }
+
+    private func heroMetric(_ label: String, _ value: String, _ color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(label)
+                .font(.system(size: 8, weight: .black, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.62))
+            Text(value)
+                .font(.system(size: 12, weight: .black, design: .monospaced))
+                .foregroundStyle(color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+        .frame(minWidth: 72, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .background(.black.opacity(0.18))
+        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+    }
+
+    @ViewBuilder
+    private var commandStrip: some View {
+        if isCompact {
+            VStack(spacing: 10) {
+                dayStrip
+                boardStrip
+            }
+        } else {
+            HStack(alignment: .top, spacing: 12) {
+                dayStrip
+                boardStrip
+            }
+        }
     }
 
     private func careerHeroBadge(_ text: String, _ color: Color) -> some View {
@@ -194,12 +211,14 @@ struct HomeView: View {
                         // Short screens: give the form and the bid/deadline
                         // alerts their own lines instead of a shared row.
                         VStack(alignment: .leading, spacing: 8) {
-                            FormView(outcomes: store.recentForm(forClubIndex: store.userClubIndex, count: 6))
+                            FormView(outcomes: store.recentForm(forClubIndex: store.userClubIndex, count: 6),
+                                     emptyColor: CareerPalette.mutedInk)
                             statusBadges
                         }
                     } else {
                         HStack(spacing: 8) {
-                            FormView(outcomes: store.recentForm(forClubIndex: store.userClubIndex, count: 6))
+                            FormView(outcomes: store.recentForm(forClubIndex: store.userClubIndex, count: 6),
+                                     emptyColor: CareerPalette.mutedInk)
                             Spacer(minLength: 0)
                             statusBadges
                         }
@@ -220,22 +239,24 @@ struct HomeView: View {
                 }
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(Retro.panel.opacity(0.7))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .padding(14)
+        .background(CareerPalette.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(CareerPalette.line.opacity(0.18)))
+        .shadow(color: CareerPalette.ink.opacity(0.07), radius: 7, y: 3)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     private var dateSummary: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(store.currentDate.formatted(.dateTime.weekday(.wide).day().month(.wide).year()))
                 .font(.system(.callout, design: .monospaced).bold())
-                .foregroundStyle(Retro.text)
+                .foregroundStyle(CareerPalette.ink)
                 .lineLimit(1)
                 .minimumScaleFactor(0.82)
             Text(countdownText)
                 .font(.system(.caption, design: .monospaced).bold())
-                .foregroundStyle(store.isUserMatchToday ? Retro.highlight : Retro.text.opacity(0.85))
+                .foregroundStyle(store.isUserMatchToday ? Retro.highlight : CareerPalette.mutedInk)
                 .lineLimit(1)
         }
     }
@@ -243,7 +264,7 @@ struct HomeView: View {
     private var matchDayBadge: some View {
         Text(store.isCupMatchDay ? "🏆 CUP DAY" : "⚽︎ MATCH DAY")
             .font(.system(.caption2, design: .monospaced).bold())
-            .foregroundStyle(Retro.background)
+            .foregroundStyle(CareerPalette.ink)
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
             .background(Retro.highlight)
@@ -290,7 +311,7 @@ struct HomeView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(Retro.accent)
-            .foregroundStyle(Retro.background)
+            .foregroundStyle(CareerPalette.ink)
             .clipShape(RoundedRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)
@@ -325,26 +346,28 @@ struct HomeView: View {
                     }
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(Retro.panel.opacity(0.7))
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .padding(14)
+            .background(CareerPalette.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(CareerPalette.line.opacity(0.18)))
+            .shadow(color: CareerPalette.ink.opacity(0.07), radius: 7, y: 3)
         }
         .buttonStyle(.plain)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     private var boardObjective: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text("BOARD OBJECTIVE")
                 .font(.system(.caption2, design: .monospaced).bold())
-                .foregroundStyle(Retro.text.opacity(0.75))
+                .foregroundStyle(CareerPalette.mutedInk)
             Text(store.boardObjective)
                 .font(.system(.callout, design: .monospaced).bold())
                 .foregroundStyle(Retro.accent)
                 .fixedSize(horizontal: false, vertical: true)
             Text("Reputation: \(store.reputationLabel) (\(store.managerReputation))")
                 .font(.system(.caption2, design: .monospaced))
-                .foregroundStyle(Retro.text.opacity(0.85))
+                .foregroundStyle(CareerPalette.mutedInk)
             if store.isObjectiveAtRisk {
                 Text("⚠️ Off the pace for this")
                     .font(.system(.caption2, design: .monospaced).bold())
@@ -365,7 +388,7 @@ struct HomeView: View {
                 .lineLimit(2)
                 .minimumScaleFactor(0.85)
             ZStack(alignment: .leading) {
-                Capsule().fill(Retro.text.opacity(0.2))
+                Capsule().fill(CareerPalette.ink.opacity(0.12))
                 GeometryReader { geo in
                     Capsule()
                         .fill(confidenceColor(store.boardConfidence))
@@ -379,7 +402,7 @@ struct HomeView: View {
                     .foregroundStyle(Color(red: 0.9, green: 0.35, blue: 0.35))
             }
             Text("Squad morale: \(store.teamMoraleLabel(forClubIndex: store.userClubIndex))")
-                .foregroundStyle(Retro.text.opacity(0.85))
+                .foregroundStyle(CareerPalette.mutedInk)
                 .font(.system(.caption, design: .monospaced).bold())
             Text("Fans: \(store.fanMoodLabel)")
                 .foregroundStyle(confidenceColor(store.fanConfidence))
@@ -398,16 +421,17 @@ struct HomeView: View {
                     .foregroundStyle(Retro.highlight)
                 Text("🎯 \(store.completedSeasonObjectiveIDs.count)/\(store.seasonObjectives.count) season goals")
                     .font(.system(.caption, design: .monospaced).bold())
-                    .foregroundStyle(Retro.text)
+                    .foregroundStyle(CareerPalette.ink)
                 Spacer()
                 Image(systemName: "chevron.right")
                     .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(Retro.text.opacity(0.4))
+                    .foregroundStyle(CareerPalette.mutedInk.opacity(0.7))
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
-            .background(Retro.panel.opacity(0.5))
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .background(CareerPalette.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(CareerPalette.line.opacity(0.14)))
         }
         .buttonStyle(.plain)
         .sheet(isPresented: $showingSeasonObjectives) {
@@ -464,7 +488,7 @@ struct WorldPulsePanel: View {
                 HStack(spacing: 10) {
                     Text("Latest from around the game")
                         .font(.system(.caption2, design: .monospaced).bold())
-                        .foregroundStyle(Retro.text.opacity(0.75))
+                        .foregroundStyle(CareerPalette.ink.opacity(0.75))
                     Spacer()
                     if !store.unreadNewsIDs.isEmpty {
                         Text("\(store.unreadNewsIDs.count) unread")
@@ -496,7 +520,7 @@ struct WorldPulsePanel: View {
                         if worldStory != nil, let matchPressure {
                             Text(matchPressure)
                                 .font(.system(.caption2, design: .monospaced))
-                                .foregroundStyle(Retro.text.opacity(0.7))
+                                .foregroundStyle(CareerPalette.ink.opacity(0.7))
                                 .lineLimit(2)
                         }
                         Button {
@@ -505,7 +529,7 @@ struct WorldPulsePanel: View {
                         } label: {
                             Text("OPEN INBOX")
                                 .font(.system(.caption2, design: .monospaced).bold())
-                                .foregroundStyle(Retro.background)
+                                .foregroundStyle(CareerPalette.ink)
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 6)
                                 .background(Retro.accent)
@@ -518,7 +542,7 @@ struct WorldPulsePanel: View {
                         if worldStory != nil, let matchPressure {
                             Text(matchPressure)
                                 .font(.system(.caption2, design: .monospaced))
-                                .foregroundStyle(Retro.text.opacity(0.7))
+                                .foregroundStyle(CareerPalette.ink.opacity(0.7))
                                 .lineLimit(1)
                         }
                         Spacer()
@@ -528,7 +552,7 @@ struct WorldPulsePanel: View {
                         } label: {
                             Text("OPEN INBOX")
                                 .font(.system(.caption2, design: .monospaced).bold())
-                                .foregroundStyle(Retro.background)
+                                .foregroundStyle(CareerPalette.ink)
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 6)
                                 .background(Retro.accent)
@@ -558,7 +582,7 @@ struct WorldPulsePanel: View {
                 pulseRow(icon: "ⓘ",
                          title: "Season story building",
                          body: "Headlines will appear here as the campaign develops.",
-                         accent: Retro.text.opacity(0.65))
+                         accent: CareerPalette.ink.opacity(0.65))
             }
         }
     }
@@ -608,7 +632,7 @@ struct WorldPulsePanel: View {
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .padding(10)
-        .background(Retro.background.opacity(0.42))
+        .background(CareerPalette.canvas)
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
@@ -619,12 +643,12 @@ struct WorldPulsePanel: View {
                     .foregroundStyle(accent)
                 Text(title)
                     .font(.system(.caption, design: .monospaced).bold())
-                    .foregroundStyle(Retro.text)
+                    .foregroundStyle(CareerPalette.ink)
                     .lineLimit(2)
             }
             Text(body)
                 .font(.system(.caption2, design: .monospaced))
-                .foregroundStyle(Retro.text.opacity(0.78))
+                .foregroundStyle(CareerPalette.ink.opacity(0.78))
                 .lineLimit(3)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -650,7 +674,7 @@ struct NextMatchPanel: View {
                             .foregroundStyle(Retro.highlight)
                         Spacer()
                         Text(match.label)
-                            .foregroundStyle(match.isCup ? Retro.highlight : Retro.text.opacity(0.85))
+                            .foregroundStyle(match.isCup ? Retro.highlight : CareerPalette.ink.opacity(0.85))
                     }
                     .font(.system(.caption, design: .monospaced).bold())
 
@@ -663,12 +687,13 @@ struct NextMatchPanel: View {
                             Text(match.isCup ? store.clubDivisionLabel(forClubIndex: opponentIndex)
                                  : "\(ordinal(store.position(ofClubIndex: opponentIndex))) in the league")
                                 .font(.system(.caption2, design: .monospaced))
-                                .foregroundStyle(Retro.text.opacity(0.85))
+                                .foregroundStyle(CareerPalette.ink.opacity(0.85))
                         }
                     }
 
                     labelled("FORM") {
-                        FormView(outcomes: store.recentForm(forClubIndex: opponentIndex))
+                        FormView(outcomes: store.recentForm(forClubIndex: opponentIndex),
+                                 emptyColor: CareerPalette.mutedInk)
                     }
 
                     labelled("ODDS") {
@@ -705,7 +730,7 @@ struct NextMatchPanel: View {
                      ? "Congratulations, boss — you won the league!"
                      : "You finished \(ordinal(store.userPosition)). Press NEW SEASON to go again.")
                     .font(.system(.footnote, design: .monospaced))
-                    .foregroundStyle(Retro.text.opacity(0.85))
+                    .foregroundStyle(CareerPalette.ink.opacity(0.85))
             }
         }
     }
@@ -714,7 +739,7 @@ struct NextMatchPanel: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label)
                 .font(.system(.caption2, design: .monospaced).bold())
-                .foregroundStyle(Retro.text.opacity(0.8))
+                .foregroundStyle(CareerPalette.ink.opacity(0.8))
             content()
         }
     }
@@ -725,11 +750,11 @@ struct NextMatchPanel: View {
                 .font(.system(.caption2, design: .monospaced))
             Text("\(Int((probability * 100).rounded()))%")
                 .font(.system(.callout, design: .monospaced).bold())
-                .foregroundStyle(favourite ? Retro.highlight : Retro.text)
+                .foregroundStyle(favourite ? Retro.highlight : CareerPalette.ink)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 6)
-        .background(Retro.background.opacity(0.5))
+        .background(CareerPalette.canvas)
         .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 }
@@ -752,7 +777,7 @@ struct MedicalCentrePanel: View {
                 if injured.isEmpty && suspended.isEmpty {
                     Text("No injuries or bans — squad fully available. ✓")
                         .font(.system(.footnote, design: .monospaced))
-                        .foregroundStyle(Retro.text.opacity(0.85))
+                        .foregroundStyle(CareerPalette.ink.opacity(0.85))
                 } else {
                     VStack(alignment: .leading, spacing: 6) {
                         ForEach(injured.prefix(5)) { player in
@@ -781,13 +806,14 @@ struct MedicalCentrePanel: View {
                         if hiddenCount > 0 {
                             Text("+ \(hiddenCount) more — view squad")
                                 .font(.system(.caption2, design: .monospaced))
-                                .foregroundStyle(Retro.text.opacity(0.6))
+                                .foregroundStyle(CareerPalette.ink.opacity(0.6))
                         }
                     }
                 }
             }
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("career.home.medicalCentre")
         .sheet(isPresented: $showingMedicalCentre) {
             MedicalCentreSheet(store: store)
         }
@@ -816,7 +842,7 @@ struct MedicalCentreSheet: View {
         let suspended = store.suspendedPlayers(forClubIndex: store.userClubIndex)
 
         ZStack {
-            Retro.background.ignoresSafeArea()
+            CareerPalette.canvas.ignoresSafeArea()
             VStack(alignment: .leading, spacing: 16) {
                 HStack {
                     Text("MEDICAL CENTRE")
@@ -826,9 +852,10 @@ struct MedicalCentreSheet: View {
                     Button { dismiss() } label: {
                         Image(systemName: "xmark.circle.fill")
                             .font(.system(size: 24))
-                            .foregroundStyle(Retro.text.opacity(0.5))
+                            .foregroundStyle(CareerPalette.ink.opacity(0.5))
                     }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier("career.home.medicalSheet.close")
                 }
 
                 if injured.isEmpty && suspended.isEmpty {
@@ -839,7 +866,7 @@ struct MedicalCentreSheet: View {
                             .foregroundStyle(Retro.accent)
                         Text("Full squad availability — no injuries or bans.")
                             .font(.system(.callout, design: .monospaced))
-                            .foregroundStyle(Retro.text.opacity(0.85))
+                            .foregroundStyle(CareerPalette.ink.opacity(0.85))
                     }
                     .frame(maxWidth: .infinity)
                     Spacer()
@@ -851,6 +878,11 @@ struct MedicalCentreSheet: View {
                                     VStack(spacing: 10) {
                                         ForEach(injured) { player in
                                             injuryRow(player)
+                                                .accessibilityElement(children: .combine)
+                                                .accessibilityIdentifier(
+                                                    player.id == injured.last?.id
+                                                    ? "career.home.medicalSheet.lastInjury"
+                                                    : "career.home.medicalSheet.injury")
                                         }
                                     }
                                 }
@@ -871,7 +903,7 @@ struct MedicalCentreSheet: View {
             .padding(24)
         }
         .font(.system(.body, design: .monospaced))
-        .foregroundStyle(Retro.text)
+        .foregroundStyle(CareerPalette.ink)
     }
 
     private func injuryRow(_ player: Player) -> some View {
@@ -883,7 +915,7 @@ struct MedicalCentreSheet: View {
                     .frame(width: 8, height: 8)
                 Text(player.careerPositionLabel)
                     .font(.system(.caption2, design: .monospaced).bold())
-                    .foregroundStyle(Retro.background)
+                    .foregroundStyle(CareerPalette.ink)
                     .padding(.horizontal, 6).padding(.vertical, 2)
                     .background(Retro.highlight)
                     .clipShape(Capsule())
@@ -896,10 +928,10 @@ struct MedicalCentreSheet: View {
             }
             Text("\(player.durability.label) durability · \(player.injuriesThisSeason) injur\(player.injuriesThisSeason == 1 ? "y" : "ies") this season")
                 .font(.system(.caption2, design: .monospaced))
-                .foregroundStyle(Retro.text.opacity(0.6))
+                .foregroundStyle(CareerPalette.ink.opacity(0.6))
         }
         .padding(10)
-        .background(Retro.panel.opacity(0.6))
+        .background(CareerPalette.canvas)
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
@@ -914,7 +946,7 @@ struct MedicalCentreSheet: View {
                 .foregroundStyle(Retro.highlight)
         }
         .padding(10)
-        .background(Retro.panel.opacity(0.6))
+        .background(CareerPalette.canvas)
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
@@ -948,7 +980,7 @@ struct SquadNeedsPanel: View {
                 if needs.isEmpty {
                     Text("Squad has cover everywhere. ✓")
                         .font(.system(.footnote, design: .monospaced))
-                        .foregroundStyle(Retro.text.opacity(0.85))
+                        .foregroundStyle(CareerPalette.ink.opacity(0.85))
                 } else {
                     VStack(alignment: .leading, spacing: 6) {
                         ForEach(needs, id: \.role) { need in
@@ -981,7 +1013,7 @@ struct ContractsPanel: View {
             if expiring.isEmpty {
                 Text("No deals expiring soon. ✓")
                     .font(.system(.footnote, design: .monospaced))
-                    .foregroundStyle(Retro.text.opacity(0.85))
+                    .foregroundStyle(CareerPalette.ink.opacity(0.85))
             } else {
                 VStack(alignment: .leading, spacing: 6) {
                     if let message {
@@ -1003,14 +1035,14 @@ struct ContractsPanel: View {
                                     .foregroundStyle(player.contractYears <= 0 ? .red : Retro.highlight)
                             }
                             .font(.system(.callout, design: .monospaced))
-                            .foregroundStyle(Retro.text)
+                            .foregroundStyle(CareerPalette.ink)
                         }
                         .buttonStyle(.plain)
                     }
                     if expiring.count > 5 {
                         Text("+ \(expiring.count - 5) more — view squad")
                             .font(.system(.caption2, design: .monospaced))
-                            .foregroundStyle(Retro.text.opacity(0.6))
+                            .foregroundStyle(CareerPalette.ink.opacity(0.6))
                     }
                 }
             }
@@ -1051,7 +1083,7 @@ struct StandingsMiniPanel: View {
                         Text("Pts").frame(width: 30, alignment: .trailing)
                     }
                     .font(.system(.caption2, design: .monospaced).bold())
-                    .foregroundStyle(Retro.text.opacity(0.8))
+                    .foregroundStyle(CareerPalette.ink.opacity(0.8))
 
                     ForEach(Array(window), id: \.element.id) { index, club in
                         let isUser = club.id == store.userClub.id
@@ -1065,7 +1097,7 @@ struct StandingsMiniPanel: View {
                         }
                         .font(.system(.callout, design: .monospaced)
                             .weight(isUser ? .bold : .regular))
-                        .foregroundStyle(isUser ? Retro.highlight : Retro.text)
+                        .foregroundStyle(isUser ? Retro.highlight : CareerPalette.ink)
                     }
                 }
             }
@@ -1103,17 +1135,17 @@ struct FixturesMiniPanel: View {
         return HStack(spacing: 8) {
             Text(store.date(forMatchday: fixture.matchday).formatted(.dateTime.day().month(.abbreviated)))
                 .font(.system(.caption2, design: .monospaced))
-                .foregroundStyle(Retro.text.opacity(0.8))
+                .foregroundStyle(CareerPalette.ink.opacity(0.8))
                 .frame(width: 58, alignment: .leading)
             Text(opponent.shortName)
             Text(isHome ? "H" : "A")
-                .foregroundStyle(Retro.text.opacity(0.8))
+                .foregroundStyle(CareerPalette.ink.opacity(0.8))
             Spacer()
             if fixture.played {
                 let us = isHome ? fixture.homeGoals : fixture.awayGoals
                 let them = isHome ? fixture.awayGoals : fixture.homeGoals
                 Text("\(us)-\(them)")
-                    .foregroundStyle(us > them ? Retro.accent : (us == them ? Retro.text : Retro.highlight))
+                    .foregroundStyle(us > them ? Retro.accent : (us == them ? CareerPalette.ink : Retro.highlight))
             } else {
                 let difficulty = store.fixtureDifficulty(opponentIndex: opponentIndex)
                 Text(String(repeating: "★", count: difficulty))

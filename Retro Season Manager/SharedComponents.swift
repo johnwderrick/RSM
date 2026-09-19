@@ -202,13 +202,14 @@ struct OverallRatingView: View {
 /// A row of coloured W/D/L boxes showing recent form.
 struct FormView: View {
     let outcomes: [MatchOutcome]
+    var emptyColor: Color = Retro.text.opacity(0.7)
 
     var body: some View {
         HStack(spacing: 3) {
             if outcomes.isEmpty {
                 Text("No games played yet")
                     .font(.system(.caption2, design: .monospaced))
-                    .foregroundStyle(Retro.text.opacity(0.7))
+                    .foregroundStyle(emptyColor)
             } else {
                 ForEach(Array(outcomes.enumerated()), id: \.offset) { _, outcome in
                     Text(outcome.letter)

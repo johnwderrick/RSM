@@ -122,6 +122,16 @@ struct MainGameView: View {
                         .fill(Retro.emerald.opacity(0.35))
                         .frame(height: 1)
                     content
+                        // Stable per-destination test anchor, published as a
+                        // tiny invisible element: a containment wrapper on
+                        // the whole content area regrouped the accessibility
+                        // tree and broke sidebar hit-testing under XCUITest.
+                        .overlay(alignment: .topLeading) {
+                            Color.clear
+                                .frame(width: 1, height: 1)
+                                .accessibilityElement()
+                                .accessibilityIdentifier(section.screenIdentifier)
+                        }
                 }
                 // Most Career destinations use the established light-on-dark
                 // palette. Home supplies its own light canvas, so keeping the
@@ -133,6 +143,11 @@ struct MainGameView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+        // Note: deliberately no shell-level `.accessibilityElement(children:
+        // .contain)` here — wrapping the whole shell regrouped the
+        // accessibility tree and produced invalid hit-point frames for the
+        // sidebar buttons under XCUITest. Screen-level identifiers below
+        // are the stable test anchors instead.
     }
 
     @ViewBuilder
@@ -149,8 +164,12 @@ struct MainGameView: View {
             case .settings:  SettingsView(store: store)
             }
         }
-        .id(section)
-        .transition(.opacity)
+        // No `.id(section)` / `.transition(.opacity)` here: the whole-
+        // destination crossfade produced a visible flash and stale-frame
+        // flicker when switching sidebar destinations (the same defect the
+        // Legends shell already had removed). Destination switches are now
+        // immediate and stable; feature-level animations inside each
+        // screen are unaffected.
     }
 }
 
@@ -182,6 +201,8 @@ struct SidebarView: View {
                 }
                 .padding(.vertical, 2)
             }
+            // Stable anchor so UI tests can scroll the sidebar deterministically.
+            .accessibilityIdentifier("career.nav.sidebarScroll")
             Spacer(minLength: 8)
             ForEach(pinnedItems, id: \.self) { item in
                 sidebarButton(item)
@@ -229,7 +250,11 @@ struct SidebarView: View {
             }
         }
         .buttonStyle(PressableButtonStyle())
-        .accessibilityIdentifier("career.nav.\(item.navLabel.lowercased())")
+        // Semantic identifier, deliberately not derived from the visible
+        // label: a future "Fixtures" → "Calendar"-style rename must not
+        // silently move UI-test selectors.
+        .accessibilityIdentifier(item.navIdentifier)
+        .accessibilityAddTraits(section == item ? [.isSelected] : [])
     }
 
     /// One sidebar icon: the hand-painted pixel-art asset, dimmed when not

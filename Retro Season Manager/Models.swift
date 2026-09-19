@@ -1056,6 +1056,13 @@ struct NewsItem: Identifiable {
     /// Links this inbox item to its generated front page in `GameStore.newspapers`,
     /// when the underlying story was judged newspaper-worthy — see `GameStore+Newspaper.swift`.
     var newspaperID: UUID? = nil
+
+    /// Stable accessibility identifier for the inbox row, derived from the
+    /// title so tests can open a specific article regardless of ordering
+    /// (the UI-test fixture's long article is found by its known title).
+    var stableRowIdentifier: String {
+        "career.inbox.row.\(CareerIdentifiers.slug(title))"
+    }
 }
 
 /// Which kind of outlet ran a story — drives both the masthead styling and

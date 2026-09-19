@@ -74,6 +74,18 @@ struct ContentView: View {
         }
         #endif
         _legendsStore = State(initialValue: legends)
+
+        #if DEBUG
+        // Deterministic Career navigation fixture: boots straight into an
+        // active, saved career with stable injuries and inbox content
+        // (see GameStore+UITestFixture.swift).
+        if ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_NAVIGATION") {
+            let career = GameStore()
+            career.prepareCareerNavigationFixtureForDebug()
+            _store = State(initialValue: career)
+            _experience = State(initialValue: .career)
+        }
+        #endif
     }
 
     var body: some View {
