@@ -95,5 +95,44 @@ extension GameStore {
         persist()
         return self
     }
+
+    /// Builds on the shared Career navigation fixture with a predictable
+    /// mix of complete, in-progress and unscouted transfer targets. The
+    /// product scouting APIs still own every state; this only removes
+    /// randomness from the UI test's starting point.
+    @discardableResult
+    func prepareCareerScoutFixtureForDebug() -> GameStore {
+        prepareCareerNavigationFixtureForDebug()
+
+        let targets = transferMarket.sorted {
+            if $0.player.rating == $1.player.rating { return $0.player.name < $1.player.name }
+            return $0.player.rating > $1.player.rating
+        }
+        guard !targets.isEmpty else { return self }
+
+        scoutedReports = [:]
+        scoutingDue = [:]
+        shortlistedPlayerIDs = []
+
+        let reported = targets[0]
+        scoutedReports[reported.id] = ScoutReport(
+            playerID: reported.player.id,
+            playerName: reported.player.name,
+            potential: min(95, reported.player.rating + 6),
+            verdict: "A first-team player with room to improve.",
+            note: "Deterministic Career Scout fixture report.",
+            valueRangeLow: max(1, Int(Double(reported.player.value) * 0.85)),
+            valueRangeHigh: max(2, Int(Double(reported.player.value) * 1.15)),
+            confidence: 79
+        )
+        shortlistedPlayerIDs.insert(reported.player.id)
+
+        if targets.count > 1 {
+            scoutingDue[targets[1].id] = Self.calendar.date(byAdding: .day, value: 2, to: currentDate)
+        }
+
+        persist()
+        return self
+    }
 }
 #endif

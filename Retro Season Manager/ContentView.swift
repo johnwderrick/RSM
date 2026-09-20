@@ -85,6 +85,12 @@ struct ContentView: View {
             _store = State(initialValue: career)
             _experience = State(initialValue: .career)
         }
+        if ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_SCOUT") {
+            let career = GameStore()
+            career.prepareCareerScoutFixtureForDebug()
+            _store = State(initialValue: career)
+            _experience = State(initialValue: .career)
+        }
         #endif
     }
 

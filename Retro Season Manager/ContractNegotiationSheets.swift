@@ -692,26 +692,28 @@ struct ScoutReportsSheet: View {
 
     var body: some View {
         ZStack {
-            Retro.background.ignoresSafeArea()
+            CareerPalette.canvas.ignoresSafeArea()
             VStack(alignment: .leading, spacing: 16) {
                 HStack {
                     Text("SCOUT REPORTS")
                         .font(.system(.headline, design: .monospaced).bold())
-                        .foregroundStyle(Retro.accent)
+                        .foregroundStyle(CareerPalette.ink)
+                        .accessibilityIdentifier("career.scoutReports.screen")
                     Spacer()
                     Button { dismiss() } label: {
                         Image(systemName: "xmark.circle.fill")
                             .font(.system(size: 24))
-                            .foregroundStyle(Retro.text.opacity(0.5))
+                            .foregroundStyle(CareerPalette.mutedInk)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier("career.scoutReports.close")
                 }
 
                 if reports.isEmpty {
                     Spacer()
                     Text("No reports filed yet — scout a target, or send scouts out into the world.")
                         .font(.system(.footnote, design: .monospaced))
-                        .foregroundStyle(Retro.text.opacity(0.75))
+                        .foregroundStyle(CareerPalette.mutedInk)
                         .frame(maxWidth: .infinity, alignment: .center)
                     Spacer()
                 } else {
@@ -727,7 +729,7 @@ struct ScoutReportsSheet: View {
             .padding(24)
         }
         .font(.system(.body, design: .monospaced))
-        .foregroundStyle(Retro.text)
+        .foregroundStyle(CareerPalette.ink)
     }
 
     private func reportRow(_ report: ScoutReport) -> some View {
@@ -741,40 +743,42 @@ struct ScoutReportsSheet: View {
                 HStack {
                     Text(report.playerName)
                         .font(.system(.callout, design: .monospaced).bold())
-                        .foregroundStyle(Retro.text)
+                        .foregroundStyle(CareerPalette.ink)
                     Spacer()
                     Text("POT ~\(report.potential)")
                         .font(.system(.caption, design: .monospaced).bold())
-                        .foregroundStyle(Retro.highlight)
+                        .foregroundStyle(CareerPalette.line)
                 }
                 Text(report.verdict)
                     .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(Retro.text.opacity(0.85))
+                    .foregroundStyle(CareerPalette.ink)
                 Text("Est. \(formatMoney(report.valueRangeLow))–\(formatMoney(report.valueRangeHigh)) · \(report.confidence)% confidence")
                     .font(.system(.caption2, design: .monospaced))
-                    .foregroundStyle(Retro.highlight.opacity(0.8))
+                    .foregroundStyle(CareerPalette.line)
                 HStack {
                     Text(report.note)
                         .font(.system(.caption2, design: .monospaced))
-                        .foregroundStyle(Retro.text.opacity(0.6))
+                        .foregroundStyle(CareerPalette.mutedInk)
                     Spacer()
                     if live == nil {
                         Text("NO LONGER AVAILABLE")
                             .font(.system(.caption2, design: .monospaced).bold())
-                            .foregroundStyle(Retro.text.opacity(0.5))
+                            .foregroundStyle(CareerPalette.mutedInk)
                     } else {
                         Text(live.map { formatMoney($0.askingPrice) } ?? "")
                             .font(.system(.caption2, design: .monospaced).bold())
-                            .foregroundStyle(Retro.accent)
+                            .foregroundStyle(CareerPalette.line)
                     }
                 }
             }
             .padding(10)
-            .background(Retro.panel.opacity(0.6))
+            .background(CareerPalette.surface)
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(CareerPalette.line.opacity(0.16)))
             .clipShape(RoundedRectangle(cornerRadius: 8))
         }
         .buttonStyle(.plain)
         .disabled(live == nil)
+        .accessibilityIdentifier("career.scoutReports.row.\(report.playerID.uuidString)")
     }
 }
 
