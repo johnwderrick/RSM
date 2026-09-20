@@ -234,6 +234,64 @@ final class CareerNavigationUITests: XCTestCase {
         app.terminate()
     }
 
+    // MARK: - Table and fixture centre
+
+    func testCareerTableShowsSeasonContextCompetitionsAndStableScrolling() throws {
+        let app = launch()
+        XCTAssertTrue(screenVisible(app, "home", timeout: 10), "Career fixture should reach Home")
+
+        gotoSidebar(app, "table")
+        XCTAssertTrue(screenVisible(app, "table", timeout: 8), "Table destination missing")
+
+        let summary = app.descendants(matching: .any)["career.table.summary"]
+        let leagueTable = app.descendants(matching: .any)["career.table.leagueTable"]
+        let userRow = app.descendants(matching: .any)["career.table.userRow"]
+        XCTAssertTrue(summary.waitForExistence(timeout: 6), "Competition summary missing")
+        XCTAssertTrue(leagueTable.waitForExistence(timeout: 6), "Full league table missing")
+        XCTAssertTrue(userRow.waitForExistence(timeout: 6), "The user's highlighted league row missing")
+        XCTAssertTrue(userRow.label.contains("played 3"), "Fixture should place the user after three completed rounds")
+
+        let league = app.buttons["career.table.competition.league"]
+        let cup = app.buttons["career.table.competition.national-cup"]
+        XCTAssertTrue(league.exists && league.isSelected, "League should be the initial competition")
+        XCTAssertTrue(cup.waitForExistence(timeout: 5), "National Cup selector missing")
+        cup.tap()
+        XCTAssertTrue(cup.isSelected, "National Cup should become selected")
+        league.tap()
+        XCTAssertTrue(league.isSelected && leagueTable.waitForExistence(timeout: 5),
+                      "Returning to League should restore the table")
+
+        let nextFixture = app.descendants(matching: .any)["career.table.nextFixture"]
+        let fixtureCentre = app.descendants(matching: .any)["career.table.fixtureCentre"]
+        let recentResults = app.descendants(matching: .any)["career.table.fixtureCentre.recent"]
+        XCTAssertTrue(nextFixture.waitForExistence(timeout: 6), "Next fixture card missing")
+        XCTAssertTrue(fixtureCentre.waitForExistence(timeout: 6), "Fixture centre missing")
+        XCTAssertTrue(recentResults.waitForExistence(timeout: 6), "Recent-results section missing")
+
+        shot(app, "table_overview")
+
+        // Compact landscape stacks the lower cards below the full table.
+        // Reaching the fixture centre proves the screen owns one usable
+        // scroll container; holding its position guards against the same
+        // jump-to-top defect previously fixed in Legends Division.
+        let tableScroll = app.scrollViews["career.table.scroll"]
+        XCTAssertTrue(tableScroll.waitForExistence(timeout: 5), "Table's main scroll container missing")
+        var swipes = 0
+        while !recentResults.isHittable && swipes < 10 {
+            tableScroll.swipeUp()
+            swipes += 1
+            Thread.sleep(forTimeInterval: 0.35)
+        }
+        XCTAssertTrue(recentResults.isHittable, "Lower fixture content should be reachable by scrolling")
+        let heldY = recentResults.frame.minY
+        Thread.sleep(forTimeInterval: 1.2)
+        XCTAssertEqual(recentResults.frame.minY, heldY, accuracy: 24,
+                       "Table scroll position should remain stable while idle")
+
+        shot(app, "table_fixtures")
+        app.terminate()
+    }
+
     // MARK: - B. Home scrolling + no jump-to-top
 
     func testCareerHomeScrollsToLowerContentAndHoldsPosition() throws {

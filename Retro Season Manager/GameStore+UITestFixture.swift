@@ -52,7 +52,46 @@ extension GameStore {
             news.insert(NewsItem(date: currentDate, category: category, title: title, body: body), at: 0)
         }
 
-        // 4. Persist exactly once so the save on disk matches memory.
+        // 4. Complete three league rounds through the real standings path.
+        //    The user's sequence is deliberately W-D-L so the redesigned
+        //    table can prove its summary, form guide, recent-results badges
+        //    and next-fixture split against useful authoritative data.
+        for fixtureIndex in fixtures.indices where fixtures[fixtureIndex].matchday <= 3 {
+            let fixture = fixtures[fixtureIndex]
+            let involvesUser = fixture.homeIndex == userClubIndex || fixture.awayIndex == userClubIndex
+            let homeGoals: Int
+            let awayGoals: Int
+
+            if involvesUser {
+                let userIsHome = fixture.homeIndex == userClubIndex
+                switch fixture.matchday {
+                case 1:
+                    homeGoals = userIsHome ? 2 : 0
+                    awayGoals = userIsHome ? 0 : 2
+                case 2:
+                    homeGoals = 1
+                    awayGoals = 1
+                default:
+                    homeGoals = userIsHome ? 0 : 1
+                    awayGoals = userIsHome ? 1 : 0
+                }
+            } else {
+                homeGoals = (fixture.homeIndex + fixture.matchday) % 3
+                awayGoals = (fixture.awayIndex + fixture.matchday + 1) % 2
+            }
+
+            fixtures[fixtureIndex].played = true
+            fixtures[fixtureIndex].homeGoals = homeGoals
+            fixtures[fixtureIndex].awayGoals = awayGoals
+            applyResult(clubIndex: fixture.homeIndex, scored: homeGoals, conceded: awayGoals,
+                        isHome: true, opponentIndex: fixture.awayIndex)
+            applyResult(clubIndex: fixture.awayIndex, scored: awayGoals, conceded: homeGoals,
+                        isHome: false, opponentIndex: fixture.homeIndex)
+        }
+        currentMatchday = 4
+        currentDate = date(forMatchday: currentMatchday)
+
+        // 5. Persist exactly once so the save on disk matches memory.
         persist()
         return self
     }
