@@ -383,36 +383,10 @@ struct CalendarView: View {
         let opponent = store.clubs[opponentIndex]
 
         return HStack(spacing: 8) {
-            VStack(spacing: 0) {
-                Text(row.date.formatted(.dateTime.day()))
-                Text(row.date.formatted(.dateTime.month(.abbreviated)).uppercased())
-            }
-            .font(.system(size: 9, weight: .black, design: .monospaced))
-            .foregroundStyle(CareerPalette.mutedInk)
-            .frame(width: 30, alignment: .leading)
-
-            if isUser {
-                Text(userIsHome ? "H" : "A")
-                    .font(.system(size: 9, weight: .black, design: .monospaced))
-                    .foregroundStyle(.white).frame(width: 16, height: 16)
-                    .background(userIsHome ? CareerPalette.line : CareerPalette.mutedInk)
-                    .clipShape(RoundedRectangle(cornerRadius: 3))
-                CrestView(shortName: opponent.shortName, size: 20, color: store.color(forClubIndex: opponentIndex))
-                Text(opponent.shortName).lineLimit(1)
-            } else {
-                CrestView(shortName: home.shortName, size: 20, color: store.color(forClubIndex: row.homeIndex))
-                Text(home.shortName).lineLimit(1)
-                Text("V").font(.system(size: 8, weight: .black, design: .monospaced)).foregroundStyle(CareerPalette.mutedInk)
-                CrestView(shortName: away.shortName, size: 20, color: store.color(forClubIndex: row.awayIndex))
-                Text(away.shortName).lineLimit(1)
-            }
+            scheduleDateBadge(row)
+            scheduleMatchup(row, isUser: isUser, userIsHome: userIsHome, opponentIndex: opponentIndex)
             Spacer(minLength: 3)
-
-            if !row.played, isUser {
-                Text(String(repeating: "★", count: store.fixtureDifficulty(opponentIndex: opponentIndex)))
-                    .font(.system(size: 8)).foregroundStyle(Retro.highlight)
-            }
-            Text(state).font(.system(size: 10, weight: .black, design: .monospaced)).foregroundStyle(stateColor)
+            scheduleRowState(row, state: state, color: stateColor, isUser: isUser, opponentIndex: opponentIndex)
         }
         .font(.system(size: 10, design: .monospaced)).foregroundStyle(CareerPalette.ink)
         .padding(.horizontal, 8).padding(.vertical, 7)
@@ -426,6 +400,64 @@ struct CalendarView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityIdentifier("career.calendar.row.\(row.played && isUser ? "played" : "upcoming").\(index)")
         .accessibilityLabel("\(row.context), \(isUser ? (userIsHome ? "home" : "away") + " against " + opponent.name : home.name + " versus " + away.name), \(row.played ? "played " + state : "upcoming")")
+    }
+
+    private func scheduleDateBadge(_ row: ScheduleRow) -> some View {
+        VStack(spacing: 0) {
+            Text(row.date.formatted(.dateTime.day()))
+            Text(row.date.formatted(.dateTime.month(.abbreviated)).uppercased())
+        }
+        .font(.system(size: 9, weight: .black, design: .monospaced))
+        .foregroundStyle(CareerPalette.mutedInk)
+        .frame(width: 30, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func scheduleMatchup(
+        _ row: ScheduleRow,
+        isUser: Bool,
+        userIsHome: Bool,
+        opponentIndex: Int
+    ) -> some View {
+        if isUser {
+            let opponent = store.clubs[opponentIndex]
+            Text(userIsHome ? "H" : "A")
+                .font(.system(size: 9, weight: .black, design: .monospaced))
+                .foregroundStyle(.white)
+                .frame(width: 16, height: 16)
+                .background(userIsHome ? CareerPalette.line : CareerPalette.mutedInk)
+                .clipShape(RoundedRectangle(cornerRadius: 3))
+            CrestView(shortName: opponent.shortName, size: 20, color: store.color(forClubIndex: opponentIndex))
+            Text(opponent.shortName).lineLimit(1)
+        } else {
+            let home = store.clubs[row.homeIndex]
+            let away = store.clubs[row.awayIndex]
+            CrestView(shortName: home.shortName, size: 20, color: store.color(forClubIndex: row.homeIndex))
+            Text(home.shortName).lineLimit(1)
+            Text("V")
+                .font(.system(size: 8, weight: .black, design: .monospaced))
+                .foregroundStyle(CareerPalette.mutedInk)
+            CrestView(shortName: away.shortName, size: 20, color: store.color(forClubIndex: row.awayIndex))
+            Text(away.shortName).lineLimit(1)
+        }
+    }
+
+    @ViewBuilder
+    private func scheduleRowState(
+        _ row: ScheduleRow,
+        state: String,
+        color: Color,
+        isUser: Bool,
+        opponentIndex: Int
+    ) -> some View {
+        if !row.played, isUser {
+            Text(String(repeating: "★", count: store.fixtureDifficulty(opponentIndex: opponentIndex)))
+                .font(.system(size: 8))
+                .foregroundStyle(Retro.highlight)
+        }
+        Text(state)
+            .font(.system(size: 10, weight: .black, design: .monospaced))
+            .foregroundStyle(color)
     }
 
     // MARK: - Selected-day detail + sim controls
