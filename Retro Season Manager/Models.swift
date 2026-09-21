@@ -869,7 +869,9 @@ struct JobOffer: Identifiable, Codable {
 }
 
 /// A scout's assessment of a transfer target.
-struct ScoutReport {
+/// Codable so completed reports persist with the save (they used to be
+/// transient and were lost on every relaunch).
+struct ScoutReport: Codable {
     /// The assessed player, kept alongside the report so it still reads
     /// sensibly in a reports list even after the target leaves the
     /// transfer market (sold elsewhere, window closed).
@@ -944,13 +946,56 @@ func formatMoney(_ thousands: Int) -> String {
 }
 
 /// A player listed on the transfer market, with an asking price.
-struct TransferTarget: Identifiable {
-    let id = UUID()
+///
+/// A target's identity is derived from the underlying player's UUID rather
+/// than a fresh random one: every listing for the same player shares one
+/// target identity, and that identity survives save/load cycles — so scout
+/// reports, in-progress assignments and shortlist entries
+/// survive a relaunch instead of dangling off an ID that died with the
+/// process. Codable so the market itself can be persisted.
+struct TransferTarget: Identifiable, Codable {
+    /// Deterministic per-player identifier: a namespaced UUID derived from
+    /// the player's own id. Stable across relaunches and shared by every
+    /// listing of that player, matching the one-target-per-player market
+    /// invariant.
+    var id: UUID { TransferTarget.stableID(for: player.id) }
     let player: Player
     /// The selling club's index, or nil for a free agent.
     let sellingClubIndex: Int?
     /// Asking price in thousands of pounds.
     let askingPrice: Int
+
+    /// A UUID derived from a player id via a deterministic 128-bit mix of
+    /// its bytes — the same player id yields the same target id on every
+    /// device and process, with no 128-bit integer types (which would need
+    /// iOS 18).
+    static func stableID(for playerID: UUID) -> UUID {
+        // Two independent accumulators over the player UUID's bytes, with
+        // fixed seeds acting as the namespace so player ids can't collide
+        // with other stable-ID domains.
+        var low: UInt64 = 0x243F6A8885A308D3
+        var high: UInt64 = 0x13198A2E03707344
+        withUnsafeBytes(of: playerID.uuid) { raw in
+            for byte in raw {
+                low = (low ^ UInt64(byte)) &* 0x100000001B3          // FNV-1a lane
+                high = (high &+ UInt64(byte)) &* 0x9E3779B97F4A7C15  // golden-ratio lane
+                high ^= high >> 29
+            }
+        }
+        var bytes = [UInt8](repeating: 0, count: 16)
+        withUnsafeBytes(of: low.bigEndian) { raw in
+            for index in 0..<8 { bytes[index] = raw[index] }
+        }
+        withUnsafeBytes(of: high.bigEndian) { raw in
+            for index in 0..<8 { bytes[8 + index] = raw[index] }
+        }
+        bytes[6] = (bytes[6] & 0x0F) | 0x50 // version 5 shape
+        bytes[8] = (bytes[8] & 0x3F) | 0x80 // RFC 4122 variant
+        return UUID(uuid: (bytes[0], bytes[1], bytes[2], bytes[3],
+                           bytes[4], bytes[5], bytes[6], bytes[7],
+                           bytes[8], bytes[9], bytes[10], bytes[11],
+                           bytes[12], bytes[13], bytes[14], bytes[15]))
+    }
 }
 
 /// A transfer where a fee has been agreed with the selling club but

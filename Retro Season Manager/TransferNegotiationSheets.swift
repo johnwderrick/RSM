@@ -82,21 +82,22 @@ struct TransferBidSheet: View {
 
     var body: some View {
         ZStack {
-            Retro.background.ignoresSafeArea()
+            CareerPalette.canvas.ignoresSafeArea()
             VStack(spacing: 14) {
                 VStack(spacing: 4) {
                     Text("NEGOTIATE FEE")
-                        .font(.system(.headline, design: .monospaced).bold())
-                        .foregroundStyle(Retro.accent)
+                        .font(.system(size: 14, weight: .black, design: .monospaced))
+                        .foregroundStyle(CareerPalette.ink)
                     Text(target.player.name)
-                        .font(.system(.title3, design: .monospaced).bold())
+                        .font(.system(size: 17, weight: .black, design: .monospaced))
+                        .foregroundStyle(CareerPalette.ink)
                     Text("Asking price \(formatMoney(target.askingPrice)) · \(sellerName)")
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(Retro.text.opacity(0.75))
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundStyle(CareerPalette.mutedInk)
                     if let sellerIndex, store.clubNegotiationStances.indices.contains(sellerIndex) {
                         Text(store.clubNegotiationStances[sellerIndex].displayLabel.uppercased())
-                            .font(.system(.caption2, design: .monospaced).bold())
-                            .foregroundStyle(Retro.highlight.opacity(0.8))
+                            .font(.system(size: 8, weight: .black, design: .monospaced))
+                            .foregroundStyle(Retro.gold)
                     }
                 }
 
@@ -119,13 +120,13 @@ struct TransferBidSheet: View {
 
                         VStack(spacing: 10) {
                             Text("YOUR OFFER")
-                                .font(.system(.caption2, design: .monospaced).bold())
-                                .foregroundStyle(Retro.text.opacity(0.7))
+                                .font(.system(size: 8, weight: .black, design: .monospaced))
+                                .foregroundStyle(CareerPalette.mutedInk)
                             HStack(spacing: 20) {
                                 stepButton("minus.circle.fill") { amount = max(step, amount - step) }
                                 Text(formatMoney(amount))
-                                    .font(.system(.title2, design: .monospaced).bold())
-                                    .foregroundStyle(amount >= target.askingPrice ? Retro.accent : Color(red: 0.95, green: 0.55, blue: 0.35))
+                                    .font(.system(size: 19, weight: .black, design: .monospaced))
+                                    .foregroundStyle(amount >= target.askingPrice ? CareerPalette.line : .orange)
                                     .frame(minWidth: 110)
                                 stepButton("plus.circle.fill") { amount += step }
                             }
@@ -134,48 +135,48 @@ struct TransferBidSheet: View {
                         if let sellerIndex {
                             VStack(spacing: 8) {
                                 Text("SELL-ON PERCENTAGE")
-                                    .font(.system(.caption2, design: .monospaced).bold())
-                                    .foregroundStyle(Retro.text.opacity(0.7))
+                                    .font(.system(size: 8, weight: .black, design: .monospaced))
+                                    .foregroundStyle(CareerPalette.mutedInk)
                                 HStack(spacing: 16) {
                                     stepButton("minus.circle.fill") { sellOnPercentage = max(0, sellOnPercentage - 5) }
                                     Text(sellOnPercentage > 0 ? "\(sellOnPercentage)%" : "None")
-                                        .font(.system(.callout, design: .monospaced).bold())
-                                        .foregroundStyle(sellOnPercentage > 0 ? Retro.highlight : Retro.text.opacity(0.5))
+                                        .font(.system(size: 11, weight: .black, design: .monospaced))
+                                        .foregroundStyle(sellOnPercentage > 0 ? Retro.gold : CareerPalette.mutedInk)
                                         .frame(minWidth: 90)
                                     stepButton("plus.circle.fill") { sellOnPercentage = min(25, sellOnPercentage + 5) }
                                 }
                                 Text("A cut of any future resale for \(store.clubs[sellerIndex].name) — sweetens the deal.")
-                                    .font(.system(.caption2, design: .monospaced))
-                                    .foregroundStyle(Retro.text.opacity(0.6))
+                                    .font(.system(size: 8, design: .monospaced))
+                                    .foregroundStyle(CareerPalette.mutedInk)
                             }
 
                             VStack(spacing: 8) {
                                 Toggle(isOn: $includeBuyBack) {
                                     Text("BUY-BACK CLAUSE")
-                                        .font(.system(.caption2, design: .monospaced).bold())
-                                        .foregroundStyle(Retro.text.opacity(0.7))
+                                        .font(.system(size: 8, weight: .black, design: .monospaced))
+                                        .foregroundStyle(CareerPalette.mutedInk)
                                 }
-                                .tint(Retro.accent)
+                                .tint(CareerPalette.line)
                                 if includeBuyBack {
                                     HStack(spacing: 16) {
                                         stepButton("minus.circle.fill") { buyBackFee = max(buyBackStep, buyBackFee - buyBackStep) }
                                         Text(formatMoney(buyBackFee))
-                                            .font(.system(.callout, design: .monospaced).bold())
-                                            .foregroundStyle(Retro.highlight)
+                                            .font(.system(size: 11, weight: .black, design: .monospaced))
+                                            .foregroundStyle(Retro.gold)
                                             .frame(minWidth: 90)
                                         stepButton("plus.circle.fill") { buyBackFee += buyBackStep }
                                     }
                                     Text("\(store.clubs[sellerIndex].name) can re-sign him at this fee later. A lower fee helps close the deal now.")
-                                        .font(.system(.caption2, design: .monospaced))
-                                        .foregroundStyle(Retro.text.opacity(0.6))
+                                        .font(.system(size: 8, design: .monospaced))
+                                        .foregroundStyle(CareerPalette.mutedInk)
                                 }
                             }
 
                             if !eligibleMakeweights.isEmpty {
                                 VStack(spacing: 8) {
                                     Text("EXCHANGE PLAYER")
-                                        .font(.system(.caption2, design: .monospaced).bold())
-                                        .foregroundStyle(Retro.text.opacity(0.7))
+                                        .font(.system(size: 8, weight: .black, design: .monospaced))
+                                        .foregroundStyle(CareerPalette.mutedInk)
                                     Picker("Exchange", selection: $includedPlayerID) {
                                         Text("None").tag(UUID?.none)
                                         ForEach(eligibleMakeweights) { p in
@@ -183,11 +184,11 @@ struct TransferBidSheet: View {
                                         }
                                     }
                                     .pickerStyle(.menu)
-                                    .tint(Retro.accent)
+                                    .tint(CareerPalette.line)
                                     if let includedPlayer {
                                         Text("\(includedPlayer.name) goes the other way, cutting the cash you need to find.")
-                                            .font(.system(.caption2, design: .monospaced))
-                                            .foregroundStyle(Retro.text.opacity(0.6))
+                                            .font(.system(size: 8, design: .monospaced))
+                                            .foregroundStyle(CareerPalette.mutedInk)
                                     }
                                 }
                             }
@@ -206,43 +207,47 @@ struct TransferBidSheet: View {
                         dismiss()
                     } label: {
                         Text("DONE")
-                            .font(.system(.headline, design: .monospaced).bold())
+                            .font(.system(size: 14, weight: .black, design: .monospaced))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 14)
-                            .background(Retro.accent)
-                            .foregroundStyle(Retro.background)
+                            .background(CareerPalette.line)
+                            .foregroundStyle(.white)
                             .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
                     .buttonStyle(PressableButtonStyle())
+                    .accessibilityIdentifier("career.transfers.bid.done")
                 } else if selectedTab == .offer {
                     HStack(spacing: 10) {
                         Button("Cancel") { finish() }
                             .buttonStyle(.plain)
-                            .foregroundStyle(Retro.text)
+                            .foregroundStyle(CareerPalette.mutedInk)
+                            .accessibilityIdentifier("career.transfers.bid.cancel")
                         Spacer()
                         Button {
                             makeBid(amount)
                         } label: {
                             Text(lastOutcome == nil ? "MAKE OFFER" : "OFFER AGAIN")
-                                .font(.system(.headline, design: .monospaced).bold())
+                                .font(.system(size: 14, weight: .black, design: .monospaced))
                                 .padding(.horizontal, 22)
                                 .padding(.vertical, 12)
-                                .background(Retro.accent)
-                                .foregroundStyle(Retro.background)
+                                .background(CareerPalette.line)
+                                .foregroundStyle(.white)
                                 .clipShape(RoundedRectangle(cornerRadius: 10))
                         }
                         .buttonStyle(PressableButtonStyle())
+                        .accessibilityIdentifier("career.transfers.bid.make")
                     }
                 } else {
                     Button("Close") { finish() }
                         .buttonStyle(.plain)
-                        .foregroundStyle(Retro.text)
+                        .foregroundStyle(CareerPalette.mutedInk)
+                        .accessibilityIdentifier("career.transfers.bid.close")
                 }
             }
             .padding(24)
         }
         .font(.system(.body, design: .monospaced))
-        .foregroundStyle(Retro.text)
+        .foregroundStyle(CareerPalette.ink)
     }
 
     private func finish() {
@@ -271,19 +276,20 @@ struct TransferBidSheet: View {
         switch outcome {
         case .accepted(let message):
             VStack(spacing: 4) {
-                Text("✅ ACCEPTED").font(.system(.caption, design: .monospaced).bold()).foregroundStyle(Retro.accent)
-                Text(message).font(.system(.caption2, design: .monospaced)).foregroundStyle(Retro.text.opacity(0.85))
+                Text("✅ ACCEPTED").font(.system(size: 9, weight: .black, design: .monospaced)).foregroundStyle(CareerPalette.line)
+                Text(message).font(.system(size: 8, design: .monospaced)).foregroundStyle(CareerPalette.ink.opacity(0.85))
                     .multilineTextAlignment(.center)
             }
             .frame(maxWidth: .infinity)
             .padding(10)
-            .background(Retro.accent.opacity(0.12))
+            .background(CareerPalette.line.opacity(0.12))
             .clipShape(RoundedRectangle(cornerRadius: 8))
+            .accessibilityIdentifier("career.transfers.bid.result")
         case .rejected(let reason, let counterPrice):
             VStack(spacing: 6) {
-                Text("❌ REJECTED").font(.system(.caption, design: .monospaced).bold())
-                    .foregroundStyle(Color(red: 0.95, green: 0.45, blue: 0.35))
-                Text(reason).font(.system(.caption2, design: .monospaced)).foregroundStyle(Retro.text.opacity(0.85))
+                Text("❌ REJECTED").font(.system(size: 9, weight: .black, design: .monospaced))
+                    .foregroundStyle(Retro.warning)
+                Text(reason).font(.system(size: 8, design: .monospaced)).foregroundStyle(CareerPalette.ink.opacity(0.85))
                     .multilineTextAlignment(.center)
                 if let counterPrice {
                     Button {
@@ -291,20 +297,22 @@ struct TransferBidSheet: View {
                         makeBid(counterPrice)
                     } label: {
                         Text("Offer \(formatMoney(counterPrice)) instead")
-                            .font(.system(.caption, design: .monospaced).bold())
+                            .font(.system(size: 9, weight: .black, design: .monospaced))
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
-                            .background(Retro.highlight)
-                            .foregroundStyle(Retro.background)
+                            .background(Retro.gold)
+                            .foregroundStyle(CareerPalette.ink)
                             .clipShape(Capsule())
                     }
                     .buttonStyle(PressableButtonStyle())
+                    .accessibilityIdentifier("career.transfers.bid.counter")
                 }
             }
             .frame(maxWidth: .infinity)
             .padding(10)
-            .background(Color(red: 0.95, green: 0.45, blue: 0.35).opacity(0.12))
+            .background(Retro.warning.opacity(0.12))
             .clipShape(RoundedRectangle(cornerRadius: 8))
+            .accessibilityIdentifier("career.transfers.bid.result")
         }
     }
 
@@ -315,7 +323,7 @@ struct TransferBidSheet: View {
         } label: {
             Image(systemName: icon)
                 .font(.system(size: 28))
-                .foregroundStyle(Retro.accent)
+                .foregroundStyle(CareerPalette.line)
         }
         .buttonStyle(PressableButtonStyle())
     }
@@ -323,19 +331,19 @@ struct TransferBidSheet: View {
     private var assistantAdviceBox: some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: "person.fill.questionmark")
-                .foregroundStyle(Retro.accent)
+                .foregroundStyle(CareerPalette.line)
             VStack(alignment: .leading, spacing: 2) {
                 Text("ASSISTANT ADVICE")
-                    .font(.system(.caption2, design: .monospaced).bold())
-                    .foregroundStyle(Retro.text.opacity(0.6))
+                    .font(.system(size: 8, weight: .black, design: .monospaced))
+                    .foregroundStyle(CareerPalette.mutedInk)
                 Text(assistantAdvice)
-                    .font(.system(.caption2, design: .monospaced))
-                    .foregroundStyle(Retro.text.opacity(0.85))
+                    .font(.system(size: 8, design: .monospaced))
+                    .foregroundStyle(CareerPalette.ink.opacity(0.85))
             }
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Retro.accent.opacity(0.08))
+        .background(CareerPalette.line.opacity(0.08))
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
@@ -343,17 +351,17 @@ struct TransferBidSheet: View {
         VStack(spacing: 10) {
             if interestedClubsCount == 0 {
                 Text("No other clubs are known to be tracking \(target.player.name) right now.")
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(Retro.text.opacity(0.7))
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(CareerPalette.mutedInk)
                     .multilineTextAlignment(.center)
             } else {
                 Text("\(interestedClubsCount) other club\(interestedClubsCount == 1 ? "" : "s") \(interestedClubsCount == 1 ? "is" : "are") also monitoring this move.")
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(Retro.text.opacity(0.85))
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(CareerPalette.ink)
                     .multilineTextAlignment(.center)
                 Text("Dragging the negotiation out risks losing him to a rival bid — move quickly if you want him.")
-                    .font(.system(.caption2, design: .monospaced))
-                    .foregroundStyle(Retro.text.opacity(0.6))
+                    .font(.system(size: 8, design: .monospaced))
+                    .foregroundStyle(CareerPalette.mutedInk)
                     .multilineTextAlignment(.center)
             }
         }
@@ -362,13 +370,14 @@ struct TransferBidSheet: View {
 
     private var offerSummaryBox: some View {
         Text(offerSummarySentence)
-            .font(.system(.caption, design: .monospaced))
-            .foregroundStyle(Retro.text.opacity(0.85))
+            .font(.system(size: 9, design: .monospaced))
+            .foregroundStyle(CareerPalette.ink.opacity(0.85))
             .multilineTextAlignment(.center)
             .padding(12)
             .frame(maxWidth: .infinity)
-            .background(Retro.text.opacity(0.05))
+            .background(CareerPalette.surface)
             .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(CareerPalette.line.opacity(0.16)))
     }
 
     private var offerSummarySentence: String {
@@ -418,21 +427,22 @@ struct PersonalTermsSheet: View {
 
     var body: some View {
         ZStack {
-            Retro.background.ignoresSafeArea()
+            CareerPalette.canvas.ignoresSafeArea()
             VStack(spacing: 14) {
                 VStack(spacing: 4) {
                     Text("PERSONAL TERMS")
-                        .font(.system(.headline, design: .monospaced).bold())
-                        .foregroundStyle(Retro.accent)
+                        .font(.system(size: 14, weight: .black, design: .monospaced))
+                        .foregroundStyle(CareerPalette.ink)
                     Text(deal.player.name)
-                        .font(.system(.title3, design: .monospaced).bold())
+                        .font(.system(size: 17, weight: .black, design: .monospaced))
+                        .foregroundStyle(CareerPalette.ink)
                     Text("Fee of \(formatMoney(deal.agreedFee)) already agreed with \(deal.sellingClubName)")
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(Retro.text.opacity(0.75))
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundStyle(CareerPalette.mutedInk)
                         .multilineTextAlignment(.center)
                     Text("Wants \(formatMoney(demand))/wk to make the move")
-                        .font(.system(.caption2, design: .monospaced))
-                        .foregroundStyle(Retro.text.opacity(0.6))
+                        .font(.system(size: 8, design: .monospaced))
+                        .foregroundStyle(CareerPalette.mutedInk)
                 }
 
                 ScrollView {
@@ -443,13 +453,13 @@ struct PersonalTermsSheet: View {
 
                         VStack(spacing: 10) {
                             Text("WEEKLY WAGE")
-                                .font(.system(.caption2, design: .monospaced).bold())
-                                .foregroundStyle(Retro.text.opacity(0.7))
+                                .font(.system(size: 8, weight: .black, design: .monospaced))
+                                .foregroundStyle(CareerPalette.mutedInk)
                             HStack(spacing: 20) {
                                 stepButton("minus.circle.fill") { wage = max(1, wage - step) }
                                 Text(formatMoney(wage))
-                                    .font(.system(.title2, design: .monospaced).bold())
-                                    .foregroundStyle(wage >= demand ? Retro.accent : Color(red: 0.95, green: 0.55, blue: 0.35))
+                                    .font(.system(size: 19, weight: .black, design: .monospaced))
+                                    .foregroundStyle(wage >= demand ? CareerPalette.line : .orange)
                                     .frame(minWidth: 110)
                                 stepButton("plus.circle.fill") { wage += step }
                             }
@@ -457,8 +467,8 @@ struct PersonalTermsSheet: View {
 
                         VStack(spacing: 10) {
                             Text("CONTRACT LENGTH")
-                                .font(.system(.caption2, design: .monospaced).bold())
-                                .foregroundStyle(Retro.text.opacity(0.7))
+                                .font(.system(size: 8, weight: .black, design: .monospaced))
+                                .foregroundStyle(CareerPalette.mutedInk)
                             Picker("Years", selection: $years) {
                                 ForEach(1...5, id: \.self) { y in Text("\(y) yr\(y == 1 ? "" : "s")").tag(y) }
                             }
@@ -467,19 +477,19 @@ struct PersonalTermsSheet: View {
 
                         VStack(spacing: 8) {
                             Text("SIGNING-ON FEE")
-                                .font(.system(.caption2, design: .monospaced).bold())
-                                .foregroundStyle(Retro.text.opacity(0.7))
+                                .font(.system(size: 8, weight: .black, design: .monospaced))
+                                .foregroundStyle(CareerPalette.mutedInk)
                             HStack(spacing: 16) {
                                 stepButton("minus.circle.fill") { signingOnFee = max(0, signingOnFee - feeStep) }
                                 Text(signingOnFee > 0 ? formatMoney(signingOnFee) : "None")
-                                    .font(.system(.callout, design: .monospaced).bold())
-                                    .foregroundStyle(signingOnFee > 0 ? Retro.highlight : Retro.text.opacity(0.5))
+                                    .font(.system(size: 11, weight: .black, design: .monospaced))
+                                    .foregroundStyle(signingOnFee > 0 ? Retro.gold : CareerPalette.mutedInk)
                                     .frame(minWidth: 90)
                                 stepButton("plus.circle.fill") { signingOnFee += feeStep }
                             }
                             Text("A one-off bonus, paid on top of the transfer fee, that sweetens the deal.")
-                                .font(.system(.caption2, design: .monospaced))
-                                .foregroundStyle(Retro.text.opacity(0.6))
+                                .font(.system(size: 8, design: .monospaced))
+                                .foregroundStyle(CareerPalette.mutedInk)
                         }
                     }
                     .padding(.vertical, 4)
@@ -491,39 +501,42 @@ struct PersonalTermsSheet: View {
                         dismiss()
                     } label: {
                         Text("DONE")
-                            .font(.system(.headline, design: .monospaced).bold())
+                            .font(.system(size: 14, weight: .black, design: .monospaced))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 14)
-                            .background(Retro.accent)
-                            .foregroundStyle(Retro.background)
+                            .background(CareerPalette.line)
+                            .foregroundStyle(.white)
                             .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
                     .buttonStyle(PressableButtonStyle())
+                    .accessibilityIdentifier("career.transfers.terms.done")
                 } else {
                     HStack(spacing: 10) {
                         Button("Cancel") { finish() }
                             .buttonStyle(.plain)
-                            .foregroundStyle(Retro.text)
+                            .foregroundStyle(CareerPalette.mutedInk)
+                            .accessibilityIdentifier("career.transfers.terms.cancel")
                         Spacer()
                         Button {
                             makeOffer(wage: wage)
                         } label: {
                             Text(lastOutcome == nil ? "PROPOSE TERMS" : "OFFER AGAIN")
-                                .font(.system(.headline, design: .monospaced).bold())
+                                .font(.system(size: 14, weight: .black, design: .monospaced))
                                 .padding(.horizontal, 22)
                                 .padding(.vertical, 12)
-                                .background(Retro.accent)
-                                .foregroundStyle(Retro.background)
+                                .background(CareerPalette.line)
+                                .foregroundStyle(.white)
                                 .clipShape(RoundedRectangle(cornerRadius: 10))
                         }
                         .buttonStyle(PressableButtonStyle())
+                        .accessibilityIdentifier("career.transfers.terms.propose")
                     }
                 }
             }
             .padding(24)
         }
         .font(.system(.body, design: .monospaced))
-        .foregroundStyle(Retro.text)
+        .foregroundStyle(CareerPalette.ink)
     }
 
     private func finish() {
@@ -551,19 +564,20 @@ struct PersonalTermsSheet: View {
         switch outcome {
         case .accepted(let message):
             VStack(spacing: 4) {
-                Text("✅ AGREED").font(.system(.caption, design: .monospaced).bold()).foregroundStyle(Retro.accent)
-                Text(message).font(.system(.caption2, design: .monospaced)).foregroundStyle(Retro.text.opacity(0.85))
+                Text("✅ AGREED").font(.system(size: 9, weight: .black, design: .monospaced)).foregroundStyle(CareerPalette.line)
+                Text(message).font(.system(size: 8, design: .monospaced)).foregroundStyle(CareerPalette.ink.opacity(0.85))
                     .multilineTextAlignment(.center)
             }
             .frame(maxWidth: .infinity)
             .padding(10)
-            .background(Retro.accent.opacity(0.12))
+            .background(CareerPalette.line.opacity(0.12))
             .clipShape(RoundedRectangle(cornerRadius: 8))
+            .accessibilityIdentifier("career.transfers.terms.result")
         case .rejected(let reason, let counterWage):
             VStack(spacing: 6) {
-                Text("❌ DECLINED").font(.system(.caption, design: .monospaced).bold())
-                    .foregroundStyle(Color(red: 0.95, green: 0.45, blue: 0.35))
-                Text(reason).font(.system(.caption2, design: .monospaced)).foregroundStyle(Retro.text.opacity(0.85))
+                Text("❌ DECLINED").font(.system(size: 9, weight: .black, design: .monospaced))
+                    .foregroundStyle(Retro.warning)
+                Text(reason).font(.system(size: 8, design: .monospaced)).foregroundStyle(CareerPalette.ink.opacity(0.85))
                     .multilineTextAlignment(.center)
                 if let counterWage {
                     Button {
@@ -571,20 +585,22 @@ struct PersonalTermsSheet: View {
                         makeOffer(wage: counterWage)
                     } label: {
                         Text("Offer \(formatMoney(counterWage))/wk instead")
-                            .font(.system(.caption, design: .monospaced).bold())
+                            .font(.system(size: 9, weight: .black, design: .monospaced))
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
-                            .background(Retro.highlight)
-                            .foregroundStyle(Retro.background)
+                            .background(Retro.gold)
+                            .foregroundStyle(CareerPalette.ink)
                             .clipShape(Capsule())
                     }
                     .buttonStyle(PressableButtonStyle())
+                    .accessibilityIdentifier("career.transfers.terms.counter")
                 }
             }
             .frame(maxWidth: .infinity)
             .padding(10)
-            .background(Color(red: 0.95, green: 0.45, blue: 0.35).opacity(0.12))
+            .background(Retro.warning.opacity(0.12))
             .clipShape(RoundedRectangle(cornerRadius: 8))
+            .accessibilityIdentifier("career.transfers.terms.result")
         }
     }
 
@@ -595,7 +611,7 @@ struct PersonalTermsSheet: View {
         } label: {
             Image(systemName: icon)
                 .font(.system(size: 28))
-                .foregroundStyle(Retro.accent)
+                .foregroundStyle(CareerPalette.line)
         }
         .buttonStyle(PressableButtonStyle())
     }
@@ -629,31 +645,33 @@ struct LoanOutSheet: View {
 
     var body: some View {
         ZStack {
-            Retro.background.ignoresSafeArea()
+            CareerPalette.canvas.ignoresSafeArea()
             VStack(spacing: 14) {
                 VStack(spacing: 4) {
                     Text("LOAN OUT")
-                        .font(.system(.headline, design: .monospaced).bold())
-                        .foregroundStyle(Retro.accent)
+                        .font(.system(size: 14, weight: .black, design: .monospaced))
+                        .foregroundStyle(CareerPalette.ink)
                     Text(player.name)
-                        .font(.system(.title3, design: .monospaced).bold())
+                        .font(.system(size: 17, weight: .black, design: .monospaced))
+                        .foregroundStyle(CareerPalette.ink)
                     Text("\(formatMoney(player.wage))/wk comes off your wage bill for the loan.")
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(Retro.text.opacity(0.75))
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundStyle(CareerPalette.mutedInk)
                         .multilineTextAlignment(.center)
                 }
 
                 if candidates.isEmpty {
                     Spacer()
                     Text("No club has room or a genuine need for him right now.")
-                        .font(.system(.callout, design: .monospaced))
-                        .foregroundStyle(Retro.text.opacity(0.7))
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(CareerPalette.mutedInk)
                         .multilineTextAlignment(.center)
                         .padding()
                     Spacer()
                     Button("Close") { dismiss() }
                         .buttonStyle(.plain)
-                        .foregroundStyle(Retro.text)
+                        .foregroundStyle(CareerPalette.mutedInk)
+                        .accessibilityIdentifier("career.transfers.loan.close")
                 } else {
                     ScrollView {
                         VStack(spacing: 16) {
@@ -663,32 +681,32 @@ struct LoanOutSheet: View {
 
                             VStack(spacing: 8) {
                                 Text("DESTINATION")
-                                    .font(.system(.caption2, design: .monospaced).bold())
-                                    .foregroundStyle(Retro.text.opacity(0.7))
+                                    .font(.system(size: 8, weight: .black, design: .monospaced))
+                                    .foregroundStyle(CareerPalette.mutedInk)
                                 Picker("Club", selection: $selectedClubIndex) {
                                     ForEach(candidates, id: \.self) { index in
                                         Text(store.clubs[index].name).tag(Optional(index))
                                     }
                                 }
                                 .pickerStyle(.menu)
-                                .tint(Retro.accent)
+                                .tint(CareerPalette.line)
                             }
 
                             VStack(spacing: 8) {
                                 Text("LOAN FEE")
-                                    .font(.system(.caption2, design: .monospaced).bold())
-                                    .foregroundStyle(Retro.text.opacity(0.7))
+                                    .font(.system(size: 8, weight: .black, design: .monospaced))
+                                    .foregroundStyle(CareerPalette.mutedInk)
                                 HStack(spacing: 16) {
                                     stepButton("minus.circle.fill") { fee = max(0, fee - feeStep) }
                                     Text(fee > 0 ? formatMoney(fee) : "None")
-                                        .font(.system(.callout, design: .monospaced).bold())
-                                        .foregroundStyle(fee > 0 ? Retro.highlight : Retro.text.opacity(0.5))
+                                        .font(.system(size: 11, weight: .black, design: .monospaced))
+                                        .foregroundStyle(fee > 0 ? Retro.gold : CareerPalette.mutedInk)
                                         .frame(minWidth: 90)
                                     stepButton("plus.circle.fill") { fee += feeStep }
                                 }
                                 Text("Asking for a fee makes them less likely to say yes.")
-                                    .font(.system(.caption2, design: .monospaced))
-                                    .foregroundStyle(Retro.text.opacity(0.6))
+                                    .font(.system(size: 8, design: .monospaced))
+                                    .foregroundStyle(CareerPalette.mutedInk)
                             }
                         }
                         .padding(.vertical, 4)
@@ -700,33 +718,36 @@ struct LoanOutSheet: View {
                             dismiss()
                         } label: {
                             Text("DONE")
-                                .font(.system(.headline, design: .monospaced).bold())
+                                .font(.system(size: 14, weight: .black, design: .monospaced))
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 14)
-                                .background(Retro.accent)
-                                .foregroundStyle(Retro.background)
+                                .background(CareerPalette.line)
+                                .foregroundStyle(.white)
                                 .clipShape(RoundedRectangle(cornerRadius: 10))
                         }
                         .buttonStyle(PressableButtonStyle())
+                        .accessibilityIdentifier("career.transfers.loan.done")
                     } else {
                         HStack(spacing: 10) {
                             Button("Cancel") { finish() }
                                 .buttonStyle(.plain)
-                                .foregroundStyle(Retro.text)
+                                .foregroundStyle(CareerPalette.mutedInk)
+                                .accessibilityIdentifier("career.transfers.loan.cancel")
                             Spacer()
                             Button {
                                 propose()
                             } label: {
                                 Text(lastOutcome == nil ? "PROPOSE LOAN" : "TRY AGAIN")
-                                    .font(.system(.headline, design: .monospaced).bold())
+                                    .font(.system(size: 14, weight: .black, design: .monospaced))
                                     .padding(.horizontal, 22)
                                     .padding(.vertical, 12)
-                                    .background(Retro.accent)
-                                    .foregroundStyle(Retro.background)
+                                    .background(CareerPalette.line)
+                                    .foregroundStyle(.white)
                                     .clipShape(RoundedRectangle(cornerRadius: 10))
                             }
                             .buttonStyle(PressableButtonStyle())
                             .disabled(selectedClubIndex == nil)
+                            .accessibilityIdentifier("career.transfers.loan.propose")
                         }
                     }
                 }
@@ -734,7 +755,7 @@ struct LoanOutSheet: View {
             .padding(24)
         }
         .font(.system(.body, design: .monospaced))
-        .foregroundStyle(Retro.text)
+        .foregroundStyle(CareerPalette.ink)
     }
 
     private func finish() {
@@ -763,25 +784,27 @@ struct LoanOutSheet: View {
         switch outcome {
         case .accepted(let message):
             VStack(spacing: 4) {
-                Text("✅ AGREED").font(.system(.caption, design: .monospaced).bold()).foregroundStyle(Retro.accent)
-                Text(message).font(.system(.caption2, design: .monospaced)).foregroundStyle(Retro.text.opacity(0.85))
+                Text("✅ AGREED").font(.system(size: 9, weight: .black, design: .monospaced)).foregroundStyle(CareerPalette.line)
+                Text(message).font(.system(size: 8, design: .monospaced)).foregroundStyle(CareerPalette.ink.opacity(0.85))
                     .multilineTextAlignment(.center)
             }
             .frame(maxWidth: .infinity)
             .padding(10)
-            .background(Retro.accent.opacity(0.12))
+            .background(CareerPalette.line.opacity(0.12))
             .clipShape(RoundedRectangle(cornerRadius: 8))
+            .accessibilityIdentifier("career.transfers.loan.result")
         case .rejected(let reason):
             VStack(spacing: 4) {
-                Text("❌ PASSED").font(.system(.caption, design: .monospaced).bold())
-                    .foregroundStyle(Color(red: 0.95, green: 0.45, blue: 0.35))
-                Text(reason).font(.system(.caption2, design: .monospaced)).foregroundStyle(Retro.text.opacity(0.85))
+                Text("❌ PASSED").font(.system(size: 9, weight: .black, design: .monospaced))
+                    .foregroundStyle(Retro.warning)
+                Text(reason).font(.system(size: 8, design: .monospaced)).foregroundStyle(CareerPalette.ink.opacity(0.85))
                     .multilineTextAlignment(.center)
             }
             .frame(maxWidth: .infinity)
             .padding(10)
-            .background(Color(red: 0.95, green: 0.45, blue: 0.35).opacity(0.12))
+            .background(Retro.warning.opacity(0.12))
             .clipShape(RoundedRectangle(cornerRadius: 8))
+            .accessibilityIdentifier("career.transfers.loan.result")
         }
     }
 
@@ -792,7 +815,7 @@ struct LoanOutSheet: View {
         } label: {
             Image(systemName: icon)
                 .font(.system(size: 28))
-                .foregroundStyle(Retro.accent)
+                .foregroundStyle(CareerPalette.line)
         }
         .buttonStyle(PressableButtonStyle())
     }

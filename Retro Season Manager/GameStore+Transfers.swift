@@ -647,14 +647,35 @@ extension GameStore {
         persist()
     }
 
-    /// Every shortlisted player still found in the world, with their current club.
-    var shortlistedResults: [(player: Player, clubIndex: Int)] {
+    /// Every shortlisted player still found in the world, with their current
+    /// club. Free agents are matched too: they aren't attached to any club,
+    /// so they're pulled from the transfer market where their player data
+    /// lives — a shortlisted free agent must still resolve here, or the
+    /// SHORTLIST tab would silently drop him. Club players resolve through
+    /// their club with the club's index; shortlisted free agents
+    /// (and any other unattached player, e.g. a pending-deal limbo player)
+    /// resolve through the transfer market where their player record lives,
+    /// with a **nil club index** — never a fabricated index that could
+    /// escape into another feature. With the market persisted, a
+    /// shortlisted free agent survives every save/relaunch.
+    var shortlistedResults: [(player: Player, clubIndex: Int?)] {
         guard !shortlistedPlayerIDs.isEmpty else { return [] }
-        var results: [(player: Player, clubIndex: Int)] = []
+        var results: [(player: Player, clubIndex: Int?)] = []
+        var matched = Set<UUID>()
         for (index, club) in clubs.enumerated() {
             for player in club.players where shortlistedPlayerIDs.contains(player.id) {
                 results.append((player, index))
+                matched.insert(player.id)
             }
+        }
+        // Shortlisted free agents (and any other unattached player, e.g. a
+        // pending-deal limbo player) aren't in any club, so look them up in
+        // the transfer market where their player record lives.
+        for target in transferMarket
+        where target.sellingClubIndex == nil && shortlistedPlayerIDs.contains(target.player.id)
+            && !matched.contains(target.player.id) {
+            results.append((target.player, nil))
+            matched.insert(target.player.id)
         }
         return results.sorted { $0.player.rating > $1.player.rating }
     }

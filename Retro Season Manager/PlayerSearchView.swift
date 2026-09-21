@@ -444,7 +444,9 @@ struct PlayerSearchView: View {
 
     private func resultCard(_ result: SearchResult) -> some View {
         let player = result.player
-        let clubName = result.clubIndex.flatMap { store.clubs.indices.contains($0) ? store.clubs[$0].name : nil } ?? "Free Agent"
+        let clubName = result.clubIndex.flatMap {
+            $0 >= 0 && store.clubs.indices.contains($0) ? store.clubs[$0].name : nil
+        } ?? "Free Agent"
         let report = report(for: result)
         let state = scoutState(for: result)
         let shortlisted = store.isShortlisted(player.id)
@@ -576,6 +578,9 @@ struct PlayerSearchView: View {
     private func profileContext(for result: SearchResult) -> ProfileContext {
         if let target = result.target { return .market(target) }
         if result.clubIndex == store.userClubIndex { return .squad(result.player) }
+        // A shortlisted free agent carries a nil club index (see the
+        // store's shortlistedResults doc comment); profile actions on
+        // him sign from free agency, so anchor the context at the user club.
         return .scouted(result.player, clubIndex: result.clubIndex ?? store.userClubIndex)
     }
 

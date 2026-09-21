@@ -33,32 +33,33 @@ struct CounterSellOfferSheet: View {
 
     var body: some View {
         ZStack {
-            Retro.background.ignoresSafeArea()
+            CareerPalette.canvas.ignoresSafeArea()
             VStack(spacing: 16) {
                 HStack {
                     Spacer()
                     Button { dismiss() } label: {
                         Image(systemName: "xmark.circle.fill")
                             .font(.system(size: 24))
-                            .foregroundStyle(Retro.text.opacity(0.5))
+                            .foregroundStyle(CareerPalette.mutedInk)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier("career.transfers.countersell.close")
                 }
 
                 VStack(spacing: 4) {
                     Text(offer.playerName.uppercased())
-                        .font(.system(.title3, design: .monospaced).bold())
-                        .foregroundStyle(Retro.accent)
+                        .font(.system(size: 17, weight: .black, design: .monospaced))
+                        .foregroundStyle(CareerPalette.ink)
                     Text("\(buyerClub?.name ?? "Unknown club") want to sign him")
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(Retro.text.opacity(0.7))
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundStyle(CareerPalette.mutedInk)
                 }
 
                 Panel(title: "THEIR OFFER") {
                     HStack {
                         Text(formatMoney(theirLatestOffer))
-                            .font(.system(.title2, design: .monospaced).bold())
-                            .foregroundStyle(Retro.highlight)
+                            .font(.system(size: 19, weight: .black, design: .monospaced))
+                            .foregroundStyle(CareerPalette.line)
                         Spacer()
                     }
                 }
@@ -66,21 +67,23 @@ struct CounterSellOfferSheet: View {
                 Panel(title: "YOUR ASKING PRICE") {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(formatMoney(Int(askingAmount)))
-                            .font(.system(.title2, design: .monospaced).bold())
-                            .foregroundStyle(Retro.accent)
+                            .font(.system(size: 19, weight: .black, design: .monospaced))
+                            .foregroundStyle(CareerPalette.ink)
                         Slider(value: $askingAmount, in: Double(theirLatestOffer)...Double(offer.amount) * 2.2, step: 100)
-                            .tint(Retro.accent)
+                            .tint(CareerPalette.line)
                     }
                 }
 
                 if let lastResultReason {
                     Text(lastResultReason)
-                        .font(.system(.footnote, design: .monospaced))
-                        .foregroundStyle(Retro.text.opacity(0.85))
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundStyle(CareerPalette.ink.opacity(0.85))
                         .padding(10)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Retro.panel)
+                        .background(CareerPalette.surface)
                         .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(CareerPalette.line.opacity(0.16)))
+                        .accessibilityIdentifier("career.transfers.countersell.result")
                 }
 
                 Spacer(minLength: 0)
@@ -91,14 +94,15 @@ struct CounterSellOfferSheet: View {
                         submitCounter()
                     } label: {
                         Text("SEND COUNTER: \(formatMoney(Int(askingAmount)))")
-                            .font(.system(.body, design: .monospaced).bold())
+                            .font(.system(size: 13, weight: .black, design: .monospaced))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 12)
-                            .background(Retro.accent)
-                            .foregroundStyle(Retro.background)
+                            .background(CareerPalette.line)
+                            .foregroundStyle(.white)
                             .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PressableButtonStyle())
+                    .accessibilityIdentifier("career.transfers.countersell.send")
 
                     Button {
                         Haptics.tap()
@@ -107,14 +111,17 @@ struct CounterSellOfferSheet: View {
                         onDone(store.acceptOffer(acceptedOffer))
                     } label: {
                         Text("ACCEPT THEIR OFFER: \(formatMoney(theirLatestOffer))")
-                            .font(.system(.footnote, design: .monospaced).bold())
-                            .foregroundStyle(Retro.text.opacity(0.7))
+                            .font(.system(size: 9, weight: .black, design: .monospaced))
+                            .foregroundStyle(CareerPalette.mutedInk)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier("career.transfers.countersell.accept")
                 }
             }
             .padding(24)
         }
+        .font(.system(.body, design: .monospaced))
+        .foregroundStyle(CareerPalette.ink)
     }
 
     private func submitCounter() {

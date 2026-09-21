@@ -742,8 +742,12 @@ extension GameStore {
 
     /// A one-off ping (per season) when a shortlisted player enters the
     /// final year of his deal — worth a move now, or a free next summer.
+    /// Shortlisted free agents carry a nil club index (see the store's
+    /// shortlistedResults doc comment); they're already free, so the
+    /// final-year alert doesn't apply and they're skipped.
     func checkShortlistAvailability() {
-        for (player, clubIndex) in shortlistedResults where clubIndex != userClubIndex {
+        for (player, clubIndex) in shortlistedResults {
+            guard let clubIndex, clubIndex != userClubIndex else { continue }
             guard player.contractYears <= 1, !shortlistAlertedIDs.contains(player.id) else { continue }
             shortlistAlertedIDs.insert(player.id)
             addNews(.info, "Shortlist alert",

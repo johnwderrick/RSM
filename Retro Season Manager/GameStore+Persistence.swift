@@ -167,7 +167,10 @@ extension GameStore {
                               wonderkidWatchlist: wonderkidWatchlist,
                               clubPrestigeBaseline: clubPrestigeBaseline,
                               academyGraduateMilestoneIDs: academyGraduateMilestoneIDs,
-                              recognizedFanFavouriteIDs: recognizedFanFavouriteIDs)
+                              recognizedFanFavouriteIDs: recognizedFanFavouriteIDs,
+                              transferMarket: transferMarket,
+                              scoutedReports: scoutedReports,
+                              scoutingDue: scoutingDue)
         guard let id = currentSaveID, let data = try? JSONEncoder().encode(state) else { return }
         try? data.write(to: SaveSlots.fileURL(for: id))
         SaveSlots.upsert(SaveSlotInfo(id: id, clubName: userClub.name, managerName: "Manager",
@@ -320,9 +323,16 @@ extension GameStore {
         news = []
         unreadNewsIDs = []
         pendingOffers = []
-        scoutedReports = [:]
-        scoutingDue = [:]
-        generateTransferMarket()
+        // Restore the transfer market and scouting state exactly as saved.
+        // A save from before the market was persisted (optional field
+        // absent) has nothing to restore, so it gets one fresh generation
+        // — and from then on the market survives every reload.
+        transferMarket = state.transferMarket ?? []
+        scoutedReports = state.scoutedReports ?? [:]
+        scoutingDue = state.scoutingDue ?? [:]
+        if state.transferMarket == nil {
+            generateTransferMarket()
+        }
         windowWasOpen = transferWindowOpen
         deadlineDayAnnounced = false
         transferBudgetAtWindowOpen = transferWindowOpen ? userClub.transferBudget : 0

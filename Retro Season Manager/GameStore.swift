@@ -162,6 +162,14 @@ struct SaveState: Codable {
     var clubPrestigeBaseline: [UUID: Int]?
     var academyGraduateMilestoneIDs: Set<UUID>?
     var recognizedFanFavouriteIDs: Set<UUID>?
+    // The transfer market itself — target list, selling clubs, asking
+    // prices and ordering. Optional: absent on saves written before the
+    // market was persisted, which load into a freshly generated one.
+    var transferMarket: [TransferTarget]?
+    // Completed scout reports, keyed by stable target id.
+    var scoutedReports: [UUID: ScoutReport]?
+    // In-progress scouting assignments with their due dates.
+    var scoutingDue: [UUID: Date]?
 }
 
 @MainActor
@@ -244,6 +252,10 @@ final class GameStore {
 
     /// The current in-game date.
     var currentDate = Date()
+    /// DEBUG UI-test fixture only: which market target was seeded as
+    /// unaffordable, so tests can find the OVER BUDGET card without
+    /// duplicating affordability rules. Always nil in normal play.
+    var unaffordableTargetIDForUITests: UUID?
     /// The dated news / inbox feed, newest first.
     var news: [NewsItem] = []
     /// Rival clubs' outstanding bids for the user's players.
