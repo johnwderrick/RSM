@@ -49,6 +49,8 @@
 		E1A2B3C4D5E6F708192A3B4C /* CareerCalendarUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1C2B3A4F5E6071829384A5B /* CareerCalendarUITests.swift */; };
 		F1A2B3C4D5E6F708192A3C /* CareerTransfersUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1C2B3A4F5E6071829384A5C /* CareerTransfersUITests.swift */; };
 		A1B2C3D4E5F6071829384C01 /* CareerTransfersRelaunchUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6071829384C02 /* CareerTransfersRelaunchUITests.swift */; };
+		A1B2C3D4E5F6071829384D01 /* CareerInboxUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6071829384D02 /* CareerInboxUITests.swift */; };
+		A1B2C3D4E5F6071829384E01 /* InboxFixtureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6071829384E02 /* InboxFixtureTests.swift */; };
 		A1B2C3D4E5F6071829384A01 /* TransfersFixtureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6071829384A02 /* TransfersFixtureTests.swift */; };
 		A1B2C3D4E5F6071829384B01 /* TransferMarketPersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6071829384B02 /* TransferMarketPersistenceTests.swift */; };
 		F2B3C4D5E6F708192A3B4C5D /* CareerScoutUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2D3C4B5A6F7081929384A5B /* CareerScoutUITests.swift */; };
@@ -126,6 +128,8 @@
 		D1C2B3A4F5E6071829384A5B /* CareerCalendarUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CareerCalendarUITests.swift; sourceTree = "<group>"; };
 		D1C2B3A4F5E6071829384A5C /* CareerTransfersUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CareerTransfersUITests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6071829384C02 /* CareerTransfersRelaunchUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CareerTransfersRelaunchUITests.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6071829384D02 /* CareerInboxUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CareerInboxUITests.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6071829384E02 /* InboxFixtureTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InboxFixtureTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6071829384A02 /* TransfersFixtureTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TransfersFixtureTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6071829384B02 /* TransferMarketPersistenceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TransferMarketPersistenceTests.swift; sourceTree = "<group>"; };
 		E2D3C4B5A6F7081929384A5B /* CareerScoutUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CareerScoutUITests.swift; sourceTree = "<group>"; };
@@ -202,6 +206,7 @@
 				2A739EF8ADAACAE333C948C4 /* TransferGeniusTests.swift */,
 				A1B2C3D4E5F6071829384A02 /* TransfersFixtureTests.swift */,
 				A1B2C3D4E5F6071829384B02 /* TransferMarketPersistenceTests.swift */,
+				A1B2C3D4E5F6071829384E02 /* InboxFixtureTests.swift */,
 				B660BAC2FA7DF71D3BADD886 /* LegendsCardDatabaseTests.swift */,
 				E30D7225752E3B1942D844E5 /* LegendsPackTests.swift */,
 				2167ED2F990D56D684B0E673 /* LegendsSquadTests.swift */,
@@ -285,6 +290,7 @@
 				D1C2B3A4F5E6071829384A5B /* CareerCalendarUITests.swift */,
 				D1C2B3A4F5E6071829384A5C /* CareerTransfersUITests.swift */,
 				A1B2C3D4E5F6071829384C02 /* CareerTransfersRelaunchUITests.swift */,
+				A1B2C3D4E5F6071829384D02 /* CareerInboxUITests.swift */,
 				E2D3C4B5A6F7081929384A5B /* CareerScoutUITests.swift */,
 				B1B2B3B4B5B6B7B8B9BABBBC /* RetroSeasonManagerUITests.swift */,
 			);
@@ -438,6 +444,7 @@
 				11302683010CCC0470AF64EF /* TransferGeniusTests.swift in Sources */,
 				A1B2C3D4E5F6071829384A01 /* TransfersFixtureTests.swift in Sources */,
 				A1B2C3D4E5F6071829384B01 /* TransferMarketPersistenceTests.swift in Sources */,
+				A1B2C3D4E5F6071829384E01 /* InboxFixtureTests.swift in Sources */,
 				C0D41EE6E559A561127D0FEE /* LegendsCardDatabaseTests.swift in Sources */,
 				00662B6C39544AA6851F522C /* LegendsPackTests.swift in Sources */,
 				255D12E4E73B3F1FD532841A /* LegendsSquadTests.swift in Sources */,
@@ -500,6 +507,7 @@
 				E1A2B3C4D5E6F708192A3B4C /* CareerCalendarUITests.swift in Sources */,
 				F1A2B3C4D5E6F708192A3C /* CareerTransfersUITests.swift in Sources */,
 				A1B2C3D4E5F6071829384C01 /* CareerTransfersRelaunchUITests.swift in Sources */,
+				A1B2C3D4E5F6071829384D01 /* CareerInboxUITests.swift in Sources */,
 				F2B3C4D5E6F708192A3B4C5D /* CareerScoutUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

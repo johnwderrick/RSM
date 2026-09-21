@@ -39,25 +39,11 @@ extension GameStore {
             clubs[userClubIndex].players[offset].injuriesThisSeason = 2
         }
 
-        // 3. A deterministic inbox: one very long article (the scroll
-        //    target) followed by routine items, newest first.
-        let longBody = Array(repeating:
-            "The chairman has asked for a full review of training ground facilities, scouting coverage and the medical department's turnaround times. Staff have been briefed to expect changes before the next transfer window, and supporters' groups have been invited to comment on the proposals before anything is finalised. ",
-            count: 12).joined()
-        let items: [(NewsCategory, String, String)] = [
-            (.info, "DETERMINISTIC LONG ARTICLE", longBody),
-            (.world, "Title race tightening across Europe", "Rival clubs dropped points this weekend, keeping the table congested."),
-            (.injury, "Medical report filed", "The physio room expects a busy week with several players in rehabilitation."),
-            (.board, "Board reviews season objectives", "The board is pleased with early progress but expects continued improvement."),
-        ]
-        for (category, title, body) in items.reversed() {
-            news.insert(NewsItem(date: currentDate, category: category, title: title, body: body), at: 0)
-        }
-
-        // 4. Complete three league rounds through the real standings path.
-        //    The user's sequence is deliberately W-D-L so the redesigned
-        //    table can prove its summary, form guide, recent-results badges
-        //    and next-fixture split against useful authoritative data.
+        // 3 & 4. Deterministic league state: three rounds played through
+        //    the real standings path. The user's sequence is deliberately
+        //    W-D-L so the redesigned table can prove its summary, form
+        //    guide, recent-results badges and next-fixture split against
+        //    useful authoritative data.
         for fixtureIndex in fixtures.indices where fixtures[fixtureIndex].matchday <= 3 {
             let fixture = fixtures[fixtureIndex]
             let involvesUser = fixture.homeIndex == userClubIndex || fixture.awayIndex == userClubIndex
@@ -92,6 +78,50 @@ extension GameStore {
         }
         currentMatchday = 4
         currentDate = date(forMatchday: currentMatchday)
+
+        // 5. The deterministic inbox, seeded AFTER the matchday simulation
+        //    so the fixture's items sit newest-first at the top of the
+        //    feed (match-generated stories land beneath them). One very
+        //    long article (the scroll target), a spread of every supported
+        //    category folder, read AND unread items, and a player-context
+        //    story — enough to prove the summary counts, every filter, the
+        //    unread treatment and the article reader's snapshot card.
+        //    Items go through the store's real `addNews` creation path
+        //    (unread state, ordering and the 60-item cap all behave as in
+        //    normal play); everything the engine itself generated becomes
+        //    read history, and exactly the four routine fixture items are
+        //    then marked read through the real mechanism — leaving a
+        //    deterministic unread mix whatever the engine added this run.
+        let longBody = Array(repeating:
+            "The chairman has asked for a full review of training ground facilities, scouting coverage and the medical department's turnaround times. Staff have been briefed to expect changes before the next transfer window, and supporters' groups have been invited to comment on the proposals before anything is finalised. ",
+            count: 12).joined()
+        let profiledPlayer = clubs[userClubIndex].players[10]
+        // (read in insertion order so newest lands first)
+        let items: [(NewsCategory, String, String, Player?)] = [
+            (.board, "Board reviews season objectives",
+             "The board is pleased with early progress but expects continued improvement.", nil),
+            (.injury, "Medical report filed",
+             "The physio room expects a busy week with several players in rehabilitation.", nil),
+            (.transfer, "Transfer window opens",
+             "The transfer window is now open. Scouts have circulated the first lists of available targets.", nil),
+            (.result, "Season opener ends level",
+             "The league campaign opened with a hard-fought draw in front of a full house.", nil),
+            (.board, "Star signs contract extension",
+             "\(profiledPlayer.name) has committed his future to the club, signing a deal that keeps him here through the rest of the season and beyond.",
+             profiledPlayer),
+            (.world, "Title race tightening across Europe",
+             "Rival clubs dropped points this weekend, keeping the table congested.", nil),
+            (.info, "DETERMINISTIC LONG ARTICLE", longBody, nil),
+        ]
+        for existing in news { markNewsRead(existing) }
+        for (category, title, body, player) in items {
+            addNews(category, title, body, player: player, clubName: userClub.name)
+        }
+        let readTitles: Set<String> = ["Season opener ends level", "Transfer window opens",
+                                       "Medical report filed", "Board reviews season objectives"]
+        for item in news where readTitles.contains(item.title) {
+            markNewsRead(item)
+        }
 
         // 5. Persist exactly once so the save on disk matches memory.
         persist()
