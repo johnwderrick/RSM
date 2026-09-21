@@ -152,10 +152,18 @@ final class CareerNavigationUITests: XCTestCase {
             assertLands(app, slug)
         }
 
-        // Settings drill-downs keep their own stable selectors.
+        // Settings drill-downs keep their own stable selectors. The
+        // redesigned menu opens with the summary/save/preference/records
+        // cards, so the MANAGER group's first row sits below the fold and
+        // needs one reveal swipe on the destination's scroll container.
         gotoSidebar(app, "settings")
         let profileRow = app.descendants(matching: .any)["career.settings.row.manager-profile"]
         XCTAssertTrue(profileRow.waitForExistence(timeout: 6), "Settings rows missing")
+        let settingsScroll = app.scrollViews["career.settings.scroll"].firstMatch
+        if settingsScroll.exists {
+            settingsScroll.swipeUp()
+            Thread.sleep(forTimeInterval: 0.4)
+        }
         profileRow.tap()
         let back = app.descendants(matching: .any)["career.settings.back"]
         XCTAssertTrue(back.waitForExistence(timeout: 6), "Settings back control missing")

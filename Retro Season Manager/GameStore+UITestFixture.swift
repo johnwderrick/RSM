@@ -128,6 +128,59 @@ extension GameStore {
         return self
     }
 
+    /// Builds on the shared Career navigation fixture with exactly what
+    /// the redesigned Settings screen presents: transfer history through
+    /// the real logging path, at least one printed front page, one
+    /// achievement through the real unlock path, a previous season in the
+    /// history table, and one seeded preference. Autosave is deliberately
+    /// left at its default (on) so save-related UI tests toggle it
+    /// themselves and assert against a known default.
+    @discardableResult
+    func prepareCareerSettingsFixtureForDebug() -> GameStore {
+        prepareCareerNavigationFixtureForDebug()
+
+        // 1. Transfer history through the authoritative logging API —
+        //    newest first, exactly as the live game records moves.
+        logTransferHistory("Danny Draper", action: "Signed", otherClub: "Riverton FC", fee: 850)
+        logTransferHistory("Marcus Bidwell", action: "Sold", otherClub: "Old Athletic", fee: 1200)
+        logTransferHistory("Tom Tinker", action: "Released", otherClub: nil, fee: nil)
+
+        // 2. One printed front page through the real newspaper path
+        //    (addNews classifies + prints + links the story).
+        let archiveStar = clubs[userClubIndex].players[3]
+        addNews(.result, "DETERMINISTIC ARCHIVE STORY",
+                "A dominant home performance in front of a packed ground, with \(archiveStar.name) irresistible on the wing.",
+                player: archiveStar, clubName: userClub.name)
+        // The headline story stays unread only if the seed allows it —
+        // read it here so the Settings fixture never fights the Inbox
+        // fixture's unread accounting when both launch in one suite run.
+        for item in news where item.title == "DETERMINISTIC ARCHIVE STORY" {
+            markNewsRead(item)
+        }
+
+        // 3. One achievement through the real unlock path (it also emits
+        //    its own board story). The celebration overlay is a full-screen
+        //    cover in normal play — clear it so the fixture boots straight
+        //    into the shell with no modal in the way.
+        unlock(.wins50)
+        pendingAchievementCelebration = nil
+
+        // 4. A completed previous season through the real rollover record
+        //    shape, so Season History and the records card have content.
+        history.append(SeasonRecord(
+            season: season - 1, label: seasonLabel,
+            userClub: userClub.name, userDivision: divisionName(userDivisionTier), userPosition: 4,
+            champion: "Riverton FC", cupWinner: "Old Athletic", euroWinner: "Continental Kings",
+            communityShieldWinner: "—"))
+
+        // 5. One seeded preference (the UI tests assert the others from
+        //    their defaults and toggle freely).
+        autoPickAssist = true
+
+        persist()
+        return self
+    }
+
     /// Builds on the shared Career navigation fixture with a predictable
     /// mix of complete, in-progress and unscouted transfer targets. The
     /// product scouting APIs still own every state; this only removes

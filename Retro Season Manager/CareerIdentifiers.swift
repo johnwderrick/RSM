@@ -40,6 +40,51 @@ enum CareerIdentifiers {
     /// The SAVE & EXIT TO MENU action in Settings.
     static let settingsSaveExit = "career.settings.saveExit"
 
+    // MARK: Settings screen (light-card control centre)
+
+    /// The redesigned Settings screen's single scroll container.
+    static let settingsScroll = "career.settings.scroll"
+
+    /// The career summary card (club crest, manager, season, division,
+    /// date, save-slot context).
+    static let settingsSummary = "career.settings.summary"
+
+    /// The save/career card explaining autosave and hosting SAVE & EXIT.
+    static let settingsSaveCard = "career.settings.save"
+
+    /// The 'saved <relative time>' status line when a save slot is active.
+    static let settingsLastSaved = "career.settings.lastSaved"
+
+    /// The preferences card (difficulty, auto-pick assist, delegation).
+    static let settingsPreferences = "career.settings.preferences"
+
+    /// Stable selector for one preference control.
+    static func settingsPreference(_ name: String) -> String {
+        "career.settings.pref.\(slug(name))"
+    }
+
+    /// The records & archives card (records, honours, achievements,
+    /// newspaper archive, transfer history, season history).
+    static let settingsRecords = "career.settings.records"
+
+    /// The archive/record action rows inside the records card.
+    static func settingsArchive(_ name: String) -> String {
+        "career.settings.archive.\(slug(name))"
+    }
+
+    /// The career-management card (explanation of what Save & Exit does).
+    static let settingsCareerManagement = "career.settings.careerManagement"
+
+    /// The end-of-page scroll anchor.
+    static let settingsEnd = "career.settings.end"
+
+    /// The pinned close control on a restyled Settings sheet
+    /// (currently the Newspaper Archive).
+    static let settingsSheetClose = "career.settings.sheet.close"
+
+    /// The newspaper archive's root when hosted as a sheet.
+    static let settingsArchiveSheet = "career.settings.archive.sheet"
+
     // MARK: Helpers
 
     /// Lowercased, hyphenated slug for identifier components.
