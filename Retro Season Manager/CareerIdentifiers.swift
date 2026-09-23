@@ -130,6 +130,60 @@ enum CareerIdentifiers {
     /// reached from the scout centre's profile flow.
     static let personalTermsSheet = "career.sheet.personalTerms"
 
+    // MARK: Supporter Zone (light-card sheet)
+
+    /// The Supporter Zone's single scroll container (it presents as a
+    /// sheet from Settings, so it carries its own root anchors).
+    static let supporterScroll = "career.supporter.scroll"
+
+    /// The Supporter Zone's summary band (club, season, fan mood).
+    static let supporterSummary = "career.supporter.summary"
+
+    /// The pinned close control on the Supporter Zone sheet.
+    static let supporterClose = "career.supporter.close"
+
+    /// Stable selector for one Supporter Zone stat row (label slug).
+    static func supporterStat(_ label: String) -> String {
+        "career.supporter.stat.\(slug(label))"
+    }
+
+    /// The fan reactions feed's empty state.
+    static let supporterFeedEmpty = "career.supporter.feed.empty"
+
+    /// Stable selector for one social-feed post (by index, newest first).
+    static func supporterPost(_ index: Int) -> String {
+        "career.supporter.post.\(index)"
+    }
+
+    // MARK: Season Objectives (light-card sheet)
+
+    /// The Season Objectives screen's single scroll container.
+    static let objectivesScroll = "career.objectives.scroll"
+
+    /// The Season Objectives summary band (season, completion count).
+    static let objectivesSummary = "career.objectives.summary"
+
+    /// The pinned close control on the Season Objectives sheet.
+    static let objectivesClose = "career.objectives.close"
+
+    /// Stable selector for one objective card, keyed by the objective's
+    /// stable id (e.g. `beat-rival`) — never by its display title.
+    static func objectivesCard(_ id: String) -> String {
+        "career.objectives.card.\(slug(id))"
+    }
+
+    /// The objective detail sheet's scroll content root.
+    static let objectivesDetail = "career.objectives.detail"
+
+    /// The objective detail sheet's pinned close control.
+    static let objectivesDetailClose = "career.objectives.detail.close"
+
+    /// The objective detail's completion-reward band.
+    static let objectivesDetailReward = "career.objectives.detail.reward"
+
+    /// The objective detail's in-progress status line.
+    static let objectivesDetailStatus = "career.objectives.detail.status"
+
     // MARK: Helpers
 
     /// Lowercased, hyphenated slug for identifier components.

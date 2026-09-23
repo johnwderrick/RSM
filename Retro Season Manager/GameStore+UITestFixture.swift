@@ -465,5 +465,68 @@ extension GameStore {
         )
         return self
     }
+
+    /// Builds on the shared Career navigation fixture with exactly what
+    /// the redesigned Supporter Zone and Season Objectives screens
+    /// present, all through the real store data:
+    ///
+    /// - four REAL pool objectives (rolled by `setSeasonObjectives()`,
+    ///   then pinned to a known selection so card identifiers and the
+    ///   completion count are stable), one already completed,
+    /// - deterministic fan confidence/trend/patience (the values the
+    ///   summary band and confidence bars render),
+    /// - three banked previous-season attendance averages (the same
+    ///   shape the season rollover banks),
+    /// - four fan reactions through the REAL `postSocialReaction` path
+    ///   (one per sentiment family, so every accent colour renders).
+    ///
+    /// Season-ticket holders and ground capacity are left at the values
+    /// `newGame()` already derived — the screens must show those as-is.
+    @discardableResult
+    func prepareCareerSupporterFixtureForDebug() -> GameStore {
+        prepareCareerNavigationFixtureForDebug()
+
+        // 1. Roll the real objectives, then pin the deterministic four.
+        //    The pool entries are keyed by their stable ids; titles and
+        //    descriptions interpolate the rival name exactly as the
+        //    store's own pool builder does.
+        setSeasonObjectives()
+        let rivalName = rivalClubIndex.map { clubs[$0].name } ?? "your rivals"
+        seasonObjectives = [
+            SeasonObjective(id: "beat-rival", title: "Settle the Score",
+                            description: "Beat \(rivalName) this season.", kind: .beatRival),
+            SeasonObjective(id: "clean-sheet-wall", title: "Clean Sheet Wall",
+                            description: "Keep 8 clean sheets this season.", kind: .cleanSheetWall(8)),
+            SeasonObjective(id: "sign-young-player", title: "Ones to Watch",
+                            description: "Sign a player aged 21 or younger.", kind: .signYoungPlayer(maxAge: 21)),
+            SeasonObjective(id: "improve-fan-confidence", title: "Winning Them Over",
+                            description: "End the season with higher fan confidence than you started with.",
+                            kind: .improveFanConfidence),
+        ]
+        completedSeasonObjectiveIDs = ["sign-young-player"]
+        fanConfidenceAtSeasonStart = fanConfidence
+
+        // 2. Deterministic fan mood for the summary band and bars.
+        fanConfidence = 71
+        fanConfidenceTrend = 4
+        fanPatience = 55
+
+        // 3. Two previous seasons of banked attendance averages — the
+        //    same shape the season rollover appends (see SeasonObjectives
+        //    extension). Direct-seeded like the settings fixture's
+        //    SeasonRecord.
+        attendanceHistory = [22_400, 21_650]
+
+        // 4. Fan reactions through the REAL pipeline (handle + date come
+        //    from it; only the text is pinned).
+        socialFeed = []
+        postSocialReaction(.hype, "Three points and a clean sheet — this is what we came for!")
+        postSocialReaction(.pride, "The academy kid looked a player tonight. More of that please.")
+        postSocialReaction(.banter, "I've seen better touches in a chip shop, but I'll take the win.")
+        postSocialReaction(.concern, "We need another body in midfield before the window shuts.")
+
+        persist()
+        return self
+    }
 }
 #endif
