@@ -528,5 +528,38 @@ extension GameStore {
         persist()
         return self
     }
+
+    /// Builds on the shared Career navigation fixture with a deterministic
+    /// facilities starting point: a mid-level spread across the eight
+    /// facilities, one maxed facility, and a transfer budget that affords
+    /// exactly the museum and training-ground next steps — so the UI tests
+    /// can exercise the affordable, insufficient-budget and max-level card
+    /// states without touching any upgrade maths. Levels and budget are
+    /// seeded directly onto the same club fields `investInFacility` itself
+    /// mutates; costs and effects stay owned by the store APIs.
+    @discardableResult
+    func prepareCareerFacilitiesFixtureForDebug() -> GameStore {
+        prepareCareerNavigationFixtureForDebug()
+
+        // 1. A mid-level spread: nothing at zero, one facility maxed so
+        //    the MAX LEVEL state renders without spending £32M+ of taps.
+        clubs[userClubIndex].trainingGroundLevel = 1
+        clubs[userClubIndex].youthFacilityLevel = 1
+        clubs[userClubIndex].medicalCentreLevel = 2
+        clubs[userClubIndex].scoutingNetworkLevel = 1
+        clubs[userClubIndex].stadiumExpansionLevel = 5
+        clubs[userClubIndex].hospitalityLevel = 1
+        clubs[userClubIndex].museumLevel = 1
+        clubs[userClubIndex].clubShopLevel = 2
+
+        // 2. Transfer budget £3.0M — at these levels exactly two next
+        //    steps are affordable (museum £2.4M, training £2.8M) and the
+        //    rest are blocked (scouting £3.4M, youth £3.6M, hospitality
+        //    £4.0M, club shop £6.75M, medical £7.2M).
+        clubs[userClubIndex].transferBudget = 3_000
+
+        persist()
+        return self
+    }
 }
 #endif

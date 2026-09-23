@@ -62,7 +62,7 @@ struct PixelBitmap: Shape {
 /// The game's navigation icon set — one hand-authored 12x12 bitmap per
 /// destination, matching `GameSection`.
 enum PixelIconKind: String, CaseIterable {
-    case home, squad, table, fixtures, search, transfers, inbox, settings
+    case home, squad, table, fixtures, club, search, transfers, inbox, settings
 
     var grid: [[Bool]] {
         switch self {
@@ -124,6 +124,21 @@ enum PixelIconKind: String, CaseIterable {
                 "X.XX.XX.XX.X",
                 "X.XX.XX.XX.X",
                 "X..........X",
+                "XXXXXXXXXXXX",
+            ])
+        case .club:
+            return PixelBitmap.parse([
+                "..XXXXXXXX..",
+                "..XXXXXXXX..",
+                "..XX.XX.XX..",
+                "..XX.XX.XX..",
+                "..XXXXXXXX..",
+                "..XX.XX.XX..",
+                "..XX.XX.XX..",
+                "..XXXXXXXX..",
+                "..XX....XX..",
+                "..XX....XX..",
+                "XXXXXXXXXXXX",
                 "XXXXXXXXXXXX",
             ])
         case .search:

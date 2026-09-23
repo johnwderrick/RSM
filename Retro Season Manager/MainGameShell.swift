@@ -20,7 +20,7 @@ enum CareerPalette {
 }
 
 enum GameSection: CaseIterable {
-    case home, squad, table, fixtures, search, transfers, inbox, settings
+    case home, squad, table, fixtures, club, search, transfers, inbox, settings
 
     var icon: String {
         switch self {
@@ -28,6 +28,7 @@ enum GameSection: CaseIterable {
         case .squad:     return "person.3.fill"
         case .table:     return "list.number"
         case .fixtures:  return "calendar"
+        case .club:      return "building.2.fill"
         case .search:    return "magnifyingglass"
         case .transfers: return "sterlingsign.circle.fill"
         case .inbox:     return "envelope.fill"
@@ -43,6 +44,7 @@ enum GameSection: CaseIterable {
         case .squad:     return .squad
         case .table:     return .table
         case .fixtures:  return .fixtures
+        case .club:      return .club
         case .search:    return .search
         case .transfers: return .transfers
         case .inbox:     return .inbox
@@ -59,6 +61,7 @@ enum GameSection: CaseIterable {
         case .squad:     return "IconSquad"
         case .table:     return "IconTable"
         case .fixtures:  return "IconFixtures"
+        case .club:      return "IconClub"
         case .search:    return "IconSearch"
         case .transfers: return "IconTransfers"
         case .inbox:     return "IconInbox"
@@ -72,6 +75,7 @@ enum GameSection: CaseIterable {
         case .squad:     return "SQUAD"
         case .table:     return "TABLE"
         case .fixtures:  return "CALENDAR"
+        case .club:      return "CLUB"
         case .search:    return "SCOUT"
         case .transfers: return "TRANSFERS"
         case .inbox:     return "INBOX"
@@ -85,6 +89,7 @@ enum GameSection: CaseIterable {
         case .squad:     return "Squad"
         case .table:     return "Competitions"
         case .fixtures:  return "Calendar"
+        case .club:      return "Club Facilities"
         case .search:    return "Player Search"
         case .transfers: return "Transfers & Finances"
         case .inbox:     return "Inbox"
@@ -158,6 +163,7 @@ struct MainGameView: View {
             case .squad:     SquadView(store: store)
             case .table:     TableView(store: store)
             case .fixtures:  CalendarView(store: store)
+            case .club:      FacilitiesView(store: store)
             case .search:    PlayerSearchView(store: store)
             case .transfers: TransfersView(store: store)
             case .inbox:     InboxView(store: store)

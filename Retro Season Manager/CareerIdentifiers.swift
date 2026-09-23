@@ -155,6 +155,46 @@ enum CareerIdentifiers {
         "career.supporter.post.\(index)"
     }
 
+    // MARK: Club Facilities (light-card sheet)
+
+    /// The Club tab's single Facilities scroll container.
+    static let facilitiesScroll = "career.facilities.scroll"
+
+    /// The Club Facilities summary band (club, transfer budget, levels).
+    static let facilitiesSummary = "career.facilities.summary"
+
+    /// The transfer-budget figure inside the summary band.
+    static let facilitiesBudget = "career.facilities.budget"
+
+    /// Stable selector for one facility card, keyed by the `FacilityKind`
+    /// raw value (e.g. `trainingGround`) — never by its display name.
+    static func facilitiesCard(_ kind: FacilityKind) -> String {
+        "career.facilities.card.\(kind.rawValue)"
+    }
+
+    /// The facility's current level text (e.g. `LVL 2/5`).
+    static func facilitiesLevel(_ kind: FacilityKind) -> String {
+        "career.facilities.level.\(kind.rawValue)"
+    }
+
+    /// The next-upgrade cost text on a facility card.
+    static func facilitiesCost(_ kind: FacilityKind) -> String {
+        "career.facilities.cost.\(kind.rawValue)"
+    }
+
+    /// The upgrade action on a facility card (absent at max level).
+    static func facilitiesUpgrade(_ kind: FacilityKind) -> String {
+        "career.facilities.upgrade.\(kind.rawValue)"
+    }
+
+    /// The MAX LEVEL badge on a fully upgraded facility card.
+    static func facilitiesMax(_ kind: FacilityKind) -> String {
+        "career.facilities.max.\(kind.rawValue)"
+    }
+
+    /// The Club Facilities end-of-page anchor.
+    static let facilitiesEnd = "career.facilities.end"
+
     // MARK: Season Objectives (light-card sheet)
 
     /// The Season Objectives screen's single scroll container.
@@ -203,6 +243,7 @@ extension GameSection {
         case .squad:     return "squad"
         case .table:     return "table"
         case .fixtures:  return "calendar"
+        case .club:      return "club"
         case .search:    return "scout"
         case .transfers: return "transfers"
         case .inbox:     return "inbox"

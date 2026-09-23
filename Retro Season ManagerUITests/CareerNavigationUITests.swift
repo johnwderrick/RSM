@@ -95,14 +95,14 @@ final class CareerNavigationUITests: XCTestCase {
 
         // On SE landscape the six scrolling items overflow the sidebar's
         // viewport. The ONLY sidebar gesture that has proven safe under
-        // XCUITest here is an upward swipe for the lower items (scout and
-        // transfers) — a downward swipe delivered through the corrupted
+        // XCUITest here is an upward swipe for the lower items (club, scout
+        // and transfers) — a downward swipe delivered through the corrupted
         // coordinate space lands destructively (observed: swallowed the
         // next tap entirely). Non-scrolled hops therefore never swipe;
         // callers that need the top region again simply relaunch the app
         // (fresh sidebar scroll state) instead of swiping back up.
         let scroll = app.scrollViews["career.nav.sidebarScroll"]
-        if scroll.exists && (slug == "scout" || slug == "transfers") {
+        if scroll.exists && (slug == "club" || slug == "scout" || slug == "transfers") {
             scroll.swipeUp()
             Thread.sleep(forTimeInterval: 0.4)
         }
@@ -148,7 +148,7 @@ final class CareerNavigationUITests: XCTestCase {
         // Top-region hops first (no swipes), then the swiped lower hops,
         // then the pinned items — the only safe ordering given that a
         // swipe can corrupt subsequent taps (see gotoSidebar notes).
-        for slug in ["home", "squad", "table", "calendar", "scout", "transfers", "inbox", "settings"] {
+        for slug in ["home", "squad", "table", "calendar", "club", "scout", "transfers", "inbox", "settings"] {
             assertLands(app, slug)
         }
 
