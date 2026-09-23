@@ -2,10 +2,202 @@
 //  ContractNegotiationSheets.swift
 //  Retro Season Manager
 //
-//  Contract renewal and free-agent signing negotiation sheets.
+//  Contract renewal and free-agent signing negotiation sheets, in the
+//  accepted Career light-card design language (pale canvas, white cards,
+//  ink headings, green primary actions, restrained orange/red only for
+//  warnings). One authoritative vertical scroll container per sheet, a
+//  pinned header with an always-reachable close, and pinned primary
+//  actions; monospaced figures for every monetary value.
+//
+//  Negotiation mechanics are untouched: offers still go through the
+//  store's authoritative `proposeRenewal` / `signFreeAgent` paths, and
+//  every state machine (tabs, offer/offer-again, counter pills, the
+//  outcome toast) behaves exactly as before.
 //
 
 import SwiftUI
+
+// MARK: - Shared sheet building blocks (light-card language)
+
+/// Pinned close control shared by the negotiation sheets.
+struct SheetCloseButton: View {
+    var identifier: String
+    var action: () -> Void
+
+    var body: some View {
+        Button {
+            Haptics.tap()
+            action()
+        } label: {
+            Image(systemName: "xmark.circle.fill")
+                .font(.system(size: 26))
+                .foregroundStyle(CareerPalette.mutedInk.opacity(0.55))
+        }
+        .buttonStyle(PressableButtonStyle())
+        .accessibilityIdentifier(identifier)
+        .accessibilityLabel("Close")
+    }
+}
+
+/// A white stat card for one key figure.
+struct SheetStatCard: View {
+    let title: String
+    let value: String
+    var accent: Color = CareerPalette.ink
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.system(size: 8, weight: .black, design: .monospaced))
+                .foregroundStyle(CareerPalette.mutedInk)
+            Text(value)
+                .font(.system(size: 12, weight: .black, design: .monospaced))
+                .foregroundStyle(accent)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(CareerPalette.surface)
+        .overlay(RoundedRectangle(cornerRadius: 9).stroke(CareerPalette.line.opacity(0.18)))
+        .clipShape(RoundedRectangle(cornerRadius: 9))
+    }
+}
+
+/// The light-card version of the budget + mood strip shared by the
+/// negotiation sheets.
+private struct NegotiationInfoStrip: View {
+    let store: GameStore
+    let player: Player
+
+    var body: some View {
+        HStack(spacing: 8) {
+            SheetStatCard(title: "TRANSFER BUDGET", value: formatMoney(store.userClub.transferBudget))
+            SheetStatCard(title: "WAGE BILL / BUDGET",
+                          value: "\(formatMoney(store.userClub.wageBill)) / \(formatMoney(store.userClub.wageBudget))",
+                          accent: store.userClub.wageBill <= store.userClub.wageBudget
+                              ? CareerPalette.line
+                              : Color(red: 0.72, green: 0.42, blue: 0.10))
+            VStack(alignment: .trailing, spacing: 3) {
+                Text("MOOD")
+                    .font(.system(size: 8, weight: .black, design: .monospaced))
+                    .foregroundStyle(CareerPalette.mutedInk)
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(CareerPalette.line.opacity(0.15))
+                        Capsule().fill(moraleColor).frame(width: geo.size.width * CGFloat(player.morale) / 100)
+                    }
+                }
+                .frame(width: 52, height: 6)
+                Text("\(player.morale)")
+                    .font(.system(size: 10, weight: .black, design: .monospaced))
+                    .foregroundStyle(moraleColor)
+                    .monospacedDigit()
+            }
+            .padding(10)
+            .frame(width: 92)
+            .background(CareerPalette.surface)
+            .overlay(RoundedRectangle(cornerRadius: 9).stroke(CareerPalette.line.opacity(0.18)))
+            .clipShape(RoundedRectangle(cornerRadius: 9))
+        }
+    }
+
+    private var moraleColor: Color {
+        switch player.morale {
+        case 70...:   return CareerPalette.line
+        case 45..<70: return Retro.gold
+        default:      return Color(red: 0.72, green: 0.42, blue: 0.10)
+        }
+    }
+}
+
+/// The offer outcome banner — accepted (green) or declined (restrained
+/// orange) with the optional counter-offer pill.
+private struct ContractResultBanner: View {
+    let outcome: GameStore.ContractOutcome
+    /// Applies the counter-offer wage and re-offers (existing behaviour).
+    let onCounter: (Int) -> Void
+
+    var body: some View {
+        switch outcome {
+        case .accepted(let message):
+            VStack(spacing: 4) {
+                Text("✅ ACCEPTED")
+                    .font(.system(size: 9, weight: .black, design: .monospaced))
+                    .foregroundStyle(CareerPalette.line)
+                Text(message)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(CareerPalette.mutedInk)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(10)
+            .background(CareerPalette.line.opacity(0.10))
+            .clipShape(RoundedRectangle(cornerRadius: 9))
+            .accessibilityElement(children: .ignore)
+            .accessibilityIdentifier(CareerIdentifiers.contractResult)
+            .accessibilityLabel("Offer accepted. \(message)")
+        case .rejected(let reason, let counterWage):
+            VStack(spacing: 6) {
+                Text("❌ DECLINED")
+                    .font(.system(size: 9, weight: .black, design: .monospaced))
+                    .foregroundStyle(Color(red: 0.72, green: 0.42, blue: 0.10))
+                Text(reason)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(CareerPalette.mutedInk)
+                    .multilineTextAlignment(.center)
+                if let counterWage {
+                    Button {
+                        Haptics.tap()
+                        onCounter(counterWage)
+                    } label: {
+                        Text("Offer \(formatMoney(counterWage))/wk instead")
+                            .font(.system(size: 10, weight: .black, design: .monospaced))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(CareerPalette.surface)
+                            .foregroundStyle(CareerPalette.line)
+                            .clipShape(Capsule())
+                            .overlay(Capsule().stroke(CareerPalette.line.opacity(0.4)))
+                    }
+                    .buttonStyle(PressableButtonStyle())
+                    .accessibilityIdentifier(CareerIdentifiers.contractCounterButton)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(10)
+            .background(Color(red: 0.72, green: 0.42, blue: 0.10).opacity(0.10))
+            .clipShape(RoundedRectangle(cornerRadius: 9))
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier(CareerIdentifiers.contractResult)
+        }
+    }
+}
+
+/// A +/- stepper control in the light palette.
+private struct SheetStepButton: View {
+    let icon: String
+    var identifier: String? = nil
+    let action: () -> Void
+
+    var body: some View {
+        Button {
+            Haptics.tap()
+            action()
+        } label: {
+            Image(systemName: icon)
+                .font(.system(size: 24))
+                .foregroundStyle(CareerPalette.line)
+        }
+        .buttonStyle(PressableButtonStyle())
+        .accessibilityIdentifier(identifier ?? "")
+    }
+}
+
+private let contractWarningOrange = Color(red: 0.72, green: 0.42, blue: 0.10)
+
+// MARK: - Contract renewal
 
 struct ContractOfferSheet: View {
     let store: GameStore
@@ -19,6 +211,8 @@ struct ContractOfferSheet: View {
     @State private var releaseClause: Int
     @State private var signingOnFee = 0
     @State private var selectedTab: Tab = .offer
+    /// Guards against a double-submitted offer from a double tap.
+    @State private var offerInFlight = false
 
     enum Tab: String, CaseIterable, Identifiable {
         case offer = "Current Offer"
@@ -51,11 +245,11 @@ struct ContractOfferSheet: View {
 
     private var roleColor: Color {
         switch squadRole {
-        case .starPlayer:       return Retro.highlight
-        case .firstTeamRegular: return Retro.accent
-        case .rotation:         return Color(red: 0.55, green: 0.70, blue: 0.95)
-        case .backup:           return Retro.text.opacity(0.6)
-        case .youthProspect:    return Color(red: 0.55, green: 0.85, blue: 0.55)
+        case .starPlayer:       return Retro.gold
+        case .firstTeamRegular: return CareerPalette.line
+        case .rotation:         return CareerPalette.mutedInk
+        case .backup:           return CareerPalette.mutedInk.opacity(0.6)
+        case .youthProspect:    return Color(red: 0.22, green: 0.60, blue: 0.30)
         }
     }
 
@@ -71,160 +265,160 @@ struct ContractOfferSheet: View {
 
     var body: some View {
         ZStack {
-            Retro.background.ignoresSafeArea()
-            VStack(spacing: 14) {
-                VStack(spacing: 4) {
-                    Text("CONTRACT NEGOTIATION")
-                        .font(.system(.headline, design: .monospaced).bold())
-                        .foregroundStyle(Retro.accent)
-                    Text(player.name)
-                        .font(.system(.title3, design: .monospaced).bold())
-                    Text(squadRole.rawValue.uppercased())
-                        .font(.system(.caption2, design: .monospaced).bold())
-                        .foregroundStyle(Retro.background)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 3)
-                        .background(roleColor)
-                        .clipShape(Capsule())
-                    Text("Currently wants \(formatMoney(demand))/wk")
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(Retro.text.opacity(0.75))
-                    Text(roleFlavour)
-                        .font(.system(.caption2, design: .monospaced))
-                        .foregroundStyle(Retro.text.opacity(0.6))
-                        .multilineTextAlignment(.center)
+            CareerPalette.canvas.ignoresSafeArea()
+            VStack(spacing: 0) {
+                // Pinned header — identity, role and close, always visible.
+                HStack(spacing: 10) {
+                    PlayerAvatarView(name: player.name, position: player.position,
+                                     size: 40, age: player.age, nation: player.nationality)
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Text(player.name)
+                                .font(.system(size: 14, weight: .black, design: .monospaced))
+                                .foregroundStyle(CareerPalette.ink)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.75)
+                            Text(squadRole.rawValue.uppercased())
+                                .font(.system(size: 7, weight: .black, design: .monospaced))
+                                .foregroundStyle(roleColor)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .background(roleColor.opacity(0.14))
+                                .clipShape(Capsule())
+                        }
+                        Text("CONTRACT NEGOTIATION · \(player.age) YRS · \(player.position.rawValue) · \(player.rating) OVR")
+                            .font(.system(size: 8, weight: .bold, design: .monospaced))
+                            .foregroundStyle(CareerPalette.mutedInk)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                    }
+                    Spacer(minLength: 6)
+                    SheetCloseButton(identifier: CareerIdentifiers.contractSheetClose) { finish() }
                 }
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
 
                 Picker("", selection: $selectedTab) {
                     ForEach(Tab.allCases) { tab in Text(tab.rawValue).tag(tab) }
                 }
                 .pickerStyle(.segmented)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 6)
 
+                // The sheet's one authoritative vertical scroll container.
                 ScrollView {
-                    VStack(spacing: 16) {
-                        infoStrip
-
+                    VStack(spacing: 12) {
                         if let lastOutcome {
-                            resultBanner(lastOutcome)
+                            ContractResultBanner(outcome: lastOutcome) { counterWage in
+                                wage = counterWage
+                                makeOffer(wage: counterWage)
+                            }
                         }
-
+                        NegotiationInfoStrip(store: store, player: player)
                         if selectedTab == .existing {
-                            existingContractPanel
+                            existingContractCard
                         } else {
-
-                        VStack(spacing: 10) {
-                            Text("WEEKLY WAGE")
-                                .font(.system(.caption2, design: .monospaced).bold())
-                                .foregroundStyle(Retro.text.opacity(0.7))
-                            HStack(spacing: 20) {
-                                stepButton("minus.circle.fill") { wage = max(1, wage - step) }
-                                Text(formatMoney(wage))
-                                    .font(.system(.title2, design: .monospaced).bold())
-                                    .foregroundStyle(wage >= demand ? Retro.accent : Color(red: 0.95, green: 0.55, blue: 0.35))
-                                    .frame(minWidth: 110)
-                                stepButton("plus.circle.fill") { wage += step }
-                            }
+                            offerTermsCard
                         }
-
-                        VStack(spacing: 10) {
-                            Text("CONTRACT LENGTH")
-                                .font(.system(.caption2, design: .monospaced).bold())
-                                .foregroundStyle(Retro.text.opacity(0.7))
-                            Picker("Years", selection: $years) {
-                                ForEach(1...5, id: \.self) { y in Text("\(y) yr\(y == 1 ? "" : "s")").tag(y) }
-                            }
-                            .pickerStyle(.segmented)
-                        }
-
-                        VStack(spacing: 8) {
-                            Text("SIGNING-ON FEE")
-                                .font(.system(.caption2, design: .monospaced).bold())
-                                .foregroundStyle(Retro.text.opacity(0.7))
-                            HStack(spacing: 16) {
-                                stepButton("minus.circle.fill") { signingOnFee = max(0, signingOnFee - feeStep) }
-                                Text(signingOnFee > 0 ? formatMoney(signingOnFee) : "None")
-                                    .font(.system(.callout, design: .monospaced).bold())
-                                    .foregroundStyle(signingOnFee > 0 ? Retro.highlight : Retro.text.opacity(0.5))
-                                    .frame(minWidth: 90)
-                                stepButton("plus.circle.fill") { signingOnFee += feeStep }
-                            }
-                            Text("A one-off bonus, paid from the transfer budget, that sweetens the deal.")
-                                .font(.system(.caption2, design: .monospaced))
-                                .foregroundStyle(Retro.text.opacity(0.6))
-                        }
-
-                        VStack(spacing: 8) {
-                            Toggle(isOn: $includeReleaseClause) {
-                                Text("RELEASE CLAUSE")
-                                    .font(.system(.caption2, design: .monospaced).bold())
-                                    .foregroundStyle(Retro.text.opacity(0.7))
-                            }
-                            .tint(Retro.accent)
-                            if includeReleaseClause {
-                                HStack(spacing: 16) {
-                                    stepButton("minus.circle.fill") { releaseClause = max(clauseStep, releaseClause - clauseStep) }
-                                    Text(formatMoney(releaseClause))
-                                        .font(.system(.callout, design: .monospaced).bold())
-                                        .foregroundStyle(Retro.highlight)
-                                        .frame(minWidth: 90)
-                                    stepButton("plus.circle.fill") { releaseClause += clauseStep }
-                                }
-                                Text("Guarantees any rival bid for him is at least this much.")
-                                    .font(.system(.caption2, design: .monospaced))
-                                    .foregroundStyle(Retro.text.opacity(0.6))
-                            }
-                        }
-
-                        offerSummaryBox
-
-                        }
-                    }
-                    .padding(.vertical, 4)
-                }
-
-                if case .accepted(let message) = lastOutcome {
-                    Button {
-                        onResult(message)
-                        dismiss()
-                    } label: {
-                        Text("DONE")
-                            .font(.system(.headline, design: .monospaced).bold())
+                        Text(roleFlavour)
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(CareerPalette.mutedInk)
+                            .multilineTextAlignment(.center)
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .background(Retro.accent)
-                            .foregroundStyle(Retro.background)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .padding(.top, 2)
                     }
-                    .buttonStyle(PressableButtonStyle())
-                } else if selectedTab == .offer {
-                    HStack(spacing: 10) {
-                        Button("Cancel") { finish() }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(Retro.text)
-                        Spacer()
-                        Button {
-                            makeOffer(wage: wage)
-                        } label: {
-                            Text(lastOutcome == nil ? "MAKE OFFER" : "OFFER AGAIN")
-                                .font(.system(.headline, design: .monospaced).bold())
-                                .padding(.horizontal, 22)
-                                .padding(.vertical, 12)
-                                .background(Retro.accent)
-                                .foregroundStyle(Retro.background)
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
-                        }
-                        .buttonStyle(PressableButtonStyle())
-                    }
-                } else {
-                    Button("Close") { finish() }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(Retro.text)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
                 }
+                .accessibilityIdentifier(CareerIdentifiers.contractSheet)
+
+                // Pinned footer actions — reachable whatever the scroll.
+                footer
             }
-            .padding(24)
         }
         .font(.system(.body, design: .monospaced))
-        .foregroundStyle(Retro.text)
+        .foregroundStyle(CareerPalette.ink)
+        .accessibilityElement(children: .contain)
+        // (Sheet root anchor lives on the scroll container below — a
+        // container-level identifier on a .contain root clobbers every
+        // descendant's identifier, the documented Calendar-rows lesson.)
+    }
+
+    // MARK: Footer
+
+    @ViewBuilder
+    private var footer: some View {
+        if case .accepted(let message) = lastOutcome {
+            Button {
+                Haptics.tap()
+                onResult(message)
+                dismiss()
+            } label: {
+                Text("DONE")
+                    .font(.system(size: 12, weight: .black, design: .monospaced))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 13)
+                    .background(CareerPalette.line)
+                    .foregroundStyle(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+            .buttonStyle(PressableButtonStyle())
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .accessibilityIdentifier(CareerIdentifiers.contractDone)
+        } else if selectedTab == .offer {
+            HStack(spacing: 10) {
+                Button {
+                    Haptics.tap()
+                    finish()
+                } label: {
+                    Text("WALK AWAY")
+                        .font(.system(size: 11, weight: .black, design: .monospaced))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(CareerPalette.surface)
+                        .foregroundStyle(CareerPalette.ink)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(CareerPalette.line.opacity(0.25)))
+                }
+                .buttonStyle(PressableButtonStyle())
+                .accessibilityIdentifier(CareerIdentifiers.contractCancel)
+
+                Button {
+                    makeOffer(wage: wage)
+                } label: {
+                    Text(lastOutcome == nil ? "MAKE OFFER" : "OFFER AGAIN")
+                        .font(.system(size: 11, weight: .black, design: .monospaced))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(CareerPalette.line)
+                        .foregroundStyle(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+                .buttonStyle(PressableButtonStyle())
+                .accessibilityIdentifier(CareerIdentifiers.contractMakeOffer)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+        } else {
+            Button {
+                Haptics.tap()
+                finish()
+            } label: {
+                Text("CLOSE")
+                    .font(.system(size: 11, weight: .black, design: .monospaced))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(CareerPalette.surface)
+                    .foregroundStyle(CareerPalette.ink)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(CareerPalette.line.opacity(0.25)))
+            }
+            .buttonStyle(PressableButtonStyle())
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+        }
     }
 
     /// Leaves the sheet, passing the last outcome's message up (if there
@@ -240,6 +434,9 @@ struct ContractOfferSheet: View {
     }
 
     private func makeOffer(wage offerWage: Int) {
+        guard !offerInFlight else { return }
+        offerInFlight = true
+        defer { offerInFlight = false }
         Haptics.impact()
         let outcome = store.proposeRenewal(player, wage: offerWage, years: years,
                                            releaseClause: includeReleaseClause ? releaseClause : nil,
@@ -251,124 +448,136 @@ struct ContractOfferSheet: View {
         }
     }
 
-    @ViewBuilder
-    private func resultBanner(_ outcome: GameStore.ContractOutcome) -> some View {
-        switch outcome {
-        case .accepted(let message):
-            VStack(spacing: 4) {
-                Text("✅ ACCEPTED").font(.system(.caption, design: .monospaced).bold()).foregroundStyle(Retro.accent)
-                Text(message).font(.system(.caption2, design: .monospaced)).foregroundStyle(Retro.text.opacity(0.85))
+    // MARK: Offer terms card
+
+    private var offerTermsCard: some View {
+        VStack(spacing: 12) {
+            VStack(spacing: 8) {
+                Text("WEEKLY WAGE")
+                    .font(.system(size: 8, weight: .black, design: .monospaced))
+                    .foregroundStyle(CareerPalette.mutedInk)
+                HStack(spacing: 20) {
+                    SheetStepButton(icon: "minus.circle.fill", identifier: "career.contract.step.minus") { wage = max(1, wage - step) }
+                    Text(formatMoney(wage))
+                        .font(.system(size: 20, weight: .black, design: .monospaced))
+                        .foregroundStyle(wage >= demand ? CareerPalette.line : contractWarningOrange)
+                        .frame(minWidth: 110)
+                        .monospacedDigit()
+                        .accessibilityIdentifier(CareerIdentifiers.contractWageValue)
+                    SheetStepButton(icon: "plus.circle.fill", identifier: "career.contract.step.plus") { wage += step }
+                }
+                Text("He is demanding \(formatMoney(demand))/wk")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundStyle(CareerPalette.mutedInk)
+            }
+
+            Divider().overlay(CareerPalette.line.opacity(0.14))
+
+            VStack(spacing: 8) {
+                Text("CONTRACT LENGTH")
+                    .font(.system(size: 8, weight: .black, design: .monospaced))
+                    .foregroundStyle(CareerPalette.mutedInk)
+                Picker("Years", selection: $years) {
+                    ForEach(1...5, id: \.self) { y in Text("\(y) yr\(y == 1 ? "" : "s")").tag(y) }
+                }
+                .pickerStyle(.segmented)
+            }
+
+            Divider().overlay(CareerPalette.line.opacity(0.14))
+
+            VStack(spacing: 8) {
+                Text("SIGNING-ON FEE")
+                    .font(.system(size: 8, weight: .black, design: .monospaced))
+                    .foregroundStyle(CareerPalette.mutedInk)
+                HStack(spacing: 16) {
+                    SheetStepButton(icon: "minus.circle.fill") { signingOnFee = max(0, signingOnFee - feeStep) }
+                    Text(signingOnFee > 0 ? formatMoney(signingOnFee) : "None")
+                        .font(.system(size: 13, weight: .black, design: .monospaced))
+                        .foregroundStyle(signingOnFee > 0 ? Retro.gold : CareerPalette.mutedInk)
+                        .frame(minWidth: 90)
+                        .monospacedDigit()
+                    SheetStepButton(icon: "plus.circle.fill") { signingOnFee += feeStep }
+                }
+                Text("A one-off bonus, paid from the transfer budget, that sweetens the deal.")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(CareerPalette.mutedInk)
                     .multilineTextAlignment(.center)
             }
-            .frame(maxWidth: .infinity)
-            .padding(10)
-            .background(Retro.accent.opacity(0.12))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-        case .rejected(let reason, let counterWage):
-            VStack(spacing: 6) {
-                Text("❌ DECLINED").font(.system(.caption, design: .monospaced).bold())
-                    .foregroundStyle(Color(red: 0.95, green: 0.45, blue: 0.35))
-                Text(reason).font(.system(.caption2, design: .monospaced)).foregroundStyle(Retro.text.opacity(0.85))
-                    .multilineTextAlignment(.center)
-                if let counterWage {
-                    Button {
-                        wage = counterWage
-                        makeOffer(wage: counterWage)
-                    } label: {
-                        Text("Offer \(formatMoney(counterWage))/wk instead")
-                            .font(.system(.caption, design: .monospaced).bold())
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(Retro.highlight)
-                            .foregroundStyle(Retro.background)
-                            .clipShape(Capsule())
+
+            Divider().overlay(CareerPalette.line.opacity(0.14))
+
+            VStack(spacing: 8) {
+                Toggle(isOn: $includeReleaseClause) {
+                    Text("RELEASE CLAUSE")
+                        .font(.system(size: 8, weight: .black, design: .monospaced))
+                        .foregroundStyle(CareerPalette.mutedInk)
+                }
+                .tint(CareerPalette.line)
+                if includeReleaseClause {
+                    HStack(spacing: 16) {
+                        SheetStepButton(icon: "minus.circle.fill") { releaseClause = max(clauseStep, releaseClause - clauseStep) }
+                        Text(formatMoney(releaseClause))
+                            .font(.system(size: 13, weight: .black, design: .monospaced))
+                            .foregroundStyle(CareerPalette.ink)
+                            .frame(minWidth: 90)
+                            .monospacedDigit()
+                        SheetStepButton(icon: "plus.circle.fill") { releaseClause += clauseStep }
                     }
-                    .buttonStyle(PressableButtonStyle())
+                    Text("Guarantees any rival bid for him is at least this much.")
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(CareerPalette.mutedInk)
+                        .multilineTextAlignment(.center)
                 }
             }
-            .frame(maxWidth: .infinity)
-            .padding(10)
-            .background(Color(red: 0.95, green: 0.45, blue: 0.35).opacity(0.12))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            offerSummaryBox
         }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(CareerPalette.surface)
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(CareerPalette.line.opacity(0.18)))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .shadow(color: CareerPalette.ink.opacity(0.07), radius: 7, y: 3)
     }
 
-    private func stepButton(_ icon: String, action: @escaping () -> Void) -> some View {
-        Button {
-            Haptics.tap()
-            action()
-        } label: {
-            Image(systemName: icon)
-                .font(.system(size: 28))
-                .foregroundStyle(Retro.accent)
-        }
-        .buttonStyle(PressableButtonStyle())
-    }
-
-    private var infoStrip: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("TRANSFER BUDGET").font(.system(.caption2, design: .monospaced).bold()).foregroundStyle(Retro.text.opacity(0.6))
-                Text(formatMoney(store.userClub.transferBudget)).font(.system(.callout, design: .monospaced).bold())
-            }
-            Spacer()
-            VStack(alignment: .trailing, spacing: 2) {
-                Text("MOOD").font(.system(.caption2, design: .monospaced).bold()).foregroundStyle(Retro.text.opacity(0.6))
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(Retro.text.opacity(0.15))
-                        Capsule().fill(moraleColor).frame(width: geo.size.width * CGFloat(player.morale) / 100)
-                    }
-                }
-                .frame(width: 70, height: 6)
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Retro.text.opacity(0.05))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-    }
-
-    private var moraleColor: Color {
-        switch player.morale {
-        case 70...:   return Retro.accent
-        case 45..<70: return Retro.highlight
-        default:      return Color(red: 0.95, green: 0.45, blue: 0.35)
-        }
-    }
-
-    private var existingContractPanel: some View {
-        VStack(spacing: 14) {
+    private var existingContractCard: some View {
+        VStack(spacing: 10) {
             contractRow("Current wage", formatMoney(player.wage) + "/wk")
             contractRow("Years remaining", "\(player.contractYears)")
             contractRow("Contract expiry", "\(store.contractExpiryYear(player))")
             contractRow("Release clause", player.releaseClause.map(formatMoney) ?? "None")
             contractRow("Squad status", squadRole.rawValue)
         }
-        .padding(.vertical, 8)
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(CareerPalette.surface)
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(CareerPalette.line.opacity(0.18)))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .shadow(color: CareerPalette.ink.opacity(0.07), radius: 7, y: 3)
     }
 
     private func contractRow(_ label: String, _ value: String) -> some View {
         HStack {
             Text(label.uppercased())
-                .font(.system(.caption2, design: .monospaced).bold())
-                .foregroundStyle(Retro.text.opacity(0.6))
+                .font(.system(size: 9, weight: .black, design: .monospaced))
+                .foregroundStyle(CareerPalette.mutedInk)
             Spacer()
             Text(value)
-                .font(.system(.callout, design: .monospaced).bold())
+                .font(.system(size: 11, weight: .black, design: .monospaced))
+                .foregroundStyle(CareerPalette.ink)
+                .monospacedDigit()
         }
-        .padding(.horizontal, 4)
     }
 
     private var offerSummaryBox: some View {
         Text(offerSummarySentence)
-            .font(.system(.caption, design: .monospaced))
-            .foregroundStyle(Retro.text.opacity(0.85))
+            .font(.system(size: 10, weight: .bold, design: .monospaced))
+            .foregroundStyle(CareerPalette.ink)
             .multilineTextAlignment(.center)
-            .padding(12)
+            .padding(10)
             .frame(maxWidth: .infinity)
-            .background(Retro.text.opacity(0.05))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .background(Retro.gold.opacity(0.10))
+            .clipShape(RoundedRectangle(cornerRadius: 9))
     }
 
     private var offerSummarySentence: String {
@@ -382,6 +591,8 @@ struct ContractOfferSheet: View {
         return sentence + "."
     }
 }
+
+// MARK: - Free agent personal terms
 
 /// Signing a free agent (or a search-found player with an already-expired
 /// contract) — no transfer fee exists to negotiate, so this is personal
@@ -397,6 +608,8 @@ struct FreeAgentContractSheet: View {
     @State private var years = 3
     @State private var lastOutcome: GameStore.ContractOutcome?
     @State private var signingOnFee = 0
+    /// Guards against a double-submitted offer from a double tap.
+    @State private var offerInFlight = false
 
     private var demand: Int
     private var step: Int
@@ -418,11 +631,11 @@ struct FreeAgentContractSheet: View {
 
     private var roleColor: Color {
         switch squadRole {
-        case .starPlayer:       return Retro.highlight
-        case .firstTeamRegular: return Retro.accent
-        case .rotation:         return Color(red: 0.55, green: 0.70, blue: 0.95)
-        case .backup:           return Retro.text.opacity(0.6)
-        case .youthProspect:    return Color(red: 0.55, green: 0.85, blue: 0.55)
+        case .starPlayer:       return Retro.gold
+        case .firstTeamRegular: return CareerPalette.line
+        case .rotation:         return CareerPalette.mutedInk
+        case .backup:           return CareerPalette.mutedInk.opacity(0.6)
+        case .youthProspect:    return Color(red: 0.22, green: 0.60, blue: 0.30)
         }
     }
 
@@ -430,120 +643,119 @@ struct FreeAgentContractSheet: View {
 
     var body: some View {
         ZStack {
-            Retro.background.ignoresSafeArea()
-            VStack(spacing: 14) {
-                VStack(spacing: 4) {
-                    Text("FREE TRANSFER")
-                        .font(.system(.headline, design: .monospaced).bold())
-                        .foregroundStyle(Retro.accent)
-                    Text(player.name)
-                        .font(.system(.title3, design: .monospaced).bold())
-                    Text(squadRole.rawValue.uppercased())
-                        .font(.system(.caption2, design: .monospaced).bold())
-                        .foregroundStyle(Retro.background)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 3)
-                        .background(roleColor)
-                        .clipShape(Capsule())
-                    Text("No fee — just agree personal terms. Wants \(formatMoney(demand))/wk")
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(Retro.text.opacity(0.75))
-                        .multilineTextAlignment(.center)
+            CareerPalette.canvas.ignoresSafeArea()
+            VStack(spacing: 0) {
+                HStack(spacing: 10) {
+                    PlayerAvatarView(name: player.name, position: player.position,
+                                     size: 40, age: player.age, nation: player.nationality)
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Text(player.name)
+                                .font(.system(size: 14, weight: .black, design: .monospaced))
+                                .foregroundStyle(CareerPalette.ink)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.75)
+                            Text(squadRole.rawValue.uppercased())
+                                .font(.system(size: 7, weight: .black, design: .monospaced))
+                                .foregroundStyle(roleColor)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .background(roleColor.opacity(0.14))
+                                .clipShape(Capsule())
+                        }
+                        Text("FREE TRANSFER · \(player.age) YRS · \(player.position.rawValue) · \(player.rating) OVR")
+                            .font(.system(size: 8, weight: .bold, design: .monospaced))
+                            .foregroundStyle(CareerPalette.mutedInk)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                    }
+                    Spacer(minLength: 6)
+                    SheetCloseButton(identifier: CareerIdentifiers.contractSheetClose) { finish() }
                 }
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
 
                 ScrollView {
-                    VStack(spacing: 16) {
-                        infoStrip
-
+                    VStack(spacing: 12) {
                         if let lastOutcome {
-                            resultBanner(lastOutcome)
-                        }
-
-                        VStack(spacing: 10) {
-                            Text("WEEKLY WAGE")
-                                .font(.system(.caption2, design: .monospaced).bold())
-                                .foregroundStyle(Retro.text.opacity(0.7))
-                            HStack(spacing: 20) {
-                                stepButton("minus.circle.fill") { wage = max(1, wage - step) }
-                                Text(formatMoney(wage))
-                                    .font(.system(.title2, design: .monospaced).bold())
-                                    .foregroundStyle(wage >= demand ? Retro.accent : Color(red: 0.95, green: 0.55, blue: 0.35))
-                                    .frame(minWidth: 110)
-                                stepButton("plus.circle.fill") { wage += step }
+                            ContractResultBanner(outcome: lastOutcome) { counterWage in
+                                wage = counterWage
+                                makeOffer(wage: counterWage)
                             }
                         }
-
-                        VStack(spacing: 10) {
-                            Text("CONTRACT LENGTH")
-                                .font(.system(.caption2, design: .monospaced).bold())
-                                .foregroundStyle(Retro.text.opacity(0.7))
-                            Picker("Years", selection: $years) {
-                                ForEach(1...5, id: \.self) { y in Text("\(y) yr\(y == 1 ? "" : "s")").tag(y) }
-                            }
-                            .pickerStyle(.segmented)
-                        }
-
-                        VStack(spacing: 8) {
-                            Text("SIGNING-ON FEE")
-                                .font(.system(.caption2, design: .monospaced).bold())
-                                .foregroundStyle(Retro.text.opacity(0.7))
-                            HStack(spacing: 16) {
-                                stepButton("minus.circle.fill") { signingOnFee = max(0, signingOnFee - feeStep) }
-                                Text(signingOnFee > 0 ? formatMoney(signingOnFee) : "None")
-                                    .font(.system(.callout, design: .monospaced).bold())
-                                    .foregroundStyle(signingOnFee > 0 ? Retro.highlight : Retro.text.opacity(0.5))
-                                    .frame(minWidth: 90)
-                                stepButton("plus.circle.fill") { signingOnFee += feeStep }
-                            }
-                            Text("A one-off bonus, paid from the transfer budget, that sweetens the deal.")
-                                .font(.system(.caption2, design: .monospaced))
-                                .foregroundStyle(Retro.text.opacity(0.6))
-                        }
-
-                        offerSummaryBox
+                        NegotiationInfoStrip(store: store, player: player)
+                        offerTermsCard
                     }
-                    .padding(.vertical, 4)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
                 }
+                .accessibilityIdentifier(CareerIdentifiers.contractFreeAgentSheet)
 
-                if case .accepted(let message) = lastOutcome {
-                    Button {
-                        onResult(message)
-                        dismiss()
-                    } label: {
-                        Text("DONE")
-                            .font(.system(.headline, design: .monospaced).bold())
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .background(Retro.accent)
-                            .foregroundStyle(Retro.background)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                    }
-                    .buttonStyle(PressableButtonStyle())
-                } else {
-                    HStack(spacing: 10) {
-                        Button("Cancel") { finish() }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(Retro.text)
-                        Spacer()
-                        Button {
-                            makeOffer(wage: wage)
-                        } label: {
-                            Text(lastOutcome == nil ? "MAKE OFFER" : "OFFER AGAIN")
-                                .font(.system(.headline, design: .monospaced).bold())
-                                .padding(.horizontal, 22)
-                                .padding(.vertical, 12)
-                                .background(Retro.accent)
-                                .foregroundStyle(Retro.background)
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
-                        }
-                        .buttonStyle(PressableButtonStyle())
-                    }
-                }
+                footer
             }
-            .padding(24)
         }
         .font(.system(.body, design: .monospaced))
-        .foregroundStyle(Retro.text)
+        .foregroundStyle(CareerPalette.ink)
+        .accessibilityElement(children: .contain)
+        // (Sheet root anchor lives on the scroll container above.)
+    }
+
+    @ViewBuilder
+    private var footer: some View {
+        if case .accepted(let message) = lastOutcome {
+            Button {
+                Haptics.tap()
+                onResult(message)
+                dismiss()
+            } label: {
+                Text("DONE")
+                    .font(.system(size: 12, weight: .black, design: .monospaced))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 13)
+                    .background(CareerPalette.line)
+                    .foregroundStyle(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+            .buttonStyle(PressableButtonStyle())
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .accessibilityIdentifier(CareerIdentifiers.contractDone)
+        } else {
+            HStack(spacing: 10) {
+                Button {
+                    Haptics.tap()
+                    finish()
+                } label: {
+                    Text("WALK AWAY")
+                        .font(.system(size: 11, weight: .black, design: .monospaced))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(CareerPalette.surface)
+                        .foregroundStyle(CareerPalette.ink)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(CareerPalette.line.opacity(0.25)))
+                }
+                .buttonStyle(PressableButtonStyle())
+                .accessibilityIdentifier(CareerIdentifiers.contractCancel)
+
+                Button {
+                    makeOffer(wage: wage)
+                } label: {
+                    Text(lastOutcome == nil ? "MAKE OFFER" : "OFFER AGAIN")
+                        .font(.system(size: 11, weight: .black, design: .monospaced))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(CareerPalette.line)
+                        .foregroundStyle(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+                .buttonStyle(PressableButtonStyle())
+                .accessibilityIdentifier(CareerIdentifiers.contractMakeOffer)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+        }
     }
 
     private func finish() {
@@ -557,6 +769,9 @@ struct FreeAgentContractSheet: View {
     }
 
     private func makeOffer(wage offerWage: Int) {
+        guard !offerInFlight else { return }
+        offerInFlight = true
+        defer { offerInFlight = false }
         Haptics.impact()
         let outcome = store.signFreeAgent(player, fromClubIndex: fromClubIndex, wage: offerWage, years: years, signingOnFee: signingOnFee)
         lastOutcome = outcome
@@ -566,101 +781,80 @@ struct FreeAgentContractSheet: View {
         }
     }
 
-    @ViewBuilder
-    private func resultBanner(_ outcome: GameStore.ContractOutcome) -> some View {
-        switch outcome {
-        case .accepted(let message):
-            VStack(spacing: 4) {
-                Text("✅ SIGNED").font(.system(.caption, design: .monospaced).bold()).foregroundStyle(Retro.accent)
-                Text(message).font(.system(.caption2, design: .monospaced)).foregroundStyle(Retro.text.opacity(0.85))
+    private var offerTermsCard: some View {
+        VStack(spacing: 12) {
+            VStack(spacing: 8) {
+                Text("WEEKLY WAGE")
+                    .font(.system(size: 8, weight: .black, design: .monospaced))
+                    .foregroundStyle(CareerPalette.mutedInk)
+                HStack(spacing: 20) {
+                    SheetStepButton(icon: "minus.circle.fill", identifier: "career.contract.step.minus") { wage = max(1, wage - step) }
+                    Text(formatMoney(wage))
+                        .font(.system(size: 20, weight: .black, design: .monospaced))
+                        .foregroundStyle(wage >= demand ? CareerPalette.line : contractWarningOrange)
+                        .frame(minWidth: 110)
+                        .monospacedDigit()
+                        .accessibilityIdentifier(CareerIdentifiers.contractWageValue)
+                    SheetStepButton(icon: "plus.circle.fill", identifier: "career.contract.step.plus") { wage += step }
+                }
+                Text("No fee — just agree personal terms. Wants \(formatMoney(demand))/wk")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundStyle(CareerPalette.mutedInk)
                     .multilineTextAlignment(.center)
             }
-            .frame(maxWidth: .infinity)
-            .padding(10)
-            .background(Retro.accent.opacity(0.12))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-        case .rejected(let reason, let counterWage):
-            VStack(spacing: 6) {
-                Text("❌ DECLINED").font(.system(.caption, design: .monospaced).bold())
-                    .foregroundStyle(Color(red: 0.95, green: 0.45, blue: 0.35))
-                Text(reason).font(.system(.caption2, design: .monospaced)).foregroundStyle(Retro.text.opacity(0.85))
+
+            Divider().overlay(CareerPalette.line.opacity(0.14))
+
+            VStack(spacing: 8) {
+                Text("CONTRACT LENGTH")
+                    .font(.system(size: 8, weight: .black, design: .monospaced))
+                    .foregroundStyle(CareerPalette.mutedInk)
+                Picker("Years", selection: $years) {
+                    ForEach(1...5, id: \.self) { y in Text("\(y) yr\(y == 1 ? "" : "s")").tag(y) }
+                }
+                .pickerStyle(.segmented)
+            }
+
+            Divider().overlay(CareerPalette.line.opacity(0.14))
+
+            VStack(spacing: 8) {
+                Text("SIGNING-ON FEE")
+                    .font(.system(size: 8, weight: .black, design: .monospaced))
+                    .foregroundStyle(CareerPalette.mutedInk)
+                HStack(spacing: 16) {
+                    SheetStepButton(icon: "minus.circle.fill") { signingOnFee = max(0, signingOnFee - feeStep) }
+                    Text(signingOnFee > 0 ? formatMoney(signingOnFee) : "None")
+                        .font(.system(size: 13, weight: .black, design: .monospaced))
+                        .foregroundStyle(signingOnFee > 0 ? Retro.gold : CareerPalette.mutedInk)
+                        .frame(minWidth: 90)
+                        .monospacedDigit()
+                    SheetStepButton(icon: "plus.circle.fill") { signingOnFee += feeStep }
+                }
+                Text("A one-off bonus, paid from the transfer budget, that sweetens the deal.")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(CareerPalette.mutedInk)
                     .multilineTextAlignment(.center)
-                if let counterWage {
-                    Button {
-                        wage = counterWage
-                        makeOffer(wage: counterWage)
-                    } label: {
-                        Text("Offer \(formatMoney(counterWage))/wk instead")
-                            .font(.system(.caption, design: .monospaced).bold())
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(Retro.highlight)
-                            .foregroundStyle(Retro.background)
-                            .clipShape(Capsule())
-                    }
-                    .buttonStyle(PressableButtonStyle())
-                }
             }
-            .frame(maxWidth: .infinity)
-            .padding(10)
-            .background(Color(red: 0.95, green: 0.45, blue: 0.35).opacity(0.12))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-        }
-    }
 
-    private func stepButton(_ icon: String, action: @escaping () -> Void) -> some View {
-        Button {
-            Haptics.tap()
-            action()
-        } label: {
-            Image(systemName: icon)
-                .font(.system(size: 28))
-                .foregroundStyle(Retro.accent)
+            offerSummaryBox
         }
-        .buttonStyle(PressableButtonStyle())
-    }
-
-    private var infoStrip: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("TRANSFER BUDGET").font(.system(.caption2, design: .monospaced).bold()).foregroundStyle(Retro.text.opacity(0.6))
-                Text(formatMoney(store.userClub.transferBudget)).font(.system(.callout, design: .monospaced).bold())
-            }
-            Spacer()
-            VStack(alignment: .trailing, spacing: 2) {
-                Text("MOOD").font(.system(.caption2, design: .monospaced).bold()).foregroundStyle(Retro.text.opacity(0.6))
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(Retro.text.opacity(0.15))
-                        Capsule().fill(moraleColor).frame(width: geo.size.width * CGFloat(player.morale) / 100)
-                    }
-                }
-                .frame(width: 70, height: 6)
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Retro.text.opacity(0.05))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-    }
-
-    private var moraleColor: Color {
-        switch player.morale {
-        case 70...:   return Retro.accent
-        case 45..<70: return Retro.highlight
-        default:      return Color(red: 0.95, green: 0.45, blue: 0.35)
-        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(CareerPalette.surface)
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(CareerPalette.line.opacity(0.18)))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .shadow(color: CareerPalette.ink.opacity(0.07), radius: 7, y: 3)
     }
 
     private var offerSummaryBox: some View {
         Text(offerSummarySentence)
-            .font(.system(.caption, design: .monospaced))
-            .foregroundStyle(Retro.text.opacity(0.85))
+            .font(.system(size: 10, weight: .bold, design: .monospaced))
+            .foregroundStyle(CareerPalette.ink)
             .multilineTextAlignment(.center)
-            .padding(12)
+            .padding(10)
             .frame(maxWidth: .infinity)
-            .background(Retro.text.opacity(0.05))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .background(Retro.gold.opacity(0.10))
+            .clipShape(RoundedRectangle(cornerRadius: 9))
     }
 
     private var offerSummarySentence: String {
@@ -671,6 +865,8 @@ struct FreeAgentContractSheet: View {
         return sentence + "."
     }
 }
+
+// MARK: - Scout reports (already light — unchanged apart from shared chrome)
 
 /// Every scouting assessment filed so far, in one list — findings from a
 /// specific "scout this player" assignment and from a broader world/youth

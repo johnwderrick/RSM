@@ -65,8 +65,9 @@ struct TransferHubView: View {
         .sheet(item: $withdrawDeal) { deal in
             ConfirmActionSheet(
                 title: "Break off talks with \(deal.player.name)?",
-                message: "He'll return to \(deal.sellingClubName) and this deal is off. This can't be undone.",
-                confirmLabel: "WITHDRAW"
+                message: "\(deal.player.name) returns to \(deal.sellingClubName) and this deal is off. No fee has been paid. This can't be undone.",
+                confirmLabel: "WITHDRAW",
+                financialNote: "Agreed fee \(formatMoney(deal.agreedFee)) will not be spent"
             ) {
                 message = store.withdrawPendingDeal(deal)
             }

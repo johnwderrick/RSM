@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		1676624D235FCD63EE4EA8DA /* CareerContractSheetsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DED8E8CEA24F798E8869840C /* CareerContractSheetsUITests.swift */; };
+		60496B963AC27230D2FF6197 /* ContractSheetsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0582AC3CBBD90FAD6863EEFE /* ContractSheetsTests.swift */; };
+		80F0326560C5524968B742F8 /* PlayerNationalityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 592028D0E26D67E235944278 /* PlayerNationalityTests.swift */; };
 		9D0000000000000000000001 /* LegendsPlayerDetailStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D0000000000000000000002 /* LegendsPlayerDetailStateTests.swift */; };
 		00662B6C39544AA6851F522C /* LegendsPackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E30D7225752E3B1942D844E5 /* LegendsPackTests.swift */; };
 		07803EFF6F1D3ECD04BCF825 /* CareerSeasonSoakTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86D3D33B9AC8783B537A219E /* CareerSeasonSoakTests.swift */; };
@@ -92,6 +95,9 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		DED8E8CEA24F798E8869840C /* CareerContractSheetsUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CareerContractSheetsUITests.swift; sourceTree = "<group>"; };
+		0582AC3CBBD90FAD6863EEFE /* ContractSheetsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContractSheetsTests.swift; sourceTree = "<group>"; };
+		592028D0E26D67E235944278 /* PlayerNationalityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerNationalityTests.swift; sourceTree = "<group>"; };
 		9D0000000000000000000002 /* LegendsPlayerDetailStateTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendsPlayerDetailStateTests.swift; sourceTree = "<group>"; };
 		074F4A573ADF8B410DA73689 /* LegendsManagersAndStadiumsTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendsManagersAndStadiumsTests.swift; sourceTree = "<group>"; };
 		0B37E780E1B741DC8BAB0597 /* LivingWorldTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LivingWorldTests.swift; sourceTree = "<group>"; };
@@ -212,6 +218,8 @@
 				A1B2C3D4E5F6071829384B02 /* TransferMarketPersistenceTests.swift */,
 				A1B2C3D4E5F6071829384E02 /* InboxFixtureTests.swift */,
 				A1B2C3D4E5F6071829384F02 /* CareerSettingsTests.swift */,
+				0582AC3CBBD90FAD6863EEFE /* ContractSheetsTests.swift */,
+				592028D0E26D67E235944278 /* PlayerNationalityTests.swift */,
 				B660BAC2FA7DF71D3BADD886 /* LegendsCardDatabaseTests.swift */,
 				E30D7225752E3B1942D844E5 /* LegendsPackTests.swift */,
 				2167ED2F990D56D684B0E673 /* LegendsSquadTests.swift */,
@@ -297,6 +305,7 @@
 				A1B2C3D4E5F6071829384C02 /* CareerTransfersRelaunchUITests.swift */,
 				A1B2C3D4E5F6071829384D02 /* CareerInboxUITests.swift */,
 				A1B2C3D4E5F6071829384A12 /* CareerSettingsUITests.swift */,
+				DED8E8CEA24F798E8869840C /* CareerContractSheetsUITests.swift */,
 				E2D3C4B5A6F7081929384A5B /* CareerScoutUITests.swift */,
 				B1B2B3B4B5B6B7B8B9BABBBC /* RetroSeasonManagerUITests.swift */,
 			);
@@ -495,6 +504,8 @@
 				2A0E7115C0DE00B1B2C3D4E5 /* LegendsPoint2MigrationTests.swift in Sources */,
 				2A0E7116C0DE00B1B2C3D4E5 /* LegendsMatchSelectors2DTests.swift in Sources */,
 				2A0E7115C0DE00B1B2C3D4E6 /* LegendsPoint2SeasonAwardsTests.swift in Sources */,
+				60496B963AC27230D2FF6197 /* ContractSheetsTests.swift in Sources */,
+				80F0326560C5524968B742F8 /* PlayerNationalityTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -515,8 +526,8 @@
 				F1A2B3C4D5E6F708192A3C /* CareerTransfersUITests.swift in Sources */,
 				A1B2C3D4E5F6071829384C01 /* CareerTransfersRelaunchUITests.swift in Sources */,
 				A1B2C3D4E5F6071829384D01 /* CareerInboxUITests.swift in Sources */,
-				A1B2C3D4E5F6071829384A11 /* CareerSettingsUITests.swift in Sources */,
-				F2B3C4D5E6F708192A3B4C5D /* CareerScoutUITests.swift in Sources */,
+				A1B2C3D4E5F6071829384A11 /* CareerSettingsUITests.swift in Sources */,				F2B3C4D5E6F708192A3B4C5D /* CareerScoutUITests.swift in Sources */,
+				1676624D235FCD63EE4EA8DA /* CareerContractSheetsUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

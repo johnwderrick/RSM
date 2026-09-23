@@ -85,6 +85,51 @@ enum CareerIdentifiers {
     /// The newspaper archive's root when hosted as a sheet.
     static let settingsArchiveSheet = "career.settings.archive.sheet"
 
+    // MARK: Action & confirmation sheets (contract, release, withdrawal)
+
+    /// Root canvas of the contract renewal negotiation sheet.
+    static let contractSheet = "career.contract.sheet"
+
+    /// Root canvas of the free-agent personal-terms sheet.
+    static let contractFreeAgentSheet = "career.contract.freeAgent.sheet"
+
+    /// The contract sheet's pinned close control.
+    static let contractSheetClose = "career.contract.close"
+
+    /// The contract sheet's wage stepper figure.
+    static let contractWageValue = "career.contract.wage"
+
+    /// The MAKE OFFER / OFFER AGAIN primary action.
+    static let contractMakeOffer = "career.contract.makeOffer"
+
+    /// The contract sheet's Cancel/Walk away action.
+    static let contractCancel = "career.contract.cancel"
+
+    /// The result banner after an offer (accepted or declined + counter).
+    static let contractResult = "career.contract.result"
+
+    /// The counter-offer pill inside a declined result.
+    static let contractCounterButton = "career.contract.counter"
+
+    /// The post-acceptance DONE action.
+    static let contractDone = "career.contract.done"
+
+    /// Root canvas of a generic destructive confirmation sheet.
+    static let confirmSheet = "career.sheet.confirm"
+
+    /// The destructive confirmation sheet's title.
+    static let confirmSheetTitle = "career.sheet.confirm.title"
+
+    /// The destructive confirmation's Cancel action (prominent, safe).
+    static let confirmSheetCancel = "career.sheet.confirm.cancel"
+
+    /// The destructive confirmation action.
+    static let confirmSheetConfirm = "career.sheet.confirm.confirm"
+
+    /// Root canvas of the free-agent / search-found personal-terms sheet
+    /// reached from the scout centre's profile flow.
+    static let personalTermsSheet = "career.sheet.personalTerms"
+
     // MARK: Helpers
 
     /// Lowercased, hyphenated slug for identifier components.

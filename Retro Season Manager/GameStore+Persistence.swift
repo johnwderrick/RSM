@@ -333,6 +333,7 @@ extension GameStore {
         if state.transferMarket == nil {
             generateTransferMarket()
         }
+        let repairedKnownNationalities = repairKnownPlayerNationalities()
         windowWasOpen = transferWindowOpen
         deadlineDayAnnounced = false
         transferBudgetAtWindowOpen = transferWindowOpen ? userClub.transferBudget : 0
@@ -340,6 +341,7 @@ extension GameStore {
         atPreMatch = false
         hasStarted = true
         addNews(.info, "Save loaded", "Welcome back to \(userClub.name). It's \(currentDate.formatted(.dateTime.day().month(.wide).year())).")
+        if repairedKnownNationalities { persist() }
         return true
     }
 

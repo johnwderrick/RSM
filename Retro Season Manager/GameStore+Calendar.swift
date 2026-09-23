@@ -820,6 +820,7 @@ extension GameStore {
             var player = Self.makePlayer(name: entry.name, position: entry.detailedPosition.broad,
                                          detailedPosition: entry.detailedPosition,
                                          secondaryPositions: entry.secondaryPositions,
+                                         nationality: entry.nationality,
                                          age: entry.age, rating: entry.rating, startYear: startYear)
             player.contractYears = Int.random(in: 3...5)
             if let weakestIndex = clubs[clubIndex].players.indices

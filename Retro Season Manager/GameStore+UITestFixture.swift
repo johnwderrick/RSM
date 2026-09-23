@@ -342,6 +342,103 @@ extension GameStore {
         return self
     }
 
+    /// Builds on the shared Career navigation fixture with exactly what
+    /// the contract/confirmation sheet flows need, all through the real
+    /// store paths:
+    ///
+    /// - "Danny Draper": a high-morale 31-year-old striker whose wage
+    ///   demand is far below the wage-budget headroom — a renewal offer at
+    ///   his demand is deterministically ACCEPTED (the acceptance chance
+    ///   formula is comfortably above the 0.97 clamp, so the roll cannot
+    ///   fail).
+    /// - "Sammy Stalwart": an unsettled 34-year-old backup — satisfies
+    ///   `canTerminateContract` (wantsToLeave) so the release confirmation
+    ///   is reachable, and is 15+ slots above the minimum-squad guard.
+    /// - A pending deal for "Ivan Ongo" — reachable through the real
+    ///   `proposeBid` path with a flexible seller, so withdrawal has real
+    ///   state to act on.
+    /// - Budget headroom everywhere so insufficient-funds validation is
+    ///   exercised in unit tests by *removing* headroom, not by assuming it.
+    @discardableResult
+    func prepareCareerSheetsFixtureForDebug() -> GameStore {
+        prepareCareerNavigationFixtureForDebug()
+
+        // 1. Danny Draper — a deterministically accepted renewal. Age 31
+        //    avoids both age penalties; morale 95 and a wage at/above his
+        //    demand push the acceptance chance past the clamp. The demand
+        //    is pinned below the wage-budget headroom.
+        let striker = clubs[userClubIndex].players.first(where: { $0.position == .forward })
+            ?? clubs[userClubIndex].players[0]
+        let strikerIndex = clubs[userClubIndex].players.firstIndex { $0.id == striker.id }!
+        var draper = clubs[userClubIndex].players[strikerIndex]
+        draper = Player(id: draper.id, name: "Danny Draper", position: draper.position,
+                        detailedPosition: draper.detailedPosition, secondaryPositions: draper.secondaryPositions,
+                        age: 31, rating: 78)
+        draper.morale = 95
+        draper.contractYears = 1
+        draper.wage = 900
+        draper.releaseClause = nil
+        draper.value = max(draper.value, 1_000)
+        clubs[userClubIndex].players[strikerIndex] = draper
+        // A modest wage budget gives the renewal real headroom.
+        clubs[userClubIndex].wageBudget = max(userClub.wageBill + 3_000, userClub.wageBudget)
+
+        // 2. Sammy Stalwart — the release candidate (unsettled veteran).
+        let veteran = clubs[userClubIndex].players.first(where: { $0.position != .forward && $0.position != .goalkeeper && $0.onLoanFromClubIndex == nil })
+            ?? clubs[userClubIndex].players.last!
+        let veteranIndex = clubs[userClubIndex].players.firstIndex { $0.id == veteran.id }!
+        var stalwart = clubs[userClubIndex].players[veteranIndex]
+        stalwart = Player(id: stalwart.id, name: "Sammy Stalwart", position: stalwart.position,
+                          detailedPosition: stalwart.detailedPosition, secondaryPositions: stalwart.secondaryPositions,
+                          age: 34, rating: stalwart.rating)
+        stalwart.wantsToLeave = true
+        stalwart.wage = 400
+        stalwart.onLoanFromClubIndex = nil
+        clubs[userClubIndex].players[veteranIndex] = stalwart
+        clubs[userClubIndex].transferBudget = max(userClub.transferBudget, max(50, 400 * 4) + 1_000)
+
+        // 3. A pending deal for "Ivan Ongo" through the REAL bid path —
+        //    flexible seller, cheap target, so the first bid is accepted
+        //    and the deal is pending with no personal terms agreed.
+        let targets = transferMarket.sorted {
+            if $0.player.rating == $1.player.rating { return $0.player.name < $1.player.name }
+            return $0.player.rating > $1.player.rating
+        }
+        if let negotiable = targets.first(where: { $0.sellingClubIndex != nil && $0.player.position != .goalkeeper }),
+           let sellerIndex = negotiable.sellingClubIndex,
+           clubNegotiationStances.indices.contains(sellerIndex) {
+            clubNegotiationStances[sellerIndex] = .flexible
+            let asking = max(1_000, userClub.transferBudget / 10)
+            // Rename the underlying club player too, so the pending deal
+            // created by the real bid path keeps the deterministic name.
+            if let playerIndex = clubs[sellerIndex].players.firstIndex(where: { $0.id == negotiable.player.id }) {
+                let original = clubs[sellerIndex].players[playerIndex]
+                let renamed = Player(id: original.id, name: "Ivan Ongo", position: original.position,
+                                     detailedPosition: original.detailedPosition,
+                                     secondaryPositions: original.secondaryPositions,
+                                     age: original.age, rating: original.rating)
+                clubs[sellerIndex].players[playerIndex] = renamed
+            }
+            transferMarket = transferMarket.map { target in
+                target.player.id == negotiable.player.id
+                    ? TransferTarget(player: Player(id: target.player.id, name: "Ivan Ongo",
+                                                    position: target.player.position,
+                                                    detailedPosition: target.player.detailedPosition,
+                                                    secondaryPositions: target.player.secondaryPositions,
+                                                    age: target.player.age, rating: target.player.rating),
+                                     sellingClubIndex: target.sellingClubIndex,
+                                     askingPrice: asking)
+                    : target
+            }
+            if let live = transferMarket.first(where: { $0.player.name == "Ivan Ongo" }) {
+                _ = proposeBid(live, amount: asking)
+            }
+        }
+
+        persist()
+        return self
+    }
+
     /// Idempotent re-assertion of the fixture's shortlist + scout-report
     /// state, kept as a safety net for the UI tests. With stable target
     /// identity and a persisted market this state now survives relaunches

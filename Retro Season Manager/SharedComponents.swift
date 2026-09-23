@@ -11,56 +11,124 @@ import UIKit
 // MARK: - Reusable pieces
 
 /// A themed "are you sure" screen for any hard-to-reverse action — release,
-/// loan out, anything that shouldn't be one accidental tap away. Styled to
-/// match the rest of the app rather than a plain system alert.
+/// withdrawal, anything that shouldn't be one accidental tap away.
+/// Career light-card language: white card on the pale canvas, restrained
+/// warning styling, a prominent safe Cancel and a single destructive
+/// action. The confirm action is guarded against double submission.
 struct ConfirmActionSheet: View {
     let title: String
     let message: String
     let confirmLabel: String
+    /// Optional financial consequence highlighted in the sheet (already
+    /// formatted as money by the caller).
+    var financialNote: String? = nil
     let onConfirm: () -> Void
     @Environment(\.dismiss) private var dismiss
+    @State private var confirmed = false
 
     var body: some View {
         ZStack {
-            Retro.background.ignoresSafeArea()
-            VStack(spacing: 20) {
-                Spacer(minLength: 0)
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 34))
-                    .foregroundStyle(Color(red: 0.95, green: 0.55, blue: 0.35))
-                Text(title)
-                    .font(.system(.title3, design: .monospaced).bold())
-                    .foregroundStyle(Retro.text)
-                    .multilineTextAlignment(.center)
-                Text(message)
-                    .font(.system(.callout, design: .monospaced))
-                    .foregroundStyle(Retro.text.opacity(0.8))
-                    .multilineTextAlignment(.center)
-                Spacer(minLength: 0)
-                HStack(spacing: 10) {
-                    Button("Cancel") { dismiss() }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(Retro.text)
-                    Spacer()
+            CareerPalette.canvas.ignoresSafeArea()
+            VStack(spacing: 0) {
+                // Pinned header — the safe way out is always reachable.
+                HStack {
                     Button {
+                        Haptics.tap()
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 26))
+                            .foregroundStyle(CareerPalette.mutedInk.opacity(0.55))
+                    }
+                    .buttonStyle(PressableButtonStyle())
+                    .accessibilityIdentifier(CareerIdentifiers.confirmSheetCancel)
+                    .accessibilityLabel("Cancel")
+                    Spacer()
+                }
+                .padding(.horizontal, 18)
+                .padding(.top, 14)
+                .padding(.bottom, 4)
+
+                ScrollView {
+                    VStack(spacing: 16) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 32))
+                            .foregroundStyle(Color(red: 0.72, green: 0.42, blue: 0.10))
+                            .padding(.top, 6)
+                        Text(title)
+                            .font(.system(size: 16, weight: .black, design: .monospaced))
+                            .foregroundStyle(CareerPalette.ink)
+                            .multilineTextAlignment(.center)
+                            .accessibilityIdentifier(CareerIdentifiers.confirmSheetTitle)
+                        Text(message)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(CareerPalette.mutedInk)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if let financialNote {
+                            HStack(spacing: 8) {
+                                Image(systemName: "sterlingsign.circle.fill")
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(CareerPalette.line)
+                                Text(financialNote)
+                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(CareerPalette.ink)
+                                    .monospacedDigit()
+                            }
+                            .padding(10)
+                            .frame(maxWidth: .infinity)
+                            .background(CareerPalette.line.opacity(0.08))
+                            .clipShape(RoundedRectangle(cornerRadius: 9))
+                        }
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 10)
+                }
+                .accessibilityIdentifier(CareerIdentifiers.confirmSheet)
+
+                VStack(spacing: 10) {
+                    Button {
+                        Haptics.tap()
+                        dismiss()
+                    } label: {
+                        Text("KEEP EVERYTHING AS IT IS")
+                            .font(.system(size: 12, weight: .black, design: .monospaced))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(CareerPalette.surface)
+                            .foregroundStyle(CareerPalette.ink)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(CareerPalette.line.opacity(0.25)))
+                    }
+                    .buttonStyle(PressableButtonStyle())
+                    .accessibilityIdentifier(CareerIdentifiers.confirmSheetCancel)
+
+                    Button {
+                        guard !confirmed else { return }
+                        confirmed = true
                         Haptics.warning()
                         onConfirm()
                     } label: {
                         Text(confirmLabel)
-                            .font(.system(.headline, design: .monospaced).bold())
-                            .padding(.horizontal, 22)
+                            .font(.system(size: 12, weight: .black, design: .monospaced))
+                            .frame(maxWidth: .infinity)
                             .padding(.vertical, 12)
-                            .background(Color(red: 0.9, green: 0.35, blue: 0.3))
+                            .background(Color(red: 0.62, green: 0.20, blue: 0.16))
                             .foregroundStyle(.white)
                             .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .opacity(confirmed ? 0.5 : 1)
                     }
                     .buttonStyle(PressableButtonStyle())
+                    .disabled(confirmed)
+                    .accessibilityIdentifier(CareerIdentifiers.confirmSheetConfirm)
                 }
+                .padding(.horizontal, 18)
+                .padding(.vertical, 14)
             }
-            .padding(24)
         }
-        .font(.system(.body, design: .monospaced))
-        .foregroundStyle(Retro.text)
+        .accessibilityElement(children: .contain)
+        // (No container-level identifier: it would clobber the per-button
+        // identifiers below, as the Calendar rows lesson documented.)
     }
 }
 

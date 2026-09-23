@@ -153,6 +153,309 @@ extension GameStore {
         return Double.random(in: 0..<1) < foreignChance ? nationalityPool.randomElement()! : "England"
     }
 
+    /// Nationalities we know rather than infer. These names appear in the
+    /// hand-authored Career rosters and dated marquee events, so their
+    /// nationality must never depend on a random roll or an old-save fallback.
+    ///
+    /// Every entry below was verified against the player's identity (the
+    /// real-world star the fictional name mirrors), the roster slot it
+    /// occupies (club, position, age and rating matching the real squad of
+    /// that era) and continuity across start years. Names shared by
+    /// *different* real players in different rosters (e.g. "Thiago Cerezo",
+    /// "Jose Alvarenga", "James Marshall", "Manuel Salaberri") are
+    /// deliberately absent — a name-keyed catalogue must never guess.
+    static let knownPlayerNationalities: [String: String] = [
+        // MARK: Marquee stars (also carried explicitly by MarqueeArrival)
+        "Cristiano Renaldo": "Portugal",
+        "Lionel Mesi": "Argentina",
+        "Gareth Baile": "Wales",
+        "Eden Hazzard": "Belgium",
+        "Neymar Souza": "Brazil",
+        "Kylian Mbape": "France",
+        "Robert Lewandowsky": "Poland",
+
+        // MARK: Bernabéu Whites (Real Madrid 2000/2010/2020)
+        "Iker Salaberri": "Spain", "Victor Salaberri": "Spain",
+        "Roberto Miguel": "Brazil", "Marcus Solheim": "Spain",
+        "Luís Camara": "Portugal", "Raúl Antúnez": "Spain",
+        "Felipe Steiner": "Spain",
+        "Sergio Bernal": "Spain", "Pepe Alvarenga": "Portugal",
+        "Ricardo Salgueiro": "Portugal", "Marcelo Nascimento": "Brazil",
+        "Alvaro Cerezo": "Spain", "Xabi Bernal": "Spain",
+        "Sami Reinholt": "Germany", "Mesut Aydin": "Germany",
+        "Angel Di Bello": "Argentina", "Gonzalo Tamudo": "Argentina",
+        "Karim Idrissi": "France", "Kaká Ribeiro": "Brazil",
+        "Lassana Diallo": "France", "Raul Bernal": "Spain",
+        "Esteban Cerezo": "Spain", "Achraf Benali": "Morocco",
+
+        // MARK: Camp Blaugrana (Barcelona 2000/2010/2020)
+        "Mateo Baumann": "Netherlands", "Ryan Harding": "Spain",
+        "Connor Sandham": "Spain", "Xavier Puig": "Spain",
+        "Rivaldo Nascimento": "Brazil", "Emil Fischer": "Netherlands",
+        "Dani Cerezo": "Brazil", "Gerard Bernal": "Spain",
+        "Carles Reinholt": "Spain", "Eric Diallo": "France",
+        "Sergio Salgueiro": "Spain", "Andres Cerezo": "Spain",
+        "David Cerezo": "Spain", "Pedro Idrissi": "Spain",
+        "Ibrahim Ndiaye": "Netherlands", "Seydou Diallo": "Mali",
+        "Maxwell Salgueiro": "Brazil", "Francesc Aráoz": "Spain",
+
+        // MARK: Bavarian Reds (Bayern München 2000/2010/2020)
+        "Aaron Horvat": "Germany", "Diego Halvorsen": "France",
+        "Mateo Diallo": "France", "Felix Ashcroft": "Ghana",
+        "Kofi Dvorak": "Germany", "Craig Larsen": "Germany",
+        "Idris Rousseau": "Germany", "Karim Salgueiro": "Germany",
+        "Daniel Berg": "Brazil", "Jonas Steiner": "Germany",
+        "Gordon Redfern": "Paraguay",
+        "Hans-Jorg Reinholt": "Germany", "Philipp Krause": "Germany",
+        "Daniel Girard": "Belgium", "Martin Marotta": "Argentina",
+        "Holger Fischer": "Germany", "Bastian Wenzel": "Germany",
+        "Mark Bergman": "Netherlands", "Arjen Vogel": "Netherlands",
+        "Franck Dubois": "France", "Thomas Reuter": "Germany",
+        "Ivica Novak": "Croatia", "Toni Steiner": "Germany",
+        "Miroslav Baumann": "Germany", "Luiz Nascimento": "Brazil",
+        "Anatoliy Larsen": "Ukraine",
+
+        // MARK: Turin Bianconeri (Juventus 2000/2010/2020)
+        "Marco Winters": "Netherlands", "Pietro Eriksson": "Uruguay",
+        "Youssef Reuter": "Italy", "Diego Okafor": "Italy",
+        "Dario Adeyemi": "Croatia", "Pietro Prentice": "Italy",
+        "Freddy Okafor": "Italy", "Oskar Berg": "Netherlands",
+        "Zinedine Belkacem": "France", "Alessandro Fiore": "Italy",
+        "Adam Whitfield": "Italy", "Lucas Hartmann": "France",
+        "Callum Berg": "Serbia",
+        "Gianluigi Serrano": "Italy", "Giorgio Amadori": "Italy",
+        "Leonardo Fiore": "Italy", "Andrea Rinaldi": "Italy",
+        "Zdenek Novak": "Czech Republic", "Claudio Fanti": "Italy",
+        "Milos Ivanov": "Serbia", "Felipe Nascimento": "Brazil",
+        "Vincenzo Amadori": "Italy", "Fabio Rinaldi": "Italy",
+        "Mauro Serrano": "Italy", "Wojciech Adamski": "Poland",
+
+        // MARK: San Siro Rossoneri (AC Milan 2000/2010/2020)
+        "Paolo Rinaldi": "Italy", "Yusuf Mensah": "Italy",
+        "Anton Ashworth": "Italy", "Andriy Petrenko": "Ukraine",
+        "Vasil Marsh": "Germany",
+        "Christian Serrano": "Italy", "Gianluca Rinaldi": "Italy",
+        "Alessandro Amadori": "Italy", "Massimo Serrano": "Italy",
+        "Andrea Pirlio": "Italy", "Gennaro Rinaldi": "Italy",
+        "Clarence Vogel": "Netherlands", "Robinho Farias": "Brazil",
+        "Zlatan Ibsen": "Sweden", "Alexandre Salgueiro": "Brazil",
+        "Kevin-Prince Amara": "Ghana", "Mark Steiner": "Netherlands",
+        "Ignazio Fanti": "Italy", "Filippo Amadori": "Italy",
+        "Antonio Rinaldi": "Italy",
+        "Donnarumma Vitale": "Italy", "Theo Bertoli": "France",
+        "Sandro Locatelli": "Italy", "Nicolo Fagioli": "Italy",
+        "Rafa Leon": "Portugal",
+
+        // MARK: San Siro Nerazzurri (Inter 2000/2010/2020)
+        "Javier Pellegrino": "Argentina", "Dario Calloway": "France",
+        "Christian Marotta": "Italy", "Ronaldo Basso": "Brazil",
+        "Julio Cesar": "Brazil", "Maicon Nascimento": "Brazil",
+        "Lucio Cerezo": "Brazil", "Walter Marotta": "Argentina",
+        "Cristian Belkacem": "Romania", "Esteban Bernal": "Argentina",
+        "Wesley Reuter": "Netherlands", "Dejan Ivanov": "Serbia",
+        "Goran Kral": "North Macedonia", "Samuel Ndiaye": "Cameroon",
+        "Diego Marotta": "Argentina", "Ivan Salgueiro": "Colombia",
+        "Lautaro Reyes": "Argentina",
+
+        // MARK: Amsterdam Godenzonen (Ajax 2000/2010/2020)
+        "Idris Toure": "Netherlands", "Dario Duarte": "Greece",
+        "Maarten Krause": "Netherlands", "Toby Fischer": "Belgium",
+        "Jan Wenzel": "Belgium", "Andre Bergman": "Netherlands",
+        "Gregory Steiner": "Netherlands", "Urby Vogel": "Netherlands",
+        "Demy Novak": "Netherlands", "Christian Larsen": "Denmark",
+        "Miralem Ivanov": "Serbia", "Vurnon Idrissi": "Netherlands",
+
+        // MARK: Dragão Dragons (FC Porto 2000/2010/2020)
+        "Paul Brandt": "Portugal", "Bruno Havel": "Portugal",
+        "Helton Salgueiro": "Brazil", "Alvaro Marotta": "Uruguay",
+        "Rolando Nascimento": "Portugal", "Nicolas Bernal": "Argentina",
+        "Cristian Ivanov": "Romania", "Fernando Salgueiro": "Brazil",
+        "Joao Cerezo": "Portugal", "Fredy Marotta": "Colombia",
+        "Givanildo Marotta": "Brazil", "Radamel Osorio": "Colombia",
+        "Silvestre Nascimento": "Portugal", "James Bernal": "Colombia",
+        "Ruben Marotta": "Portugal", "Diogo Marchetti": "Portugal",
+
+        // MARK: Old Trafford Reds (Manchester United 2000/2010/2020)
+        "Roy Cahill": "Republic of Ireland", "Ian Castellan": "Netherlands",
+        "Kian Diallo": "Republic of Ireland", "David Whitlock": "England",
+        "Ryan Merrick": "Wales", "Paul Kenwright": "England",
+        "Magnus Harding": "France", "Daniel Toure": "England",
+        "Emil Dimitrov": "Norway", "Colin Vogel": "England",
+        "Michael Prescott": "England",
+        "Edwin Doren": "Netherlands", "Tomasz Kral": "Poland",
+        "Nemanja Rusev": "Serbia", "Patrice Almada": "France",
+        "Chris Smallwood": "England", "Michael Kerrigan": "England",
+        "Darren Fenwick": "Scotland", "Nani Almeida": "Portugal",
+        "Antonio Valera": "Ecuador", "Ji-Hoon Park": "Korea Republic",
+        "Wayne Kilbride": "England", "Dimitar Yotov": "Bulgaria",
+        "Javier Solis": "Mexico",
+
+        // MARK: Highbury (Arsenal 2000/2010/2020)
+        "Kyle Halvorsen": "England", "Thierry Almeida": "France",
+        "Dennis Verhoeven": "Netherlands", "Patrick Amara": "France",
+        "James Rousseau": "France", "Thomas Vasconcelos": "England",
+        "Emil Marsh": "England", "Jonas Horvat": "England",
+        "Mateo Duarte": "England",
+        "Lukasz Kral": "Poland", "Bacary Almada": "France",
+        "Laurent Belkacem": "France", "Thomas Vermeulen": "Belgium",
+        "Johan Djourou": "Switzerland", "Alexandre Puig": "Cameroon",
+        "Samir Girard": "France", "Jack Willoughby": "England",
+        "Andrei Volkov": "Russia", "Samir Belhadj": "France",
+        "Theo Ashcroft": "England", "Robin van Doren": "Netherlands",
+        "Marouane Idrissi": "Morocco",
+
+        // MARK: Mersey Reds (Liverpool 2000/2010/2020)
+        "Kian Hartmann": "Netherlands", "Mark Foulkes": "Germany",
+        "Karim Rousseau": "Finland", "Jamie Rousell": "England",
+        "Tomas Osgood": "Germany", "Steven Halloran": "England",
+        "Malick Camara": "Germany", "Colin Wenzel": "Scotland",
+        "Robbie Sandham": "England",
+        "Pepe Salaberri": "Spain", "Diego Cavani": "Brazil",
+        "Glen Osgood": "England", "Martin Novak": "Slovakia",
+        "Daniel Larsen": "Denmark", "Emiliano Insua": "Argentina",
+        "Lucas Fontaine": "Brazil", "Raul Costa": "Portugal",
+        "Dirk Bergman": "Netherlands", "Maxi Fontaine": "Argentina",
+        "Joe Radley": "England", "Fernando Casal": "Spain",
+        "Luis Bencosme": "Uruguay", "Jonjo Fenwick": "England",
+
+        // MARK: Elland Athletic (Leeds United 2000/2010/2020)
+        "Viktor Salgueiro": "England", "Callum Radley": "Republic of Ireland",
+        "Thomas Ashworth": "England", "Liam Hartmann": "France",
+        "Dean Almada": "England", "Colin Bernard": "Australia",
+
+        // MARK: Portman Rovers (Ipswich Town 2000/2010/2020)
+        "Yusuf Prentice": "England", "Klaus Castellan": "England",
+        "Marton Fenshaw": "Hungary",
+
+        // MARK: Stamford Blues (Chelsea 2000/2010/2020)
+        "Emil Winstanley": "France", "Kevin Prentice": "France",
+        "Jamie Brandt": "England", "Gianfranco Rialto": "Italy",
+        "Nico Lefevre": "Netherlands", "Luca Castellan": "Uruguay",
+        "Diego Prentice": "Italy", "John Radley": "England",
+        "Nico Blackwood": "Netherlands",
+        "Petr Novotny": "Czech Republic", "Branislav Kral": "Serbia",
+        "Alex Devereux": "Brazil", "Ashley Corrigan": "England",
+        "Michael Owusu": "Ghana", "John Obidi": "Nigeria",
+        "Frank Osgood": "England", "Florent Girard": "France",
+        "Ramires Nascimento": "Brazil", "Didier Marotta": "Ivory Coast",
+        "Nicolas Bertrand": "France", "Salomon Beheton": "Ivory Coast",
+        "Yuri Orlov": "Russia", "Paulo Salgueiro": "Portugal",
+
+        // MARK: Wearside (Sunderland 2000/2010/2020)
+        "Karim Serrano": "Denmark", "Yusuf Halvorsen": "England",
+        "Rafael Fischer": "Republic of Ireland",
+        "Craig Halvorsen": "Scotland", "Lee Ward": "England",
+        "Jordan Prentice": "England", "Steed Girard": "France",
+        "Ahmed Hassan": "Egypt", "Asamoah Mensah": "Ghana",
+        "Darren Aldous": "England", "Danny Foulkes": "England",
+        "Fraizer Latham": "England",
+
+        // MARK: Aston Rovers (Aston Villa 2000/2010/2020)
+        "Connor Boateng": "England", "Niklas Halvorsen": "England",
+        "Mark Serrano": "England", "Henrik Reuter": "England",
+        "Brad Halvorsen": "USA", "Richard Aldous": "Republic of Ireland",
+        "Stephen Blackwood": "England", "Stiliyan Ivanov": "Bulgaria",
+        "Ashley Aldous": "England", "Gabriel Osei": "England",
+        "Emile Foy": "England", "John Halvorsen": "Norway",
+        "Marc Albrighton": "England", "Stewart Calloway": "England",
+        "Fabian Prentice": "England", "Barry Prentice": "Scotland",
+        "Nathan Osei": "England", "Nigel Osgood": "England",
+        "Alan Redfern": "Scotland",
+
+        // MARK: Solent (Southampton 2000/2010/2020)
+        "Emeka Salgueiro": "Wales", "Anton Mensah": "England",
+        "Kelvin Osborne": "England", "Bartosz Bialkowski": "Poland",
+        "Adam Kral": "England", "Morgan Girard": "France",
+        "Rickie Ashcroft": "England", "Guly Salgueiro": "Brazil",
+
+        // MARK: Tyneside (Newcastle United 2000/2010/2020)
+        "Shane Foulkes": "Republic of Ireland", "Luca Larsen": "Wales",
+        "Gustavo Hartmann": "Peru", "Tunde Hartmann": "England",
+        "Alan Truscott": "England",
+        "Tim Novak": "Netherlands", "Fabricio Salaberri": "Argentina",
+        "Steven Ward": "England", "Cheick Diallo": "Ivory Coast",
+        "Joey Osgood": "England", "Kevin Whitfield": "England",
+        "Hatem Idrissi": "France", "Jonas Bergman": "Argentina",
+        "Andy Fenner": "England", "Shola Chastain": "Nigeria",
+        "Peter Nystrom": "Denmark", "Steve Fenshaw": "England",
+        "Danny Redfern": "England",
+
+        // MARK: White Hart Athletic (Tottenham 2010/2020)
+        "Heurelho Nascimento": "Brazil", "Carlo Serrano": "Italy",
+        "Vedran Novak": "Croatia", "Michael Truscott": "England",
+        "Ledley Ashcroft": "England", "Benoit Diallo": "France",
+        "Younes Idrissi": "France", "Luka Kral": "Croatia",
+        "Rafael Doren": "Netherlands", "Wilson Aráoz": "Honduras",
+        "Aaron Prescott": "England", "Peter Foy": "England",
+        "Jermain Prescott": "England", "Roman Orlov": "Russia",
+        "Tom Latham": "England", "Niko Novak": "Croatia",
+        "Sandro Nascimento": "Brazil",
+
+        // MARK: Filbert Foxes (Leicester 2010/2020)
+        "Kasper Larsen": "Denmark", "Andy Ashcroft": "Wales",
+        "Richie Grantham": "England", "Lloyd Osgood": "England",
+        "Jermaine Whitlock": "England", "Steve Marshall": "England",
+        "Aleksandar Tunchev": "Bulgaria", "Bruno Salgueiro": "Switzerland",
+
+        // MARK: Teesside (Middlesbrough 2010)
+        "Jason Fenshaw": "England", "Adam Latham": "England",
+        "Julio Salgueiro": "Argentina", "Tarmo Larsen": "Estonia",
+        "Kris Prentice": "Scotland", "Marvin Vasconcelos": "Netherlands",
+        "Barry Grantham": "Scotland", "Gary Foy": "England",
+        "Scott Bishop": "Australia", "Andrew Osgood": "England",
+        "Matthew Calder": "England", "Justin Ashcroft": "England",
+        "Rhys Marshall": "Australia",
+
+        // MARK: Upton Athletic (West Ham 2010)
+        "Rob Osborne": "England", "Danny Truscott": "Wales",
+        "Guy Idrissi": "Ivory Coast", "Scott Foy": "England",
+        "Mark Latham": "England", "Valon Novak": "Switzerland",
+        "Victor Osei": "Nigeria", "Carlton Whitfield": "England",
+        "Demba Mensah": "Senegal", "Kieron Prewitt": "England",
+        "Frederic Girard": "France", "Zavon Foulkes": "England",
+        "Radoslav Ivanov": "Czech Republic", "Wayne Fenner": "England",
+        "Jack Bishop": "Wales",
+
+        // MARK: Goodison Blues (Everton 2010)
+        "Tim Truscott": "USA", "Jan Novak": "Slovakia",
+        "Tony Ashcroft": "England", "Phil Latham": "England",
+        "Sylvain Girard": "France", "Leighton Calder": "England",
+        "Phil Osgood": "England", "Marouane Amrani": "Belgium",
+        "Mikel Puig": "Spain", "Steven Botha": "South Africa",
+        "Diniyar Orlov": "Russia", "Tim Prentice": "Australia",
+        "Yakubu Osei": "Nigeria", "Louis Girard": "France",
+        "Seamus Foy": "Republic of Ireland", "Leon Foy": "England",
+        "Jack Latham": "England", "Jermaine Truscott": "England",
+
+        // MARK: Pride Rams (Derby 2010)
+        "Przemyslaw Kazimierczak": "Poland", "Robbie Latham": "Wales",
+        "Kris Bishop": "Scotland", "Rob Foy": "England",
+        "Stephen Grantham": "Scotland", "Jake Osborne": "England",
+
+        // MARK: Etihad Blues (Manchester City 2010)
+        "Joe Ashdown": "England", "Shay Truscott": "Republic of Ireland",
+        "Pablo Cerezo": "Argentina", "Vincent Amara": "Belgium",
+        "Joleon Ashcroft": "England", "Aleksandar Ivanov": "Serbia",
+        "Micah Calder": "England", "Kolo Diallo": "Ivory Coast",
+        "Nigel Bergman": "Netherlands", "Gareth Osgood": "England",
+        "David Puig": "Spain", "Carlos Marotta": "Argentina",
+        "Mario Rinaldi": "Italy", "Emmanuel Diallo": "Togo",
+        "James Truscott": "England", "Adam Foy": "England",
+        "Edin Kral": "Bosnia and Herzegovina",
+
+        // MARK: Highfield Athletic (Coventry 2010)
+        "Keiren Osborne": "Republic of Ireland", "Freddy Prentice": "Wales",
+        "Marlon Truscott": "Jamaica", "Cyrus Foulkes": "Republic of Ireland",
+        "Sammy Grantham": "Northern Ireland", "Carl Latham": "England",
+
+        // MARK: Foreign stars (ForeignStars.swift, by identity + era roster)
+        "Francesco Amadori": "Italy", "Gabriel Ordoñez": "Argentina",
+        "Petr Fenwick": "Argentina", "Anton Harding": "Italy",
+        "Roberto Fanti": "Italy", "Jens Wieland": "Germany",
+        "Michael Reinholt": "Germany", "Dario Lefevre": "Bulgaria",
+        "Oskar Calder": "Denmark", "Aaron Eriksson": "Portugal",
+    ]
+
     /// Every hand-authored career start year, each mapped to its own
     /// club-name-keyed squad book. Adding a further start year later is
     /// just adding another entry here (plus a matching
@@ -229,7 +532,8 @@ extension GameStore {
     /// those plausible for the broad `position`, with a modest chance of a
     /// secondary role — most players have a single specialism.
     static func makePlayer(name: String? = nil, position: Position, detailedPosition: DetailedPosition? = nil,
-                           secondaryPositions: [DetailedPosition]? = nil, age: Int, rating: Int, startYear: Int = 2000) -> Player {
+                           secondaryPositions: [DetailedPosition]? = nil, nationality: String? = nil,
+                           age: Int, rating: Int, startYear: Int = 2000) -> Player {
         let role = detailedPosition ?? DetailedPosition.plausibleRoles(for: position).randomElement()!
         var player = Player(name: name ?? randomName(),
                             position: position,
@@ -248,8 +552,53 @@ extension GameStore {
         player.personality = personalityRoll < 40 ? .professional
             : (personalityRoll < 65 ? .loyal : (personalityRoll < 85 ? .ambitious : .volatile))
         player.traits = Self.randomTraits(personality: player.personality)
-        player.nationality = Self.randomNationality(preferForeign: name != nil)
+        player.nationality = nationality
+            ?? name.flatMap { Self.knownPlayerNationalities[$0] }
+            ?? Self.randomNationality(preferForeign: name != nil)
         return player
+    }
+
+    /// Repairs nationality only when the decoder proved an old save omitted
+    /// it, or when a recognisable player's authoritative nationality is known.
+    /// A nationality genuinely saved as England is never treated as missing.
+    @discardableResult
+    func repairKnownPlayerNationalities() -> Bool {
+        var changed = false
+        var nationalityByPlayerID: [UUID: String] = [:]
+        func repaired(_ original: Player) -> Player {
+            var player = original
+            let known = Self.knownPlayerNationalities[player.name]
+            if let known {
+                if player.nationality != known {
+                    player.nationality = known
+                    changed = true
+                }
+            } else if player.nationalityNeedsMigration {
+                player.nationality = nationalityByPlayerID[player.id]
+                    ?? Self.randomNationality(preferForeign: true)
+                changed = true
+            }
+            if player.nationalityNeedsMigration {
+                player.nationalityNeedsMigration = false
+                changed = true
+            }
+            nationalityByPlayerID[player.id] = player.nationality
+            return player
+        }
+
+        for clubIndex in clubs.indices {
+            clubs[clubIndex].players = clubs[clubIndex].players.map(repaired)
+        }
+        youthProspects = youthProspects.map(repaired)
+        for index in pendingTransferDeals.indices {
+            pendingTransferDeals[index].player = repaired(pendingTransferDeals[index].player)
+        }
+        transferMarket = transferMarket.map { target in
+            TransferTarget(player: repaired(target.player),
+                           sellingClubIndex: target.sellingClubIndex,
+                           askingPrice: target.askingPrice)
+        }
+        return changed
     }
 
     /// Rolls the 8 hidden personality values independently (so two

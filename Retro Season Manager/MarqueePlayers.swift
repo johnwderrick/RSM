@@ -18,6 +18,7 @@ import Foundation
 /// doesn't just keep growing squads indefinitely.
 struct MarqueeArrival {
     let name: String
+    let nationality: String
     let club: String
     let year: Int
     let month: Int
@@ -45,31 +46,31 @@ struct MarqueeTransfer {
 
 enum MarqueePlayers {
     static let arrivals: [MarqueeArrival] = [
-        MarqueeArrival(name: "Cristiano Renaldo", club: "Old Trafford Reds", year: 2003, month: 8, day: 1,
+        MarqueeArrival(name: "Cristiano Renaldo", nationality: "Portugal", club: "Old Trafford Reds", year: 2003, month: 8, day: 1,
                         age: 18, rating: 72, detailedPosition: .rightWing, secondaryPositions: [.leftWing],
                         headline: "Old Trafford Reds sign Cristiano Renaldo",
                         body: "United beat off competition to sign the Alvalade Lions winger for around £12m — the club's manager calls him one of the most exciting talents he's seen."),
-        MarqueeArrival(name: "Lionel Mesi", club: "Camp Blaugrana", year: 2005, month: 7, day: 1,
+        MarqueeArrival(name: "Lionel Mesi", nationality: "Argentina", club: "Camp Blaugrana", year: 2005, month: 7, day: 1,
                         age: 18, rating: 75, detailedPosition: .rightWing, secondaryPositions: [.striker, .attackingMid],
                         headline: "Mesi breaks into the Camp Blaugrana first team",
                         body: "The Argentine forward, at the club since he was 13, is handed a regular first-team squad number after a string of impressive performances for the reserves."),
-        MarqueeArrival(name: "Gareth Baile", club: "Solent", year: 2006, month: 4, day: 17,
+        MarqueeArrival(name: "Gareth Baile", nationality: "Wales", club: "Solent", year: 2006, month: 4, day: 17,
                         age: 16, rating: 58, detailedPosition: .leftBack, secondaryPositions: [.leftWing],
                         headline: "Solent hand debut to 16-year-old Gareth Baile",
                         body: "The Welsh left-back becomes one of the youngest players in Solent's history, and looks a serious talent going forward."),
-        MarqueeArrival(name: "Eden Hazzard", club: "Lile Rangers", year: 2007, month: 8, day: 1,
+        MarqueeArrival(name: "Eden Hazzard", nationality: "Belgium", club: "Lile Rangers", year: 2007, month: 8, day: 1,
                         age: 16, rating: 58, detailedPosition: .leftWing, secondaryPositions: [.attackingMid],
                         headline: "Lile Rangers fast-track teenager Eden Hazzard",
                         body: "The Belgian winger, already turning heads in Lile Rangers's academy, is promoted to the first-team squad well ahead of schedule."),
-        MarqueeArrival(name: "Neymar Souza", club: "Camp Blaugrana", year: 2013, month: 7, day: 3,
+        MarqueeArrival(name: "Neymar Souza", nationality: "Brazil", club: "Camp Blaugrana", year: 2013, month: 7, day: 3,
                         age: 21, rating: 82, detailedPosition: .leftWing, secondaryPositions: [.striker, .rightWing],
                         headline: "Camp Blaugrana complete Neymar Souza signing",
                         body: "The Brazilian forward joins from Vila Belmiro in a big-money move, forming a new-look front line alongside Mesi."),
-        MarqueeArrival(name: "Kylian Mbape", club: "AS Wanderers", year: 2016, month: 8, day: 1,
+        MarqueeArrival(name: "Kylian Mbape", nationality: "France", club: "AS Wanderers", year: 2016, month: 8, day: 1,
                         age: 17, rating: 68, detailedPosition: .striker, secondaryPositions: [.rightWing],
                         headline: "Monaco fast-track 17-year-old Mbape",
                         body: "The teenage forward's electric pre-season form earns him an early promotion to Monaco's first-team squad."),
-        MarqueeArrival(name: "Robert Lewandowsky", club: "Borssia Athletic", year: 2010, month: 7, day: 1,
+        MarqueeArrival(name: "Robert Lewandowsky", nationality: "Poland", club: "Borssia Athletic", year: 2010, month: 7, day: 1,
                         age: 22, rating: 76, detailedPosition: .striker, secondaryPositions: [],
                         headline: "Dortmund sign Robert Lewandowsky",
                         body: "The Polish striker joins Borssia Athletic from Baltic Reserves, quickly becoming one of the Bundesliga's most feared forwards."),

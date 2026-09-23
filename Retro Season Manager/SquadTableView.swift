@@ -71,6 +71,7 @@ struct SquadTableView: View {
                     }
                 }
             }
+            .accessibilityIdentifier("career.squad.list.scroll")
         }
         .background(Retro.background)
         .sheet(item: $profile) { context in
@@ -309,6 +310,7 @@ struct SquadTableRow: View {
                 }
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier("career.squad.row.\(player.id.uuidString)")
         }
         .font(.system(size: 10, design: .monospaced))
         .foregroundStyle(Retro.text)

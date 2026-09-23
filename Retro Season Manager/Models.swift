@@ -389,6 +389,10 @@ struct Player: Identifiable, Codable {
     /// flavour detail set at generation time, not tied to any gameplay
     /// mechanic.
     var nationality: String = "England"
+    /// Transient decode marker for saves written before `nationality` was
+    /// persisted. Excluded from CodingKeys: once repaired and saved, the
+    /// nationality itself proves that no further migration is needed.
+    var nationalityNeedsMigration: Bool = false
     /// Whether this player came through the club's own academy — set once,
     /// at youth-prospect generation, and never cleared, so a graduate's
     /// provenance survives long after they're promoted to the senior squad.
@@ -573,7 +577,13 @@ extension Player {
         buyBackClause = try container.decodeIfPresent(BuyBackClause.self, forKey: .buyBackClause)
         assists = try container.decodeIfPresent(Int.self, forKey: .assists) ?? 0
         cleanSheets = try container.decodeIfPresent(Int.self, forKey: .cleanSheets) ?? 0
-        nationality = try container.decodeIfPresent(String.self, forKey: .nationality) ?? "England"
+        if let savedNationality = try container.decodeIfPresent(String.self, forKey: .nationality) {
+            nationality = savedNationality
+            nationalityNeedsMigration = false
+        } else {
+            nationality = "England"
+            nationalityNeedsMigration = true
+        }
         isAcademyProduct = try container.decodeIfPresent(Bool.self, forKey: .isAcademyProduct) ?? false
     }
 }

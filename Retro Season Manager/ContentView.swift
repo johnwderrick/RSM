@@ -103,6 +103,12 @@ struct ContentView: View {
             _store = State(initialValue: career)
             _experience = State(initialValue: .career)
         }
+        if ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_SHEETS") {
+            let career = GameStore()
+            career.prepareCareerSheetsFixtureForDebug()
+            _store = State(initialValue: career)
+            _experience = State(initialValue: .career)
+        }
         // The transfers fixture re-asserts its shortlist against the
         // current market's target IDs on every launch — the persisted
         // entry can't survive a relaunch (see the fixture's doc comment).

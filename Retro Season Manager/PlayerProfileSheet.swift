@@ -77,8 +77,9 @@ struct PlayerProfileSheet: View {
         .sheet(isPresented: $showingTerminateConfirm) {
             ConfirmActionSheet(
                 title: "Release \(player.name)?",
-                message: "The club pays a severance of \(formatMoney(max(50, player.wage * 4))) and his squad slot is freed immediately. This can't be undone.",
-                confirmLabel: "TERMINATE CONTRACT"
+                message: "\(player.name) (\(player.age), \(player.position.rawValue), \(player.rating) OVR) leaves \(store.userClub.name) immediately and his squad slot is freed. This can't be undone.",
+                confirmLabel: "TERMINATE CONTRACT",
+                financialNote: "Severance paid: \(formatMoney(max(50, player.wage * 4))) from the transfer budget"
             ) {
                 onAction(store.terminateContract(player))
                 dismiss()
@@ -396,7 +397,7 @@ struct PlayerProfileSheet: View {
                             onAction(store.respondToTransferRequest(p, agreeToList: true)); dismiss()
                         }
                     }
-                    pill("NEGOTIATE (\(formatMoney(store.renewalDemand(p)))/wk)", filled: false) {
+                    pillRenew("NEGOTIATE (\(formatMoney(store.renewalDemand(p)))/wk)", filled: false) {
                         Haptics.tap()
                         showingContractOffer = true
                     }
@@ -410,7 +411,7 @@ struct PlayerProfileSheet: View {
                         showingLoanOut = true
                     }
                     if store.canTerminateContract(p) {
-                        pill("TERMINATE", filled: false, enabled: true) {
+                        pillRelease("TERMINATE", filled: false, enabled: true) {
                             Haptics.tap()
                             showingTerminateConfirm = true
                         }
@@ -483,6 +484,19 @@ struct PlayerProfileSheet: View {
                 }
             }
         }
+    }
+
+    /// Renewal-negotiation pill with a stable identifier (identifier-only
+    /// matching, since the label carries a formatted money figure).
+    private func pillRenew(_ title: String, filled: Bool, enabled: Bool = true, action: @escaping () -> Void) -> some View {
+        pill(title, filled: filled, enabled: enabled, action: action)
+            .accessibilityIdentifier("career.playerProfile.negotiate")
+    }
+
+    /// Release/termination pill with a stable identifier.
+    private func pillRelease(_ title: String, filled: Bool, enabled: Bool = true, action: @escaping () -> Void) -> some View {
+        pill(title, filled: filled, enabled: enabled, action: action)
+            .accessibilityIdentifier("career.playerProfile.terminate")
     }
 
     private func pill(_ title: String, filled: Bool, enabled: Bool = true, action: @escaping () -> Void) -> some View {
