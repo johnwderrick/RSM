@@ -360,13 +360,13 @@ extension GameStore {
     /// - Budget headroom everywhere so insufficient-funds validation is
     ///   exercised in unit tests by *removing* headroom, not by assuming it.
     @discardableResult
-    func prepareCareerSheetsFixtureForDebug() -> GameStore {
+    func prepareCareerSheetsFixtureForDebug(forceRenewalBudgetDecline: Bool = false) -> GameStore {
         prepareCareerNavigationFixtureForDebug()
 
-        // 1. Danny Draper — a deterministically accepted renewal. Age 31
-        //    avoids both age penalties; morale 95 and a wage at/above his
-        //    demand push the acceptance chance past the clamp. The demand
-        //    is pinned below the wage-budget headroom.
+        // 1. Danny Draper — a high-probability renewal. Age 31 avoids
+        //    both age penalties; morale 95 and a wage at/above demand
+        //    push acceptance to the 0.97 cap. The separate budget-guard
+        //    fixture below forces a deterministic decline when needed.
         let striker = clubs[userClubIndex].players.first(where: { $0.position == .forward })
             ?? clubs[userClubIndex].players[0]
         let strikerIndex = clubs[userClubIndex].players.firstIndex { $0.id == striker.id }!
@@ -435,6 +435,11 @@ extension GameStore {
             }
         }
 
+        if forceRenewalBudgetDecline {
+            // A separate UI-test launch proves the declined banner's
+            // accessibility contract through the real budget guard.
+            clubs[userClubIndex].wageBudget = 0
+        }
         persist()
         return self
     }

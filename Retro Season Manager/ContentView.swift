@@ -105,7 +105,8 @@ struct ContentView: View {
         }
         if ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_SHEETS") {
             let career = GameStore()
-            career.prepareCareerSheetsFixtureForDebug()
+            career.prepareCareerSheetsFixtureForDebug(
+                forceRenewalBudgetDecline: ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_SHEETS_DECLINE"))
             _store = State(initialValue: career)
             _experience = State(initialValue: .career)
         }

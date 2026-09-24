@@ -7,8 +7,8 @@
 //
 //  A. the renewal sheet opens with the player's identity and authoritative
 //     figures, cancels cleanly, and the squad is unchanged afterwards,
-//  B. a deterministic offer produces the result banner (counter/reject
-//     presentation included),
+//  B. an offer produces a labelled result banner on either outcome,
+//     with a separate budget-guard fixture forcing the declined path,
 //  C. the release confirmation cancels (nothing changes) and confirms
 //     (the player leaves the squad),
 //  D. the pending-deal withdrawal confirmation cancels and confirms,
@@ -31,9 +31,9 @@ final class CareerContractSheetsUITests: XCTestCase {
     // MARK: - Helpers
 
     @discardableResult
-    private func launch() -> XCUIApplication {
+    private func launch(extraArguments: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["UITEST_CAREER_SHEETS"]
+        app.launchArguments = ["UITEST_CAREER_SHEETS"] + extraArguments
         app.launch()
         return app
     }
@@ -142,7 +142,7 @@ final class CareerContractSheetsUITests: XCTestCase {
                       "Should return to Squad")
     }
 
-    // MARK: - B. Deterministic offer → result banner
+    // MARK: - B. Offer outcomes → labelled result banner
 
     func testRenewalOfferProducesResultPresentation() throws {
         let app = launch()
@@ -174,22 +174,31 @@ final class CareerContractSheetsUITests: XCTestCase {
         app.buttons["career.contract.makeOffer"].tap()
 
         let banner = anyElement(app, "career.contract.result")
-        let appeared = banner.waitForExistence(timeout: 6)
-        if appeared {
-            let lowered = banner.label.lowercased()
-            XCTAssertTrue(lowered.contains("accepted") || lowered.contains("rejected"),
-                          "Banner should carry the outcome, got: \(banner.label)")
-        } else {
-            // A rejection can render a counter-offer button instead of the
-            // plain banner; either way the sheet presents an outcome.
-            XCTAssertTrue(app.buttons["career.contract.counter"].exists || app.buttons["career.contract.done"].exists,
-                          "No outcome presentation after the offer")
-        }
+        XCTAssertTrue(banner.waitForExistence(timeout: 6), "No outcome presentation after the offer")
+        let lowered = banner.label.lowercased()
+        XCTAssertTrue(lowered.contains("accepted") || lowered.contains("declined"),
+                      "Banner should carry the outcome, got: \(banner.label)")
         shot(app, "renewal_result")
 
         // Leave the sheet without a second submission.
         let done = app.buttons["career.contract.done"]
         if done.exists { done.tap() } else { app.buttons["career.contract.close"].tap() }
+    }
+
+    func testDeclinedRenewalAnnouncesBudgetReason() throws {
+        let app = launch(extraArguments: ["UITEST_CAREER_SHEETS_DECLINE"])
+        openProfile(app, name: "Danny Draper")
+        app.buttons["career.playerProfile.negotiate"].tap()
+        XCTAssertTrue(anyElement(app, "career.contract.sheet").waitForExistence(timeout: 6))
+        app.buttons["career.contract.makeOffer"].tap()
+
+        let result = anyElement(app, "career.contract.result")
+        XCTAssertTrue(result.waitForExistence(timeout: 6), "Declined offer result missing")
+        XCTAssertTrue(result.label.localizedCaseInsensitiveContains("declined"), result.label)
+        XCTAssertTrue(result.label.localizedCaseInsensitiveContains("budget"), result.label)
+        XCTAssertFalse(app.buttons["career.contract.counter"].exists,
+                       "Budget-guard rejection should not offer a wage counter")
+        app.buttons["career.contract.close"].tap()
     }
 
     // MARK: - C. Release confirmation: cancel then confirm

@@ -143,6 +143,8 @@ private struct ContractResultBanner: View {
                 Text("❌ DECLINED")
                     .font(.system(size: 9, weight: .black, design: .monospaced))
                     .foregroundStyle(Color(red: 0.72, green: 0.42, blue: 0.10))
+                    .accessibilityIdentifier(CareerIdentifiers.contractResult)
+                    .accessibilityLabel("Offer declined. \(reason)")
                 Text(reason)
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundStyle(CareerPalette.mutedInk)
@@ -169,8 +171,6 @@ private struct ContractResultBanner: View {
             .padding(10)
             .background(Color(red: 0.72, green: 0.42, blue: 0.10).opacity(0.10))
             .clipShape(RoundedRectangle(cornerRadius: 9))
-            .accessibilityElement(children: .contain)
-            .accessibilityIdentifier(CareerIdentifiers.contractResult)
         }
     }
 }
