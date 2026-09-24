@@ -59,6 +59,7 @@
 		A1B2C3D4E5F6071829384E11 /* CareerSupporterUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6071829384E12 /* CareerSupporterUITests.swift */; };
 		B7E4F5A6C8D9071928374F01 /* CareerFacilitiesUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E4F5A6C8D9071928374F02 /* CareerFacilitiesUITests.swift */; };
 		BDE8A8B66B84FB66FC2D1421 /* CareerOfficeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDE8A8B66B84FB66FC2E311E /* CareerOfficeUITests.swift */; };
+		D0FACED0FACE000000000A01 /* CareerHallOfFameUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0FACED0FACE000000000A02 /* CareerHallOfFameUITests.swift */; };
 		A1B2C3D4E5F6071829384A01 /* TransfersFixtureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6071829384A02 /* TransfersFixtureTests.swift */; };
 		A1B2C3D4E5F6071829384B01 /* TransferMarketPersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6071829384B02 /* TransferMarketPersistenceTests.swift */; };
 		F2B3C4D5E6F708192A3B4C5D /* CareerScoutUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2D3C4B5A6F7081929384A5B /* CareerScoutUITests.swift */; };
@@ -146,6 +147,7 @@
 		A1B2C3D4E5F6071829384E12 /* CareerSupporterUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CareerSupporterUITests.swift; sourceTree = "<group>"; };
 		B7E4F5A6C8D9071928374F02 /* CareerFacilitiesUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CareerFacilitiesUITests.swift; sourceTree = "<group>"; };
 		BDE8A8B66B84FB66FC2E311E /* CareerOfficeUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CareerOfficeUITests.swift; sourceTree = "<group>"; };
+		D0FACED0FACE000000000A02 /* CareerHallOfFameUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CareerHallOfFameUITests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6071829384A02 /* TransfersFixtureTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TransfersFixtureTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6071829384B02 /* TransferMarketPersistenceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TransferMarketPersistenceTests.swift; sourceTree = "<group>"; };
 		E2D3C4B5A6F7081929384A5B /* CareerScoutUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CareerScoutUITests.swift; sourceTree = "<group>"; };
@@ -314,6 +316,7 @@
 				A1B2C3D4E5F6071829384E12 /* CareerSupporterUITests.swift */,
 				B7E4F5A6C8D9071928374F02 /* CareerFacilitiesUITests.swift */,
 				BDE8A8B66B84FB66FC2E311E /* CareerOfficeUITests.swift */,
+				D0FACED0FACE000000000A02 /* CareerHallOfFameUITests.swift */,
 				DED8E8CEA24F798E8869840C /* CareerContractSheetsUITests.swift */,
 				E2D3C4B5A6F7081929384A5B /* CareerScoutUITests.swift */,
 				B1B2B3B4B5B6B7B8B9BABBBC /* RetroSeasonManagerUITests.swift */,
@@ -539,6 +542,7 @@
 				A1B2C3D4E5F6071829384E11 /* CareerSupporterUITests.swift in Sources */,
 				B7E4F5A6C8D9071928374F01 /* CareerFacilitiesUITests.swift in Sources */,
 				BDE8A8B66B84FB66FC2D1421 /* CareerOfficeUITests.swift in Sources */,
+				D0FACED0FACE000000000A01 /* CareerHallOfFameUITests.swift in Sources */,
 				1676624D235FCD63EE4EA8DA /* CareerContractSheetsUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

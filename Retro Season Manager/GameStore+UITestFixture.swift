@@ -672,6 +672,126 @@ extension GameStore {
         return self
     }
 
+    /// Builds on the shared Career navigation fixture with exactly what
+    /// the redesigned Hall of Fame presents — inducted through the REAL
+    /// induction path (`evaluateForLegendStatus` and its scoring, never
+    /// seeded by hand), so the fixtures exercise the same bar real
+    /// careers are judged against:
+    ///
+    /// - two Club Legends (distinct legend scores, so wall ordering is
+    ///   deterministic) and one Global Hall of Fame legend,
+    /// - a completed title-and-cup previous season through the real
+    ///   rollover record shape, so each legend's `trophiesWon` and the
+    ///   manager exhibit's trophy cabinet have real content,
+    /// - deterministic career tallies (the same name-keyed accumulators
+    ///   the season-end accounting writes), tenure, captaincy and peak
+    ///   ratings for the three retirees.
+    ///
+    /// The career is rewound to season 2 so a single completed season is
+    /// coherent (real saves only ever record seasons ≥ 1).
+    @discardableResult
+    func prepareCareerHallOfFameFixtureForDebug() -> GameStore {
+        prepareCareerNavigationFixtureForDebug()
+
+        // 1. The career is now in season 2 with one completed season —
+        //    re-derive the stored date so season-derived values stay
+        //    coherent after the bump, then append the rollover record
+        //    shape with the club as champion AND cup winner (the trophy
+        //    lines the induction path reads back from `history`).
+        season = 2
+        currentMatchday = 4
+        currentDate = date(forMatchday: currentMatchday)
+        let labelOne = officeSeasonLabel(for: 1)
+        let division = divisionName(userDivisionTier)
+        history.append(SeasonRecord(
+            season: 1, label: labelOne,
+            userClub: userClub.name, userDivision: division, userPosition: 1,
+            champion: userClub.name, cupWinner: userClub.name, euroWinner: "Continental Kings",
+            communityShieldWinner: "—"))
+        careerHonours.append("🏆 \(division) title (\(labelOne))")
+        careerHonours.append("🏆 \(Self.cupName) (\(labelOne))")
+        careerRecordByClub[userClub.name] = ClubCareerRecord(wins: 31, draws: 6, losses: 7)
+
+        // 2. Three distinct retirees from the real squad: a striker, a
+        //    defender and a goalkeeper, so every goal-weight branch of
+        //    the scoring formula is exercised. They are renamed in place
+        //    (the same DEBUG-only memberwise-initializer pattern the
+        //    transfers fixture uses) so the UI tests can anchor on the
+        //    wall/detail identifiers by name; identities, ratings and
+        //    squad positions are untouched.
+        func renamed(_ player: Player, _ name: String) -> Player {
+            Player(id: player.id, name: name, position: player.position,
+                   detailedPosition: player.detailedPosition,
+                   secondaryPositions: player.secondaryPositions,
+                   age: player.age, rating: player.rating)
+        }
+        let squad = clubs[userClubIndex].players
+        let strikerOriginal = squad.first { $0.position == .forward }
+        let defenderOriginal = squad.first { $0.position == .defender && $0.id != strikerOriginal?.id }
+        let keeperOriginal = squad.first { $0.position == .goalkeeper && $0.id != strikerOriginal?.id && $0.id != defenderOriginal?.id }
+        var striker: Player?
+        var defender: Player?
+        var keeper: Player?
+        if let player = strikerOriginal {
+            striker = renamed(player, "Rowan Striker")
+            clubs[userClubIndex].players[clubs[userClubIndex].players.firstIndex { $0.id == player.id }!] = striker!
+        }
+        if let player = defenderOriginal {
+            defender = renamed(player, "Sam Shield")
+            clubs[userClubIndex].players[clubs[userClubIndex].players.firstIndex { $0.id == player.id }!] = defender!
+        }
+        if let player = keeperOriginal {
+            keeper = renamed(player, "Victor Vale")
+            clubs[userClubIndex].players[clubs[userClubIndex].players.firstIndex { $0.id == player.id }!] = keeper!
+        }
+
+        // 3. Deterministic tallies, tuned so the real formula lands each
+        //    player on a known side of the two thresholds:
+        //    striker 80 and defender 63 (Club Legends, in that wall
+        //    order), keeper 98 (Global Hall of Fame, over the 95 bar).
+        //    Every accumulator here is the exact name/uuid-keyed store
+        //    field the real accounting writes — no second implementation.
+        func seedTallies(_ player: Player, apps: Int, goals: Int, assists: Int,
+                         cleanSheets: Int, averageRating: Double, motm: Int,
+                         peakRating: Int, captainSeasons: Int) {
+            allTimeAppearances[player.name] = apps
+            allTimeScorers[player.name] = goals
+            allTimeAssists[player.name] = assists
+            allTimeCleanSheets[player.name] = cleanSheets
+            allTimeRatingPoints[player.name] = averageRating * Double(apps)
+            motmTally[player.name] = motm
+            hallOfFame[player.name] = HallEntry(name: player.name, position: player.position,
+                                                peakRating: peakRating, peakSeason: labelOne)
+            clubTenureStart[player.id] = 1
+            if captainSeasons > 0 { captainSeasonTally[player.id] = captainSeasons }
+        }
+        if let striker {
+            seedTallies(striker, apps: 220, goals: 120, assists: 20, cleanSheets: 0,
+                        averageRating: 71, motm: 4, peakRating: 84, captainSeasons: 2)
+            evaluateForLegendStatus(striker, clubName: userClub.name)
+        }
+        if let defender {
+            seedTallies(defender, apps: 260, goals: 12, assists: 8, cleanSheets: 45,
+                        averageRating: 69, motm: 3, peakRating: 76, captainSeasons: 0)
+            evaluateForLegendStatus(defender, clubName: userClub.name)
+        }
+        if let keeper {
+            seedTallies(keeper, apps: 480, goals: 0, assists: 60, cleanSheets: 110,
+                        averageRating: 80, motm: 10, peakRating: 89, captainSeasons: 4)
+            evaluateForLegendStatus(keeper, clubName: userClub.name)
+        }
+
+        // 4. Induction emits its own board stories through addNews — mark
+        //    them read so the fixture never disturbs the shared inbox
+        //    accounting the other suites assert against.
+        for item in news where (item.title == "Club Legend" || item.title == "Global Hall of Fame") {
+            markNewsRead(item)
+        }
+
+        persist()
+        return self
+    }
+
     /// The season label for an arbitrary season number (the same formula
     /// as `seasonLabel`, parameterised — fixture-local helper).
     private func officeSeasonLabel(for seasonNumber: Int) -> String {

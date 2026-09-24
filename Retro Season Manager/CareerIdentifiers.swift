@@ -296,6 +296,83 @@ enum CareerIdentifiers {
     static let officeTimelineEnd = "career.office.timeline.end"
     static let officeScrapbookEnd = "career.scrapbook.end"
 
+    // MARK: Hall of Fame (light-card sheet)
+
+    /// The Hall of Fame's own segmented-tab selector — the visible labels
+    /// are stable enum raw values, but tests pick the tab through this
+    /// constant so a future rename can't move the selector.
+    static func hallTab(_ tab: String) -> String {
+        "career.hall.tab.\(slug(tab))"
+    }
+
+    /// The Hall of Fame's scroll container (shared by all three exhibits —
+    /// the same ScrollView identity across exhibit switches keeps scroll
+    /// anchors and snapshots stable, matching the Manager Office pattern).
+    static let hallScroll = "career.hall.scroll"
+
+    /// The Hall of Fame's pinned close control (sheet presentation only —
+    /// absent when hosted by the Settings detail page).
+    static let hallClose = "career.hall.close"
+
+    /// The Hall of Fame's header band (name, induction count, club).
+    static let hallHeader = "career.hall.header"
+
+    /// Stable selector for one wall portrait card (by index within its
+    /// exhibit — sorted by legend score, exactly as displayed).
+    static func hallLegend(_ index: Int) -> String {
+        "career.hall.legend.\(index)"
+    }
+
+    /// The wall grid container for an exhibit (Club Legends / Global).
+    static let hallWall = "career.hall.wall"
+
+    /// The manager exhibit's profile card.
+    static let hallManagerCard = "career.hall.managerCard"
+
+    /// The manager exhibit's trophy cabinet card.
+    static let hallTrophyCabinet = "career.hall.trophyCabinet"
+
+    /// Stable selector for one trophy-cabinet item (by index in the
+    /// honours log — same ordering as the office trophy shelf).
+    static func hallTrophy(_ index: Int) -> String {
+        "career.hall.trophy.\(index)"
+    }
+
+    /// A shared empty state for an exhibit with no inductees yet.
+    static let hallEmpty = "career.hall.empty"
+
+    /// Per-exhibit end-of-content scroll anchors.
+    static func hallEnd(_ tab: String) -> String {
+        "career.hall.\(slug(tab)).end"
+    }
+
+    // MARK: Legend detail sheet
+
+    /// The legend detail sheet's scroll content root (keyed by legend
+    /// name slug so concurrent legends never share an anchor).
+    static func hallDetail(_ legendName: String) -> String {
+        "career.hall.detail.\(slug(legendName))"
+    }
+
+    /// The legend detail sheet's pinned close control.
+    static let hallDetailClose = "career.hall.detail.close"
+
+    /// The legend detail's CAREER STATISTICS card (label is the slug of
+    /// the legend name — always paired with `hallDetail(_:)`).
+    static let hallDetailStats = "career.hall.detail.stats"
+
+    /// The legend detail's honours card (absent for a legend with no
+    /// trophies won at the club).
+    static let hallDetailHonours = "career.hall.detail.honours"
+
+    /// Stable selector for one honours row (by index in `trophiesWon`).
+    static func hallDetailHonour(_ index: Int) -> String {
+        "career.hall.detail.honour.\(index)"
+    }
+
+    /// The legend detail's biography card.
+    static let hallDetailBiography = "career.hall.detail.biography"
+
     // MARK: Helpers
 
     /// Lowercased, hyphenated slug for identifier components.

@@ -629,7 +629,7 @@ struct SettingsDetailView: View {
         switch destination {
         case .achievements:     AchievementGalleryView(store: store)
         case .seasonObjectives: SeasonObjectivesView(store: store)
-        case .hallOfFame:       HallOfFameView(store: store)
+        case .hallOfFame:       HallOfFameView(store: store, showsClose: false)
         case .newspaperArchive: NewspaperArchiveView(store: store)
         case .supporterZone:    SupporterZoneView(store: store)
         case .transferHub:      TransferHubView(store: store)
