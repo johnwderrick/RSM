@@ -20,7 +20,7 @@ enum CareerPalette {
 }
 
 enum GameSection: CaseIterable {
-    case home, squad, table, fixtures, club, search, transfers, inbox, settings
+    case home, squad, table, fixtures, club, manager, search, transfers, inbox, settings
 
     var icon: String {
         switch self {
@@ -29,6 +29,7 @@ enum GameSection: CaseIterable {
         case .table:     return "list.number"
         case .fixtures:  return "calendar"
         case .club:      return "building.2.fill"
+        case .manager:   return "person.crop.square.fill"
         case .search:    return "magnifyingglass"
         case .transfers: return "sterlingsign.circle.fill"
         case .inbox:     return "envelope.fill"
@@ -45,6 +46,7 @@ enum GameSection: CaseIterable {
         case .table:     return .table
         case .fixtures:  return .fixtures
         case .club:      return .club
+        case .manager:   return .manager
         case .search:    return .search
         case .transfers: return .transfers
         case .inbox:     return .inbox
@@ -55,13 +57,14 @@ enum GameSection: CaseIterable {
     /// The hand-painted pixel-art icon for this destination, sliced from
     /// the game's commissioned icon sheet — used in the sidebar in place
     /// of the procedural `pixelIcon` fallback.
-    var imageAssetName: String {
+    var imageAssetName: String? {
         switch self {
         case .home:      return "IconHome"
         case .squad:     return "IconSquad"
         case .table:     return "IconTable"
         case .fixtures:  return "IconFixtures"
         case .club:      return "IconClub"
+        case .manager:   return nil // drawn from the matching pixel grid below
         case .search:    return "IconSearch"
         case .transfers: return "IconTransfers"
         case .inbox:     return "IconInbox"
@@ -76,6 +79,7 @@ enum GameSection: CaseIterable {
         case .table:     return "TABLE"
         case .fixtures:  return "CALENDAR"
         case .club:      return "CLUB"
+        case .manager:   return "MANAGER"
         case .search:    return "SCOUT"
         case .transfers: return "TRANSFERS"
         case .inbox:     return "INBOX"
@@ -90,6 +94,7 @@ enum GameSection: CaseIterable {
         case .table:     return "Competitions"
         case .fixtures:  return "Calendar"
         case .club:      return "Club Facilities"
+        case .manager:   return "Manager Office"
         case .search:    return "Player Search"
         case .transfers: return "Transfers & Finances"
         case .inbox:     return "Inbox"
@@ -164,6 +169,7 @@ struct MainGameView: View {
             case .table:     TableView(store: store)
             case .fixtures:  CalendarView(store: store)
             case .club:      FacilitiesView(store: store)
+            case .manager:   ManagerOfficeView(store: store, showsClose: false)
             case .search:    PlayerSearchView(store: store)
             case .transfers: TransfersView(store: store)
             case .inbox:     InboxView(store: store)
@@ -278,12 +284,18 @@ struct SidebarView: View {
                     .frame(width: compact ? 42 : 46, height: compact ? 34 : 40)
                     .shadow(color: accent.opacity(0.55), radius: 6, y: 2)
             }
-            Image(item.imageAssetName)
-                .resizable()
-                .scaledToFit()
-                .frame(width: compact ? 22 : 26, height: compact ? 22 : 26)
-                .opacity(selected || alerting ? 1 : 0.7)
-                .shadow(color: alerting ? Retro.gold.opacity(0.85) : .clear, radius: 5)
+            if let asset = item.imageAssetName {
+                Image(asset)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: compact ? 22 : 26, height: compact ? 22 : 26)
+                    .opacity(selected || alerting ? 1 : 0.7)
+                    .shadow(color: alerting ? Retro.gold.opacity(0.85) : .clear, radius: 5)
+            } else {
+                PixelBitmap(grid: item.pixelIcon.grid)
+                    .fill(selected ? Retro.darkGreen : Retro.text.opacity(0.7))
+                    .frame(width: compact ? 22 : 26, height: compact ? 22 : 26)
+            }
         }
     }
 }

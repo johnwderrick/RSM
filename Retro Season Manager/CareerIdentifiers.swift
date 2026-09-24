@@ -224,6 +224,78 @@ enum CareerIdentifiers {
     /// The objective detail's in-progress status line.
     static let objectivesDetailStatus = "career.objectives.detail.status"
 
+    // MARK: Manager Office (light-card sheet with Overview/Timeline/Scrapbook)
+
+    /// The Manager Office's own segmented-tab selector. The visible labels
+    /// are stable enum raw values, but tests pick the tab through this
+    /// constant so a future rename can't move the selector.
+    static func officeTab(_ tab: String) -> String {
+        "career.office.tab.\(slug(tab))"
+    }
+
+    /// The Manager Office's scroll container (shared by all three tabs —
+    /// the same ScrollView identity across tab switches keeps scroll
+    /// anchors and snapshots stable).
+    static let officeScroll = "career.office.scroll"
+
+    /// The Manager Office's pinned close control.
+    static let officeClose = "career.office.close"
+
+    /// The Manager Office's header band (manager + club identity).
+    static let officeHeader = "career.office.header"
+
+    /// Stable selector for one trophy-shelf item (by index in the honours log).
+    static func officeTrophy(_ index: Int) -> String {
+        "career.office.trophy.\(index)"
+    }
+
+    /// Per-tab end-of-content scroll anchors.
+    static func officeEnd(_ tab: String) -> String {
+        "career.office.\(tab).end"
+    }
+
+    /// The Overview tab's summary band (managed clubs, matches, win rate).
+    static let officeSummary = "career.office.summary"
+
+    /// The Overview tab's trophy shelf grid.
+    static let officeTrophyShelf = "career.office.trophyShelf"
+
+    /// The Overview tab's generated autobiography card.
+    static let officeStory = "career.office.story"
+
+    /// The Timeline tab's first moment row (`career.timeline.row.<year>`).
+    static func timelineRow(_ year: Int) -> String {
+        "career.timeline.row.\(year)"
+    }
+
+    /// The Timeline tab's empty state (no career moments yet).
+    static let timelineEmpty = "career.timeline.empty"
+
+    /// The Scrapbook tab's moments grid.
+    static let scrapbookMoments = "career.scrapbook.moments"
+
+    /// The Scrapbook tab's historic front pages grid.
+    static let scrapbookFrontPages = "career.scrapbook.frontPages"
+
+    /// Stable selector for one scrapbook moment card (by year).
+    static func scrapbookMoment(_ year: Int) -> String {
+        "career.scrapbook.moment.\(year)"
+    }
+
+    /// Stable selector for one scrapbook front-page card (by index).
+    static func scrapbookFrontPage(_ index: Int) -> String {
+        "career.scrapbook.frontPage.\(index)"
+    }
+
+    /// The Scrapbook tab's empty state (no moments, no front pages).
+    static let scrapbookEmpty = "career.scrapbook.empty"
+
+    /// Per-tab end-of-content scroll anchors (static forms kept for the
+    /// tabs that own a single anchor).
+    static let officeOverviewEnd = "career.office.overview.end"
+    static let officeTimelineEnd = "career.office.timeline.end"
+    static let officeScrapbookEnd = "career.scrapbook.end"
+
     // MARK: Helpers
 
     /// Lowercased, hyphenated slug for identifier components.
@@ -244,6 +316,7 @@ extension GameSection {
         case .table:     return "table"
         case .fixtures:  return "calendar"
         case .club:      return "club"
+        case .manager:   return "manager"
         case .search:    return "scout"
         case .transfers: return "transfers"
         case .inbox:     return "inbox"

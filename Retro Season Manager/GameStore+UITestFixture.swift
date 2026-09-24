@@ -561,5 +561,117 @@ extension GameStore {
         persist()
         return self
     }
+
+    /// Builds on the shared Career navigation fixture with a populated
+    /// career story for the Manager Office: a career now in season 3 with
+    /// two completed previous seasons through the real rollover record
+    /// shape (real saves only ever record seasons ≥ 1 — the rollover
+    /// appends before incrementing), honours in the exact log format the
+    /// story parser reads, a seeded club career record, two storied
+    /// achievements through the REAL `unlock` path (they generate their
+    /// own timeline beats and autobiography sentences), and two historic
+    /// front pages of the same shape the newspaper system archives (the
+    /// generator itself is fileprivate to its file and `historic` pages
+    /// only occur on title-winning events, so they are seeded directly —
+    /// the scrapbook only ever READS this archive).
+    @discardableResult
+    func prepareCareerOfficeFixtureForDebug() -> GameStore {
+        prepareCareerNavigationFixtureForDebug()
+
+        // 0. The career is now in season 3; re-derive the stored date so
+        //    every season-derived value stays coherent after the bump.
+        season = 3
+        currentMatchday = 4
+        currentDate = date(forMatchday: currentMatchday)
+
+        // 1. Two completed previous seasons at this club (the SeasonRecord
+        //    shape the season rollover appends).
+        let labelOne = officeSeasonLabel(for: 2)
+        let labelTwo = officeSeasonLabel(for: 1)
+        let division = divisionName(userDivisionTier)
+        history.append(SeasonRecord(
+            season: 1, label: labelTwo,
+            userClub: userClub.name, userDivision: division, userPosition: 8,
+            champion: "Riverton FC", cupWinner: "Old Athletic", euroWinner: "Continental Kings",
+            communityShieldWinner: "—"))
+        history.append(SeasonRecord(
+            season: 2, label: labelOne,
+            userClub: userClub.name, userDivision: division, userPosition: 2,
+            champion: "Riverton FC", cupWinner: userClub.name, euroWinner: "Continental Kings",
+            communityShieldWinner: "—"))
+
+        // 2. Honours in the exact `careerHonours` log format the story
+        //    parser consumes (emoji + name + "(season label)") — a title
+        //    and cup double last season, a cup the season before.
+        careerHonours.append("🏆 \(division) title (\(labelOne))")
+        careerHonours.append("🏆 \(Self.cupName) (\(labelOne))")
+        careerHonours.append("🏆 \(Self.cupName) (\(labelTwo))")
+        // An unclassified honour must remain visible on the shelf even
+        // when TrophyKind cannot infer a bespoke trophy silhouette.
+        careerHonours.append("🏅 Fair Play Award (\(labelOne))")
+
+        // 3. The club's cumulative match record (the CV and win-rate
+        //    figures read `careerRecordByClub`).
+        careerRecordByClub[userClub.name] = ClubCareerRecord(wins: 46, draws: 12, losses: 12)
+
+        // 4. European qualification last season (the beat the timeline
+        //    and autobiography both read).
+        firstEuropeQualificationSeason = 2
+
+        // 5. Two storied achievements through the REAL unlock path —
+        //    biography-worthy kinds, so they generate their own timeline
+        //    beats, scrapbook photos and prose. The celebration overlay is
+        //    cleared so the fixture boots straight into the shell.
+        unlock(.giantKiller)
+        unlock(.youthRevolution)
+        pendingAchievementCelebration = nil
+
+        // 6. Historic front pages (same shape the newspaper system
+        //    archives; scrapbook FRONT PAGES filters `importance == .historic`).
+        let clubName = userClub.name
+        newspapers = [
+            Newspaper(
+                date: date(forMatchday: 30), season: 2,
+                outlet: .national, masthead: "THE NATIONAL FOOTBALL POST",
+                headline: "\(clubName.uppercased()) CROWNED CHAMPIONS",
+                standfirst: "A title race decided on the final afternoon — and the underdogs held their nerve.",
+                body: """
+                Nobody gave them a chance in August. By May, the \(division) trophy was coming home.
+
+                A season built on relentless pressure, an unbreakable home record and a squad that
+                refused to read the script. When the final whistle went, the pitch disappeared under
+                a sea of supporters who had waited a generation for this afternoon.
+
+                The manager called it a triumph of organisation and belief. The dressing room called
+                it a promise kept. History will simply call them champions.
+                """,
+                category: .result, importance: .historic, clubName: clubName),
+            Newspaper(
+                date: date(forMatchday: 30), season: 1,
+                outlet: .magazine, masthead: "THE MANAGER'S GAME",
+                headline: "THE GIANT KILLERS OF \(labelTwo)",
+                standfirst: "How a small club kept felling the game's biggest names — and what it taught football about fear.",
+                body: """
+                Cup weekends belong to the underdogs, and no club owned them quite like \(clubName).
+
+                Round after round, the drawn giants arrived as favourites and left as punchlines.
+                The tactics were unfashionable and absolutely immovable: a low block, a sprinting
+                counter-attack, and a belief that grew with every scalp.
+
+                By the time the run ended, the club had something money cannot buy — a reputation.
+                """,
+                category: .result, importance: .historic, clubName: clubName),
+        ]
+
+        persist()
+        return self
+    }
+
+    /// The season label for an arbitrary season number (the same formula
+    /// as `seasonLabel`, parameterised — fixture-local helper).
+    private func officeSeasonLabel(for seasonNumber: Int) -> String {
+        let start = (startYear - 1) + seasonNumber
+        return "\(start)/\(String(format: "%02d", (start + 1) % 100))"
+    }
 }
 #endif
