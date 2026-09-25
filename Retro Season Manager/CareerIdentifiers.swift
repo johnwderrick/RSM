@@ -373,6 +373,57 @@ enum CareerIdentifiers {
     /// The legend detail's biography card.
     static let hallDetailBiography = "career.hall.detail.biography"
 
+    // MARK: Achievements (light-card sheet)
+
+    /// The Achievement Gallery's scroll container (shared by every
+    /// category section — one ScrollView identity across the whole
+    /// gallery, matching the Hall of Fame pattern).
+    static let achievementsScroll = "career.achievements.scroll"
+
+    /// The gallery's pinned close control (sheet presentation only —
+    /// absent when hosted by the Settings detail page).
+    static let achievementsClose = "career.achievements.close"
+
+    /// The gallery's header band (unlocked count, career points).
+    static let achievementsHeader = "career.achievements.header"
+
+    /// Stable selector for one category section card, keyed by the
+    /// `AchievementCategory` raw value (e.g. `trophies`) — never by
+    /// display wording.
+    static func achievementsCategory(_ category: String) -> String {
+        "career.achievements.category.\(slug(category))"
+    }
+
+    /// Stable selector for one achievement card, keyed by the
+    /// `AchievementKind` raw value (e.g. `League Winner`) — the
+    /// persisted, stable name, never a display policy.
+    static func achievementsCard(_ kind: String) -> String {
+        "career.achievements.card.\(slug(kind))"
+    }
+
+    /// The gallery's end-of-content scroll anchor.
+    static let achievementsEnd = "career.achievements.end"
+
+    // MARK: Achievement detail sheet
+
+    /// The achievement detail sheet's scroll content root, keyed by the
+    /// achievement's stable raw value (e.g. `50 Wins` → `50-wins`).
+    static func achievementsDetail(_ kind: String) -> String {
+        "career.achievements.detail.\(slug(kind))"
+    }
+
+    /// The achievement detail sheet's pinned close control.
+    static let achievementsDetailClose = "career.achievements.detail.close"
+
+    /// The detail sheet's unlock-history card (absent while locked).
+    static let achievementsDetailHistory = "career.achievements.detail.history"
+
+    /// The detail sheet's locked status line (absent once unlocked).
+    static let achievementsDetailLocked = "career.achievements.detail.locked"
+
+    /// The detail sheet's career-points reward line (unlocked only).
+    static let achievementsDetailPoints = "career.achievements.detail.points"
+
     // MARK: Helpers
 
     /// Lowercased, hyphenated slug for identifier components.

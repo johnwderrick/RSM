@@ -627,7 +627,7 @@ struct SettingsDetailView: View {
     @ViewBuilder
     private var building: some View {
         switch destination {
-        case .achievements:     AchievementGalleryView(store: store)
+        case .achievements:     AchievementGalleryView(store: store, showsClose: false)
         case .seasonObjectives: SeasonObjectivesView(store: store)
         case .hallOfFame:       HallOfFameView(store: store, showsClose: false)
         case .newspaperArchive: NewspaperArchiveView(store: store)

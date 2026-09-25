@@ -792,6 +792,63 @@ extension GameStore {
         return self
     }
 
+    /// Builds on the shared Career navigation fixture with exactly what
+    /// the redesigned Achievement Gallery presents, all through the REAL
+    /// unlock path (`unlock(_:)` — never seeded by hand, so the unlock
+    /// records, contexts and career-points total are exactly what real
+    /// careers produce):
+    ///
+    /// - a mixed gallery: one unlocked milestone achievement (its own
+    ///   unlock record provides the detail sheet's history), one
+    ///   storied achievement (its own generated context), and one
+    ///   deliberately unclassified honour flowing nowhere — the gallery
+    ///   itself only ever READS authoritative state, so the fixture
+    ///   pins exactly what the tests assert.
+    /// - the celebration overlay cleared so the fixture boots straight
+    ///   into the shell with no modal in the way.
+    ///
+    /// The career is rewound to season 2 so a single completed season
+    /// is coherent (real saves only ever record seasons ≥ 1).
+    @discardableResult
+    func prepareCareerAchievementsFixtureForDebug() -> GameStore {
+        prepareCareerNavigationFixtureForDebug()
+
+        // 1. The career is now in season 2 with one completed season —
+        //    re-derive the stored date so season-derived values stay
+        //    coherent after the bump, then append the rollover record
+        //    shape (the unlock contexts interpolate it).
+        season = 2
+        currentMatchday = 4
+        currentDate = date(forMatchday: currentMatchday)
+        let labelOne = officeSeasonLabel(for: 1)
+        let division = divisionName(userDivisionTier)
+        history.append(SeasonRecord(
+            season: 1, label: labelOne,
+            userClub: userClub.name, userDivision: division, userPosition: 1,
+            champion: userClub.name, cupWinner: userClub.name, euroWinner: "Continental Kings",
+            communityShieldWinner: "—"))
+
+        // 2. Two achievements through the REAL unlock path — one
+        //    milestone, one storied — so the gallery shows a deterministic
+        //    unlocked/locked mix and the detail sheet has a real unlock
+        //    record (context, season, date) to present. The celebration
+        //    overlay is cleared after each so nothing covers the shell.
+        unlock(.wins50)
+        pendingAchievementCelebration = nil
+        unlock(.giantKiller)
+        pendingAchievementCelebration = nil
+
+        // 3. The unlock path emits its own board stories through addNews —
+        //    mark them read so the fixture never disturbs the shared inbox
+        //    accounting the other suites assert against.
+        for item in news where item.title == "Achievement unlocked" {
+            markNewsRead(item)
+        }
+
+        persist()
+        return self
+    }
+
     /// The season label for an arbitrary season number (the same formula
     /// as `seasonLabel`, parameterised — fixture-local helper).
     private func officeSeasonLabel(for seasonNumber: Int) -> String {
