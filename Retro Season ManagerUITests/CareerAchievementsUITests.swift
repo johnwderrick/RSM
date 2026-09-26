@@ -115,40 +115,54 @@ final class CareerAchievementsUITests: XCTestCase {
     @discardableResult
     private func reveal(_ app: XCUIApplication, _ identifier: String, maxSwipes: Int = 12) -> XCUIElement {
         let element = app.descendants(matching: .any)[identifier].firstMatch
-        let scroll = app.scrollViews["career.achievements.scroll"].firstMatch
-        guard scroll.exists else {
+        let scrollIdentifier = "career.achievements.scroll"
+        let initialScroll = app.scrollViews[scrollIdentifier].firstMatch
+        guard initialScroll.waitForExistence(timeout: 8) else {
             XCTAssertTrue(element.waitForExistence(timeout: 8), "Missing element: \(identifier)")
             return element
         }
+
         var swipes = 0
-        var searchedDown = false
+        var searchingTowardEnd = true
         while swipes < maxSwipes {
+            // Re-query on every pass. SwiftUI can rebuild the accessibility
+            // hierarchy while a lazy grid scrolls, invalidating a retained
+            // XCUIElement even though the ScrollView is still on screen.
+            let scroll = app.scrollViews[scrollIdentifier].firstMatch
+            XCTAssertTrue(scroll.waitForExistence(timeout: 3), "Achievements scroll container disappeared")
+            guard scroll.exists else { return element }
+
+            let visible = scroll.frame
             if element.exists {
                 let frame = element.frame
-                let visible = scroll.frame
                 let centreY = frame.minY + frame.height * 0.5
                 let centreInside = centreY <= visible.maxY - 8 && frame.minY >= visible.minY
                 if centreInside { return element }
-                // Element exists but sits above the viewport → scroll back up.
+
                 if frame.minY < visible.minY {
                     scroll.swipeDown()
-                    swipes += 1
-                    Thread.sleep(forTimeInterval: 0.35)
-                    continue
+                } else {
+                    scroll.swipeUp()
                 }
-            }
-            // Not materialised yet: keep going down, but if the whole way
-            // down found nothing, come back up (the element may have been
-            // discarded above the viewport).
-            if element.exists == false && searchedDown {
-                scroll.swipeDown()
+            } else if searchingTowardEnd {
+                let endAnchor = app.descendants(matching: .any)["career.achievements.end"].firstMatch
+                let endIsVisible = endAnchor.exists
+                    && endAnchor.frame.minY >= visible.minY
+                    && endAnchor.frame.minY <= visible.maxY
+                if endIsVisible {
+                    searchingTowardEnd = false
+                    scroll.swipeDown()
+                } else {
+                    scroll.swipeUp()
+                }
             } else {
-                scroll.swipeUp()
-                searchedDown = true
+                scroll.swipeDown()
             }
+
             swipes += 1
             Thread.sleep(forTimeInterval: 0.35)
         }
+
         XCTAssertTrue(element.waitForExistence(timeout: 4), "Missing element: \(identifier)")
         return element
     }
