@@ -10,135 +10,604 @@ import SwiftUI
 
 // MARK: - Pre-match hub
 
+/// The pre-match hub, redesigned in the accepted Career light-card design
+/// language (pale canvas, white cards, ink headings, green accents, gold
+/// reserved for genuine emphasis, monospaced figures): a readable,
+/// deterministic fixture card leading with the two-club match-up, then
+/// form, confirmed lineups, ones to watch, match odds, opponent scouting,
+/// and the pending team-talk / press prompts as stacked white cards on one
+/// stable vertical scroll container. BACK and KICK OFF sit in a pinned
+/// bottom action bar — reachable at every scroll position on compact
+/// landscape — so nothing ever clips under the fold.
+///
+/// Read-only by contract: every value comes straight from the
+/// authoritative `GameStore` preview paths (form, `matchXIForPreview`,
+/// `outcomeProbabilities`, scouting report) and every action keeps its
+/// original store call — `answerTeamTalk`, `answerPress`,
+/// `store.atPreMatch = false` for BACK and `beginUserMatch()` for KICK
+/// OFF. The live match and post-match screens below in this file are
+/// untouched, and nothing here touches match outcomes or simulation
+/// rules. The `career.prematch.screen` and `career.match.kickoff`
+/// identifiers are kept stable; the redesigned sections add their own
+/// `career.prematch.*` selectors for the focused UI tests.
 struct PreMatchHubView: View {
     let store: GameStore
 
     var body: some View {
-        ZStack {
-            Retro.background.ignoresSafeArea()
-            VStack(spacing: 0) {
-                topBar
-                Rectangle().fill(Retro.accent.opacity(0.25)).frame(height: 1)
-                if let match = store.nextUserMatchInfo {
-                    content(for: match)
+        ZStack(alignment: .bottom) {
+            CareerPalette.canvas.ignoresSafeArea()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    header
+                    if let match = store.nextUserMatchInfo {
+                        fixtureCard(for: match)
+                    }
+                    if let talk = store.pendingTeamTalk {
+                        teamTalkCard(talk)
+                    }
+                    if let question = store.pendingPressQuestion {
+                        pressCard(question)
+                    }
+                    if let opponentIndex = opponentIndex {
+                        lineupsCard(opponentIndex: opponentIndex)
+                        keyPlayersCard(opponentIndex: opponentIndex)
+                        scoutingCard(opponentIndex: opponentIndex)
+                    }
+                    endAnchor
                 }
+                .padding(14)
+                .padding(.bottom, 12)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
+            .accessibilityIdentifier("career.prematch.scroll")
+
+            actionBar
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("career.prematch.screen")
     }
 
-    private var topBar: some View {
+    /// The opponent for the next fixture (the side the user is not).
+    private var opponentIndex: Int? {
+        guard let match = store.nextUserMatchInfo else { return nil }
+        return match.homeIndex == store.userClubIndex ? match.awayIndex : match.homeIndex
+    }
+
+    /// Always-visible BACK / KICK OFF bar, pinned above the safe area so
+    /// both controls stay reachable at every scroll position — including
+    /// compact landscape, where a top-bar placement scrolls away with the
+    /// content.
+    private var actionBar: some View {
         HStack(spacing: 12) {
-            CrestView(shortName: store.userClub.shortName, size: 34, color: store.userColor)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(store.userClub.name)
-                    .font(.system(.headline, design: .monospaced).bold())
-                    .foregroundStyle(store.userColor)
-                Text("Pre-Match Hub")
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(Retro.text.opacity(0.85))
-            }
-            Spacer()
-            Button { store.atPreMatch = false } label: {
+            Button {
+                Haptics.tap()
+                store.atPreMatch = false
+            } label: {
                 Text("BACK")
                     .font(.system(.callout, design: .monospaced).bold())
-                    .padding(.horizontal, 14).padding(.vertical, 9)
-                    .background(Retro.panel).foregroundStyle(Retro.text)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .background(CareerPalette.surface)
+                    .foregroundStyle(CareerPalette.ink)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(CareerPalette.line.opacity(0.18)))
             }
-            .buttonStyle(.plain)
-            Button { store.beginUserMatch() } label: {
+            .buttonStyle(PressableButtonStyle())
+            .accessibilityIdentifier("career.prematch.back")
+
+            Button {
+                Haptics.impact()
+                store.beginUserMatch()
+            } label: {
                 Text("KICK OFF ▸")
                     .font(.system(.callout, design: .monospaced).bold())
-                    .padding(.horizontal, 16).padding(.vertical, 9)
-                    .background(Retro.highlight).foregroundStyle(Retro.background)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .background(Retro.gold)
+                    .foregroundStyle(Color(red: 0.18, green: 0.12, blue: 0.02))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PressableButtonStyle())
             .accessibilityIdentifier("career.match.kickoff")
         }
-        .padding(.horizontal, 14).padding(.vertical, 10)
-    }
-
-    private func content(for match: UserMatchInfo) -> some View {
-        let isHome = match.homeIndex == store.userClubIndex
-        let opponentIndex = isHome ? match.awayIndex : match.homeIndex
-        return ScrollView {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(match.label.uppercased())
-                    .font(.system(.caption, design: .monospaced).bold())
-                    .foregroundStyle(match.isCup ? Retro.highlight : Retro.accent)
-                    .padding(.horizontal, 14)
-                if let talk = store.pendingTeamTalk {
-                    teamTalkPanel(talk).padding(.horizontal, 14)
-                }
-                if let question = store.pendingPressQuestion {
-                    pressPanel(question).padding(.horizontal, 14)
-                }
-                HStack(alignment: .top, spacing: 14) {
-                    // Left: the match-up, your form, and the broadcast-style extras.
-                    VStack(spacing: 14) {
-                        matchupPanel(opponentIndex: opponentIndex, isHome: isHome)
-                        keyPlayersPanel(opponentIndex: opponentIndex)
-                        lineupsPanel(opponentIndex: opponentIndex)
-                        predictionPanel(opponentIndex: opponentIndex, isHome: isHome)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .top)
-                    // Right: opponent scouting report.
-                    opponentPanel(opponentIndex: opponentIndex)
-                        .frame(maxWidth: .infinity, alignment: .top)
-                }
-                .padding(.horizontal, 14)
-            }
-            .padding(.vertical, 12)
+        .padding(.horizontal, 14)
+        .padding(.top, 10)
+        .padding(.bottom, 12)
+        .background(CareerPalette.canvas.opacity(0.97).ignoresSafeArea(edges: .bottom))
+        .overlay(alignment: .top) {
+            Rectangle().fill(CareerPalette.line.opacity(0.18)).frame(height: 1)
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("career.prematch.actionBar")
     }
 
-    private func matchupPanel(opponentIndex: Int, isHome: Bool) -> some View {
-        let opponent = store.clubs[opponentIndex]
-        let ratings = store.starRatings(forClubIndices: [store.userClubIndex, opponentIndex])
+    // MARK: Header band
+
+    private var header: some View {
+        HStack(spacing: 12) {
+            CrestView(shortName: store.userClub.shortName, size: 52, color: store.userColor)
+                .frame(width: 52, height: 52)
+                .background(CareerPalette.line.opacity(0.11))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+            VStack(alignment: .leading, spacing: 3) {
+                Text("PRE-MATCH HUB")
+                    .font(.system(size: 17, weight: .black, design: .monospaced))
+                    .foregroundStyle(CareerPalette.ink)
+                Text("\(store.userClub.name) · MATCHDAY \(store.currentMatchday)")
+                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                    .foregroundStyle(CareerPalette.mutedInk)
+                    .lineLimit(1)
+            }
+            Spacer()
+        }
+        .padding(14)
+        .background(CareerPalette.surface)
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(CareerPalette.line.opacity(0.18)))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .shadow(color: CareerPalette.ink.opacity(0.07), radius: 7, y: 3)
+        .accessibilityElement(children: .ignore)
+        .accessibilityIdentifier("career.prematch.header")
+        .accessibilityLabel("Pre-match hub. \(store.userClub.name), matchday \(store.currentMatchday).")
+    }
+
+    // MARK: The fixture — the two clubs lead, everything supports
+
+    private func fixtureCard(for match: UserMatchInfo) -> some View {
+        let isHome = match.homeIndex == store.userClubIndex
+        let opponentIdx = isHome ? match.awayIndex : match.homeIndex
+        let opponent = store.clubs[opponentIdx]
+        let ratings = store.starRatings(forClubIndices: [store.userClubIndex, opponentIdx])
+        let homeIndex = isHome ? store.userClubIndex : opponentIdx
+        let awayIndex = isHome ? opponentIdx : store.userClubIndex
+        let isDerby = store.nextMatchIsDerby
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Text(isDerby ? "⚔️ DERBY DAY" : match.label.uppercased())
+                    .font(.system(size: 9, weight: .black, design: .monospaced))
+                    .foregroundStyle(CareerPalette.mutedInk)
+                    .lineLimit(1)
+                Spacer()
+                Text(isHome ? "HOME" : "AWAY")
+                    .font(.system(size: 8, weight: .black, design: .monospaced))
+                    .foregroundStyle(CareerPalette.line)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(CareerPalette.line.opacity(0.12))
+                    .clipShape(Capsule())
+            }
+
+            // The two clubs: the visual centrepiece of the screen.
+            HStack(alignment: .top, spacing: 10) {
+                teamBadge(store.userClub.shortName, store.userClub.name,
+                          ratings[store.userClubIndex] ?? 1, store.userColor)
+                VStack(spacing: 4) {
+                    Text(isHome ? "vs" : "@")
+                        .font(.system(size: 16, weight: .black, design: .monospaced))
+                        .foregroundStyle(isDerby ? Color(red: 0.95, green: 0.35, blue: 0.35) : CareerPalette.ink)
+                    Text(isHome ? "you're at home" : "you're away")
+                        .font(.system(size: 7, weight: .bold, design: .monospaced))
+                        .foregroundStyle(CareerPalette.mutedInk)
+                }
+                teamBadge(opponent.shortName, opponent.name,
+                          ratings[opponentIdx] ?? 1, store.color(forClubIndex: opponentIdx))
+            }
+
+            if isDerby {
+                Text(derbyFlavorText(opponentIndex: opponentIdx))
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundStyle(Color(red: 0.95, green: 0.35, blue: 0.35))
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+            }
+
+            Text(store.matchAtmosphere(homeIndex: homeIndex, awayIndex: awayIndex))
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .foregroundStyle(CareerPalette.mutedInk)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+
+            formRow(title: "Your form", outcomes: store.recentForm(forClubIndex: store.userClubIndex))
+            formRow(title: "\(opponent.shortName) form", outcomes: store.recentForm(forClubIndex: opponentIdx))
+
+            oddsRow(opponentIndex: opponentIdx, isHome: isHome)
+        }
+        .padding(14)
+        .background(CareerPalette.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14)
+            .stroke(isDerby ? Color(red: 0.95, green: 0.35, blue: 0.35).opacity(0.45) : CareerPalette.line.opacity(0.18)))
+        .shadow(color: CareerPalette.ink.opacity(0.07), radius: 7, y: 3)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("career.prematch.fixture")
+    }
+
+    private func teamBadge(_ short: String, _ name: String, _ stars: Int, _ color: Color) -> some View {
+        VStack(spacing: 5) {
+            CrestView(shortName: short, size: 48, color: color)
+            Text(name)
+                .font(.system(size: 10, weight: .black, design: .monospaced))
+                .foregroundStyle(CareerPalette.ink)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .minimumScaleFactor(0.7)
+            StarRatingView(stars: stars)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func formRow(title: String, outcomes: [MatchOutcome]) -> some View {
+        HStack(spacing: 8) {
+            Text(title)
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .foregroundStyle(CareerPalette.mutedInk)
+                .lineLimit(1)
+            Spacer()
+            if outcomes.isEmpty {
+                Text("No games played yet")
+                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                    .foregroundStyle(CareerPalette.mutedInk)
+            } else {
+                FormView(outcomes: outcomes)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(title): \(outcomes.isEmpty ? "no games played yet" : outcomes.map(\.letter).joined(separator: " "))")
+        .accessibilityIdentifier("career.prematch.form.\(slug(title))")
+    }
+
+    // MARK: Match odds — the engine's own probability model
+
+    private func oddsRow(opponentIndex: Int, isHome: Bool) -> some View {
         let homeIndex = isHome ? store.userClubIndex : opponentIndex
         let awayIndex = isHome ? opponentIndex : store.userClubIndex
-        return Panel(title: store.nextMatchIsDerby ? "⚔️ DERBY DAY" : "THE FIXTURE") {
-            VStack(spacing: 10) {
-                if store.nextMatchIsDerby {
-                    Text(derbyFlavorText(opponentIndex: opponentIndex))
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(Retro.highlight)
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: .infinity)
-                }
-                HStack {
-                    teamBadge(store.userClub.shortName, store.userClub.name, ratings[store.userClubIndex] ?? 1, store.userColor)
-                    Text(isHome ? "vs" : "@")
-                        .font(.system(.title3, design: .monospaced).bold())
-                        .foregroundStyle(Retro.highlight)
-                    teamBadge(opponent.shortName, opponent.name, ratings[opponentIndex] ?? 1, store.color(forClubIndex: opponentIndex))
-                }
-                Text(store.matchAtmosphere(homeIndex: homeIndex, awayIndex: awayIndex))
-                    .font(.system(.caption, design: .monospaced).bold())
-                    .foregroundStyle(Retro.accent)
-                HStack {
-                    Text("Your form")
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(Retro.text.opacity(0.8))
-                    Spacer()
-                    FormView(outcomes: store.recentForm(forClubIndex: store.userClubIndex))
-                }
-                HStack {
-                    Text("\(opponent.shortName) form")
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(Retro.text.opacity(0.8))
-                    Spacer()
-                    FormView(outcomes: store.recentForm(forClubIndex: opponentIndex))
+        let probs = store.outcomeProbabilities(homeIndex: homeIndex, awayIndex: awayIndex)
+        let userWin = Int(((isHome ? probs.home : probs.away) * 100).rounded())
+        let draw = Int((probs.draw * 100).rounded())
+        let oppWin = max(0, 100 - userWin - draw)
+        let oppShort = store.clubs[opponentIndex].shortName
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "chart.bar.fill")
+                    .font(.system(size: 9, weight: .black))
+                    .foregroundStyle(CareerPalette.line)
+                Text("MATCH ODDS")
+                    .font(.system(size: 8, weight: .black, design: .monospaced))
+                    .foregroundStyle(CareerPalette.mutedInk)
+                Spacer()
+            }
+            HStack(spacing: 8) {
+                oddsChip("You", userWin, userWin >= oppWin && userWin >= draw)
+                oddsChip("Draw", draw, draw > userWin && draw > oppWin)
+                oddsChip(oppShort, oppWin, oppWin > userWin && oppWin >= draw)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("career.prematch.odds")
+        .accessibilityLabel("Match odds. You \(userWin) percent, draw \(draw) percent, \(oppShort) \(oppWin) percent.")
+    }
+
+    private func oddsChip(_ title: String, _ pct: Int, _ favourite: Bool) -> some View {
+        VStack(spacing: 2) {
+            Text(title)
+                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                .foregroundStyle(CareerPalette.mutedInk)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+            Text("\(pct)%")
+                .font(.system(size: 14, weight: .black, design: .monospaced))
+                .foregroundStyle(favourite ? CareerPalette.ink : CareerPalette.mutedInk)
+                .monospacedDigit()
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 7)
+        .background(CareerPalette.line.opacity(favourite ? 0.10 : 0.05))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8)
+            .stroke(favourite ? Retro.gold.opacity(0.35) : CareerPalette.line.opacity(0.12)))
+        .accessibilityElement(children: .ignore)
+        .accessibilityIdentifier("career.prematch.odds.\(slug(title))")
+        .accessibilityLabel("\(title): \(pct) percent\(favourite ? ", favourite" : "")")
+    }
+
+    // MARK: Confirmed lineups — read-only, straight from the engine
+
+    /// A read-only confirmed-lineups display — deliberately not the
+    /// editable `PitchView` (bound to `store.userStarterIDs`/`slotPins`,
+    /// tap-to-edit), just two side-by-side columns built from the exact
+    /// XI the match engine itself will field for either side.
+    private func lineupsCard(opponentIndex: Int) -> some View {
+        let userXI = store.matchXIForPreview(store.userClubIndex).sorted { $0.position.order < $1.position.order }
+        let opponentXI = store.matchXIForPreview(opponentIndex).sorted { $0.position.order < $1.position.order }
+        return VStack(alignment: .leading, spacing: 10) {
+            cardTitle("person.2.fill", "CONFIRMED LINEUPS")
+            HStack(alignment: .top, spacing: 16) {
+                lineupColumn(store.userClub.shortName, userXI, store.userColor)
+                lineupColumn(store.clubs[opponentIndex].shortName, opponentXI,
+                             store.color(forClubIndex: opponentIndex))
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(CareerPalette.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(CareerPalette.line.opacity(0.18)))
+        .shadow(color: CareerPalette.ink.opacity(0.07), radius: 7, y: 3)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("career.prematch.lineups")
+    }
+
+    private func lineupColumn(_ short: String, _ xi: [Player], _ color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 5) {
+                CrestView(shortName: short, size: 14, color: color)
+                Text(short.uppercased())
+                    .font(.system(size: 9, weight: .black, design: .monospaced))
+                    .foregroundStyle(CareerPalette.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+            .accessibilityIdentifier("career.prematch.lineup.\(slug(short))")
+            ForEach(xi) { player in
+                HStack(spacing: 6) {
+                    Text(player.careerPositionLabel)
+                        .font(.system(size: 9, weight: .black, design: .monospaced))
+                        .frame(width: 30, alignment: .leading)
+                        .foregroundStyle(CareerPalette.mutedInk)
+                    Text(surname(player.name))
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .foregroundStyle(CareerPalette.ink.opacity(0.85))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                    Spacer(minLength: 0)
                 }
             }
         }
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(store.nextMatchIsDerby ? Retro.highlight.opacity(0.6) : Color.clear, lineWidth: 2)
-        )
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: Ones to watch
+
+    private func keyPlayersCard(opponentIndex: Int) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            cardTitle("sparkles", "ONES TO WATCH")
+            HStack(spacing: 10) {
+                if let key = store.keyPlayer(forClubIndex: store.userClubIndex) {
+                    keyPlayerCard(key, store.userClub.shortName, store.userColor)
+                }
+                if let key = store.keyPlayer(forClubIndex: opponentIndex) {
+                    keyPlayerCard(key, store.clubs[opponentIndex].shortName,
+                                  store.color(forClubIndex: opponentIndex))
+                }
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(CareerPalette.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(CareerPalette.line.opacity(0.18)))
+        .shadow(color: CareerPalette.ink.opacity(0.07), radius: 7, y: 3)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("career.prematch.keyPlayers")
+    }
+
+    private func keyPlayerCard(_ player: Player, _ clubShort: String, _ color: Color) -> some View {
+        VStack(spacing: 4) {
+            Text(clubShort.uppercased())
+                .font(.system(size: 8, weight: .black, design: .monospaced))
+                .foregroundStyle(color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text(player.name)
+                .font(.system(size: 11, weight: .black, design: .monospaced))
+                .foregroundStyle(CareerPalette.ink)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .minimumScaleFactor(0.7)
+            Text("\(player.rating) OVR")
+                .font(.system(size: 9, weight: .black, design: .monospaced))
+                .foregroundStyle(CareerPalette.mutedInk)
+                .monospacedDigit()
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+        .padding(.horizontal, 6)
+        .background(CareerPalette.canvas.opacity(0.7))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    // MARK: Opponent scouting report
+
+    private func scoutingCard(opponentIndex: Int) -> some View {
+        let opponent = store.clubs[opponentIndex]
+        return VStack(alignment: .leading, spacing: 10) {
+            cardTitle("magnifyingglass", opponent.name.uppercased())
+            VStack(alignment: .leading, spacing: 7) {
+                infoRow("Style", store.playStyle(forClubIndex: opponentIndex))
+                infoRow("Formation", store.formationName(forClubIndex: opponentIndex))
+                infoRow("Manager", store.manager(forClubIndex: opponentIndex))
+                if let key = store.keyPlayer(forClubIndex: opponentIndex) {
+                    infoRow("Key player", "\(key.name) (\(key.rating))")
+                }
+            }
+            if let identity = store.clubIdentity(forClubIndex: opponentIndex) {
+                Text(identity.flavorText)
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundStyle(CareerPalette.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Rectangle().fill(CareerPalette.line.opacity(0.18)).frame(height: 1)
+            HStack(alignment: .top, spacing: 16) {
+                strengthsColumn("STRENGTHS", store.teamStrengths(forClubIndex: opponentIndex), CareerPalette.line)
+                strengthsColumn("WEAKNESSES", store.teamWeaknesses(forClubIndex: opponentIndex),
+                                Color(red: 0.95, green: 0.35, blue: 0.35))
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(CareerPalette.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(CareerPalette.line.opacity(0.18)))
+        .shadow(color: CareerPalette.ink.opacity(0.07), radius: 7, y: 3)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("career.prematch.scouting")
+    }
+
+    private func infoRow(_ label: String, _ value: String) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(label)
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .foregroundStyle(CareerPalette.mutedInk)
+            Spacer(minLength: 8)
+            Text(value)
+                .font(.system(size: 11, weight: .black, design: .monospaced))
+                .foregroundStyle(CareerPalette.ink)
+                .multilineTextAlignment(.trailing)
+                .minimumScaleFactor(0.7)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(label): \(value)")
+    }
+
+    private func strengthsColumn(_ title: String, _ items: [String], _ color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.system(size: 8, weight: .black, design: .monospaced))
+                .foregroundStyle(color)
+            ForEach(items, id: \.self) { item in
+                Text("• \(item)")
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundStyle(CareerPalette.ink.opacity(0.85))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: Team talk
+
+    private func teamTalkCard(_ question: PressQuestion) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            cardTitle("bubble.left.and.bubble.right.fill", "🗣 TEAM TALK")
+            Text(question.prompt)
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundStyle(CareerPalette.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            ForEach(Array(question.options.enumerated()), id: \.offset) { index, option in
+                promptOption(
+                    label: option.label,
+                    detail: deltasDetail(option),
+                    identifier: "career.prematch.talk.\(index)"
+                ) {
+                    Haptics.tap()
+                    store.answerTeamTalk(option)
+                }
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(CareerPalette.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Retro.gold.opacity(0.35)))
+        .shadow(color: CareerPalette.ink.opacity(0.07), radius: 7, y: 3)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("career.prematch.teamTalk")
+    }
+
+    // MARK: Press conference
+
+    private func pressCard(_ question: PressQuestion) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            cardTitle("mic.fill", "🎙 PRESS CONFERENCE")
+            Text(question.prompt)
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundStyle(CareerPalette.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            ForEach(Array(question.options.enumerated()), id: \.offset) { index, option in
+                promptOption(
+                    label: option.label,
+                    detail: deltasDetail(option),
+                    identifier: "career.prematch.press.\(index)"
+                ) {
+                    Haptics.tap()
+                    store.answerPress(option)
+                }
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(CareerPalette.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Retro.gold.opacity(0.35)))
+        .shadow(color: CareerPalette.ink.opacity(0.07), radius: 7, y: 3)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("career.prematch.pressCard")
+    }
+
+    /// The exact morale/board deltas `answerTeamTalk`/`answerPress` will
+    /// apply for this option — the same authoritative numbers, just shown
+    /// where they're chosen.
+    private func deltasDetail(_ option: PressOption) -> String {
+        let morale = "\(option.moraleDelta >= 0 ? "+" : "")\(option.moraleDelta) morale"
+        guard option.confidenceDelta != 0 else { return morale }
+        return "\(morale) · \(option.confidenceDelta >= 0 ? "+" : "")\(option.confidenceDelta) board"
+    }
+
+    /// A team-talk / press answer button: the answer's own label plus the
+    /// morale/board deltas it will apply.
+    private func promptOption(label: String, detail: String,
+                              identifier: String,
+                              action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Text(label)
+                    .font(.system(size: 11, weight: .black, design: .monospaced))
+                    .foregroundStyle(CareerPalette.ink)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(detail)
+                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                    .foregroundStyle(CareerPalette.mutedInk)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .frame(minHeight: 40)
+            .background(CareerPalette.canvas.opacity(0.7))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(CareerPalette.line.opacity(0.18)))
+        }
+        .buttonStyle(PressableButtonStyle())
+        .accessibilityIdentifier(identifier)
+    }
+
+    // MARK: Card furniture
+
+    private func cardTitle(_ symbol: String, _ text: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: symbol)
+                .font(.system(size: 10, weight: .black))
+                .foregroundStyle(CareerPalette.line)
+            Text(text)
+                .font(.system(size: 9, weight: .black, design: .monospaced))
+                .foregroundStyle(CareerPalette.ink)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+    }
+
+    /// A deterministic end-of-content anchor — querying it after a scroll
+    /// proves the lower cards were actually read (see the UI tests).
+    private var endAnchor: some View {
+        Color.clear
+            .frame(height: 1)
+            .accessibilityIdentifier("career.prematch.endAnchor")
+    }
+
+    /// Identifier slug for fixture-local selectors.
+    private func slug(_ text: String) -> String {
+        text.lowercased()
+            .replacingOccurrences(of: " ", with: "-")
     }
 
     /// A short flavour line for derby day — quotes the rivalry's own
@@ -152,205 +621,6 @@ struct PreMatchHubView: View {
             return "Rivals since Season \(season)'s \(reason)."
         }
         return "One of the fiercest fixtures in the league."
-    }
-
-    private func keyPlayersPanel(opponentIndex: Int) -> some View {
-        Panel(title: "ONES TO WATCH") {
-            HStack(spacing: 16) {
-                if let key = store.keyPlayer(forClubIndex: store.userClubIndex) {
-                    keyPlayerCard(key, store.userClub.shortName, store.userColor)
-                }
-                if let key = store.keyPlayer(forClubIndex: opponentIndex) {
-                    keyPlayerCard(key, store.clubs[opponentIndex].shortName, store.color(forClubIndex: opponentIndex))
-                }
-            }
-        }
-    }
-
-    private func keyPlayerCard(_ player: Player, _ clubShort: String, _ color: Color) -> some View {
-        VStack(spacing: 3) {
-            Text(clubShort.uppercased())
-                .font(.system(size: 9, weight: .bold, design: .monospaced))
-                .foregroundStyle(color)
-            Text(player.name)
-                .font(.system(.footnote, design: .monospaced).bold())
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
-            Text("\(player.rating) OVR")
-                .font(.system(.caption2, design: .monospaced))
-                .foregroundStyle(Retro.text.opacity(0.7))
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 6)
-        .background(Retro.background.opacity(0.4))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-    }
-
-    /// A read-only confirmed-lineups display — deliberately not the
-    /// editable `PitchView` (bound to `store.userStarterIDs`/`slotPins`,
-    /// tap-to-edit), just a simple two-column list built from the exact
-    /// XI the match engine itself will field for either side.
-    private func lineupsPanel(opponentIndex: Int) -> some View {
-        let userXI = store.matchXIForPreview(store.userClubIndex).sorted { $0.position.order < $1.position.order }
-        let opponentXI = store.matchXIForPreview(opponentIndex).sorted { $0.position.order < $1.position.order }
-        return Panel(title: "CONFIRMED LINEUPS") {
-            HStack(alignment: .top, spacing: 16) {
-                lineupColumn(store.userClub.shortName, userXI)
-                lineupColumn(store.clubs[opponentIndex].shortName, opponentXI)
-            }
-        }
-    }
-
-    private func lineupColumn(_ short: String, _ xi: [Player]) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(short.uppercased())
-                .font(.system(.caption2, design: .monospaced).bold())
-                .foregroundStyle(Retro.accent)
-            ForEach(xi) { player in
-                HStack(spacing: 6) {
-                    Text(player.careerPositionLabel)
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
-                        .frame(width: 28, alignment: .leading)
-                        .foregroundStyle(Retro.highlight)
-                    Text(surname(player.name))
-                        .font(.system(.caption, design: .monospaced))
-                        .lineLimit(1)
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func teamBadge(_ short: String, _ name: String, _ stars: Int, _ color: Color = Retro.accent) -> some View {
-        VStack(spacing: 4) {
-            CrestView(shortName: short, size: 44, color: color)
-            Text(name)
-                .font(.system(.caption, design: .monospaced).bold())
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
-            StarRatingView(stars: stars)
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    private func predictionPanel(opponentIndex: Int, isHome: Bool) -> some View {
-        let homeIndex = isHome ? store.userClubIndex : opponentIndex
-        let awayIndex = isHome ? opponentIndex : store.userClubIndex
-        let probs = store.outcomeProbabilities(homeIndex: homeIndex, awayIndex: awayIndex)
-        let userWin = Int(((isHome ? probs.home : probs.away) * 100).rounded())
-        let draw = Int((probs.draw * 100).rounded())
-        let oppWin = max(0, 100 - userWin - draw)
-        return Panel(title: "MATCH ODDS") {
-            HStack {
-                oddsChip("You", userWin, userWin >= oppWin && userWin >= draw)
-                oddsChip("Draw", draw, draw > userWin && draw > oppWin)
-                oddsChip(store.clubs[opponentIndex].shortName, oppWin, oppWin > userWin && oppWin >= draw)
-            }
-        }
-    }
-
-    private func oddsChip(_ title: String, _ pct: Int, _ favourite: Bool) -> some View {
-        VStack(spacing: 2) {
-            Text(title).font(.system(.caption2, design: .monospaced)).lineLimit(1)
-            Text("\(pct)%")
-                .font(.system(.callout, design: .monospaced).bold())
-                .foregroundStyle(favourite ? Retro.highlight : Retro.text)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 6)
-        .background(Retro.background.opacity(0.5))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-    }
-
-    private func opponentPanel(opponentIndex: Int) -> some View {
-        let opponent = store.clubs[opponentIndex]
-        return Panel(title: opponent.name.uppercased()) {
-            VStack(alignment: .leading, spacing: 8) {
-                infoRow("Style", store.playStyle(forClubIndex: opponentIndex))
-                infoRow("Formation", store.formationName(forClubIndex: opponentIndex))
-                infoRow("Manager", store.manager(forClubIndex: opponentIndex))
-                if let key = store.keyPlayer(forClubIndex: opponentIndex) {
-                    infoRow("Key player", "\(key.name) (\(key.rating))")
-                }
-                if let identity = store.clubIdentity(forClubIndex: opponentIndex) {
-                    Text(identity.flavorText)
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(Retro.text.opacity(0.7))
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Divider().overlay(Retro.accent.opacity(0.2))
-                HStack(alignment: .top, spacing: 16) {
-                    strengthsColumn("STRENGTHS", store.teamStrengths(forClubIndex: opponentIndex), Retro.accent)
-                    strengthsColumn("WEAKNESSES", store.teamWeaknesses(forClubIndex: opponentIndex), Retro.highlight)
-                }
-            }
-        }
-    }
-
-    private func infoRow(_ label: String, _ value: String) -> some View {
-        HStack {
-            Text(label).foregroundStyle(Retro.text.opacity(0.8))
-            Spacer()
-            Text(value).bold()
-        }
-        .font(.system(.callout, design: .monospaced))
-    }
-
-    private func teamTalkPanel(_ question: PressQuestion) -> some View {
-        Panel(title: "🗣 TEAM TALK") {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(question.prompt)
-                    .font(.system(.callout, design: .monospaced))
-                    .fixedSize(horizontal: false, vertical: true)
-                ForEach(question.options) { option in
-                    Button { store.answerTeamTalk(option) } label: {
-                        Text(option.label)
-                            .font(.system(.footnote, design: .monospaced).bold())
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 12).padding(.vertical, 9)
-                            .background(Retro.panel)
-                            .foregroundStyle(Retro.text)
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-    }
-
-    private func pressPanel(_ question: PressQuestion) -> some View {
-        Panel(title: "🎙 PRESS CONFERENCE") {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(question.prompt)
-                    .font(.system(.callout, design: .monospaced))
-                    .fixedSize(horizontal: false, vertical: true)
-                ForEach(question.options) { option in
-                    Button { store.answerPress(option) } label: {
-                        Text(option.label)
-                            .font(.system(.footnote, design: .monospaced).bold())
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 12).padding(.vertical, 9)
-                            .background(Retro.panel)
-                            .foregroundStyle(Retro.text)
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-    }
-
-    private func strengthsColumn(_ title: String, _ items: [String], _ color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.system(.caption2, design: .monospaced).bold())
-                .foregroundStyle(color)
-            ForEach(items, id: \.self) { item in
-                Text("• \(item)")
-                    .font(.system(.footnote, design: .monospaced))
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

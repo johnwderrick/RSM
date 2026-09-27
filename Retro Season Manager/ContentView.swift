@@ -85,6 +85,18 @@ struct ContentView: View {
             _store = State(initialValue: career)
             _experience = State(initialValue: .career)
         }
+        // Deterministic pre-match fixture: lands the career on the user's
+        // next match day with the pre-match hub's prompts, lineup and
+        // opponent pinned for the focused UI tests (see
+        // GameStore+UITestFixture.swift). UITEST_CAREER_PREMATCH_NO_PROMPTS
+        // opts out of the team-talk/press seeding.
+        if ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_PREMATCH") {
+            let career = GameStore()
+            career.prepareCareerPreMatchFixtureForDebug(
+                skipPrompts: ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_PREMATCH_NO_PROMPTS"))
+            _store = State(initialValue: career)
+            _experience = State(initialValue: .career)
+        }
         if ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_SCOUT") {
             let career = GameStore()
             career.prepareCareerScoutFixtureForDebug()

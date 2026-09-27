@@ -849,6 +849,86 @@ extension GameStore {
         return self
     }
 
+    /// Builds on the shared Career navigation fixture with exactly what
+    /// the redesigned pre-match hub needs, all through the real store
+    /// paths and without touching match outcomes:
+    ///
+    /// - Lands on a matchday whose fixture is the user's league game
+    ///   TODAY, with `pendingTeamTalk` and `pendingPressQuestion`
+    ///   deterministic (set after `enterPreMatch()` clears whatever the
+    ///   random 50% press roll and delegation left behind),
+    /// - the user's lineup intact (a full starting XI lets the tests
+    ///   pin `CONFIRMED LINEUPS` and KICK OFF),
+    /// - the opponent deterministic in position and name.
+    ///
+    /// `UITEST_CAREER_PREMATCH_NO_PROMPTS` opts out of the prompt
+    /// seeding so the tests can also cover the no-prompts variant of
+    /// the hub.
+    @discardableResult
+    func prepareCareerPreMatchFixtureForDebug(skipPrompts: Bool = false) -> GameStore {
+        prepareCareerNavigationFixtureForDebug()
+
+        // The navigation fixture's matchday-4 fixture is not necessarily
+        // the user's; walk the real calendar forward with the same
+        // stopping rules as the CONTINUE fast-forward (advanceDay's own
+        // guard: it never crosses a user match day) until the user has a
+        // match TODAY. No user match is ever played — the store lands in
+        // the exact state a real CONTINUE tap reaches.
+        var safety = 0
+        while !isUserMatchToday && !isSeasonOver && safety < 40 {
+            advanceDay()
+            safety += 1
+        }
+        guard isUserMatchToday else { return self }
+
+        // The hub opens through the production entry point: this is what
+        // seeds the team-talk/press prompts in real play (including the
+        // random press roll and any assistant delegation).
+        enterPreMatch()
+
+        if !skipPrompts {
+            // Make the prompts deterministic: whatever the random roll
+            // left behind is replaced with the known real generators, so
+            // the tests can assert on a definite team talk AND press
+            // conference with stable option labels.
+            pendingTeamTalk = makeTeamTalk()
+            pendingPressQuestion = makePressQuestion()
+        } else {
+            // The no-prompts variant: answer any prompts through the
+            // production delegation path (the same assistant handling the
+            // manager uses), leaving the hub prompt-free exactly as it
+            // appears in real play after delegation.
+            if let question = pendingPressQuestion,
+               let best = question.options.max(by: { ($0.moraleDelta + $0.confidenceDelta) < ($1.moraleDelta + $1.confidenceDelta) }) {
+                answerPress(best, headline: "Press conference (assistant)")
+            }
+            if let talk = pendingTeamTalk,
+               let best = talk.options.max(by: { ($0.moraleDelta + $0.confidenceDelta) < ($1.moraleDelta + $1.confidenceDelta) }) {
+                answerTeamTalk(best)
+            }
+        }
+
+        // Freeze the lineup so the tests can pin CONFIRMED LINEUPS and
+        // KICK OFF against a full, known XI (the engine's preview uses
+        // `matchXIForPreview`, so this only re-asserts what the engine
+        // would already field).
+        let bestXI = bestXI(for: clubs[userClubIndex],
+                            formation: aiFormation(for: clubs[userClubIndex]))
+        userStarterIDs = Set(bestXI.map(\.id))
+
+        opponentShortNameForUITests = clubs[opponentIndexForUITests].shortName
+
+        persist()
+        return self
+    }
+
+    /// The next opponent's club index for the pre-match fixture
+    /// (the side the user is not, from the authoritative fixture list).
+    private var opponentIndexForUITests: Int {
+        guard let match = nextUserMatchInfo else { return userClubIndex }
+        return match.homeIndex == userClubIndex ? match.awayIndex : match.homeIndex
+    }
+
     /// The season label for an arbitrary season number (the same formula
     /// as `seasonLabel`, parameterised — fixture-local helper).
     private func officeSeasonLabel(for seasonNumber: Int) -> String {
