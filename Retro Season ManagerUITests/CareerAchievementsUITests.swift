@@ -195,8 +195,10 @@ final class CareerAchievementsUITests: XCTestCase {
                       "Giant Killer should be labelled unlocked")
         let milestones = reveal(app, "career.achievements.category.milestones")
         XCTAssertTrue(milestones.label.contains("1 of 4"), "Milestones count should show 1 of 4: \(milestones.label)")
-        let unlockedCard = reveal(app, "career.achievements.card.50-wins")
-        XCTAssertTrue(unlockedCard.label.contains("Unlocked"), "50 Wins should be labelled unlocked: \(unlockedCard.label)")
+        // The 50 Wins card and its unlocked detail are exercised from the
+        // top of a fresh gallery in testDetailSheetRoundTripUnlockedAndLocked.
+        // Rewinding the lazy grid after reaching Milestones makes this test
+        // depend on XCUITest's off-screen element cache, not gallery state.
 
         // The single scroll container reaches the end anchor.
         reveal(app, "career.achievements.end")
