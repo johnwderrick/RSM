@@ -242,14 +242,13 @@ struct LegendsTrainingView: View {
                     .textFieldStyle(.plain)
                     .autocorrectionDisabled()
                     .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .accessibilityIdentifier("legends.training.search")
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
             .background(.white)
             .clipShape(RoundedRectangle(cornerRadius: 9))
             .overlay(RoundedRectangle(cornerRadius: 9).stroke(LegendsPalette.navy.opacity(0.14), lineWidth: 1))
-            .accessibilityElement(children: .contain)
-            .accessibilityIdentifier("legends.training.search")
 
             // Two fixed rows of filter pills: everything stays reachable on
             // compact landscape, and no lazy container hides the controls
