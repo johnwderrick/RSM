@@ -1294,7 +1294,7 @@ final class RetroSeasonManagerUITests: XCTestCase {
         // auto-scrolls to a control before tapping, so a successful menu
         // interaction is stronger evidence than a raw isHittable check that
         // fails for controls below the initial fold of a scrollable screen.
-        let search = app.descendants(matching: .any)["legends.training.search"]
+        let search = app.textFields["legends.training.search"]
         XCTAssertTrue(search.waitForExistence(timeout: 4), "Expected the search field")
 
         // Regression: Training owns one stable scroll container. The prior
@@ -1336,7 +1336,7 @@ final class RetroSeasonManagerUITests: XCTestCase {
 
         // Filtering by search narrows the list but keeps controls usable.
         search.tap()
-        app.typeText("miessi")
+        search.typeText("miessi")
         Thread.sleep(forTimeInterval: 0.4)
         XCTAssertTrue(prospect.exists, "The prospect should match 'miessi'")
 
