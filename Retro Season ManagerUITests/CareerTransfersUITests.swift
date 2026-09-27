@@ -193,7 +193,10 @@ final class CareerTransfersUITests: XCTestCase {
 
         // Re-add the SAME player from the market.
         app.buttons["career.transfers.tab.market"].tap()
-        let addShortlist = app.buttons["career.transfers.shortlist.\(playerID)"]
+        // SwiftUI can briefly expose both the outgoing and incoming copy of
+        // a market card when switching tabs. Target the first live match;
+        // both copies invoke the same shortlist action for this player.
+        let addShortlist = app.buttons.matching(identifier: "career.transfers.shortlist.\(playerID)").firstMatch
         XCTAssertTrue(addShortlist.waitForExistence(timeout: 6), "The same market card should still offer SHORTLIST")
         addShortlist.tap()
 
@@ -494,6 +497,325 @@ final class CareerTransfersUITests: XCTestCase {
                        "The negotiated target must leave the market — no duplicate transfer possible")
 
         app.terminate()
+    }
+
+    // MARK: - Negotiations: counter sheet round trip (ex Transfer Hub)
+
+    /// The COUNTER action (previously the Transfer Hub's only home) opens
+    /// the counter-sell sheet. SEND resolves deterministically here or
+    /// comes back with a counter; either way the sheet's always-present
+    /// ACCEPT THEIR OFFER closes the deal through the real store path and
+    /// the offer leaves the negotiations list.
+    func testTransfersCounterSheetOnIncomingOfferResolves() throws {
+        let app = launch()
+        openTransfers(app)
+        app.buttons["career.transfers.tab.negotiations"].tap()
+
+        let counter = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@ AND identifier ENDSWITH %@",
+                        "career.transfers.offer.", ".counter")).firstMatch
+        XCTAssertTrue(counter.waitForExistence(timeout: 6), "Fixture's incoming offer should render a COUNTER action")
+        counter.tap()
+
+        let send = app.buttons["career.transfers.countersell.send"]
+        XCTAssertTrue(send.waitForExistence(timeout: 8), "Counter-sell sheet should open from the COUNTER action")
+        shot(app, "countersell_sheet_se")
+        send.tap()
+
+        // SEND either sells at the asking price (sheet closes) or comes
+        // back with an improved bid (result banner) — both handled: close
+        // via the sheet's own ACCEPT THEIR OFFER control.
+        let result = anyElement(app, "career.transfers.countersell.result")
+        if result.waitForExistence(timeout: 3) {
+            let fallback = app.buttons["career.transfers.countersell.accept"]
+            XCTAssertTrue(fallback.waitForExistence(timeout: 4), "Counter sheet should keep an accept fallback")
+            fallback.tap()
+        }
+
+        // The sheet is gone and the offer is resolved — back on the tab.
+        XCTAssertTrue(anyElement(app, "career.transfers.summary").waitForExistence(timeout: 8),
+                      "Counter sheet should dismiss back to the Transfer Centre")
+        let resolved = counter.waitForNonExistence(timeout: 6)
+        XCTAssertTrue(resolved || !counter.exists,
+                      "The offer should leave the negotiations list after the counter sheet resolves it")
+        shot(app, "countersell_resolved_se")
+        app.terminate()
+    }
+
+    // MARK: - Negotiations: reject via real path (ex Transfer Hub)
+
+    /// REJECT on an incoming offer runs the real store path: the offer
+    /// disappears, the summary no longer counts it, and the transfer
+    /// window status stays put (no money moved).
+    func testTransfersRejectIncomingOfferRemovesIt() throws {
+        let app = launch()
+        openTransfers(app)
+        app.buttons["career.transfers.tab.negotiations"].tap()
+
+        let summary = anyElement(app, "career.transfers.summary")
+        XCTAssertTrue(summary.waitForExistence(timeout: 6), "Summary missing before rejecting")
+        let offersBefore = offersCount(fromSummary: summary.label)
+        XCTAssertEqual(offersBefore, 1, "Fixture should start with exactly one incoming offer: \(summary.label)")
+
+        let reject = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@ AND identifier ENDSWITH %@",
+                        "career.transfers.offer.", ".reject")).firstMatch
+        XCTAssertTrue(reject.waitForExistence(timeout: 6), "Fixture's incoming offer should render a REJECT action")
+        shot(app, "offer_before_reject_se")
+        reject.tap()
+
+        let gone = reject.waitForNonExistence(timeout: 6)
+        XCTAssertTrue(gone || !reject.exists, "Rejected offer should leave the negotiations list")
+        let summaryAfter = anyElement(app, "career.transfers.summary")
+        XCTAssertEqual(offersCount(fromSummary: summaryAfter.label), 0,
+                       "Summary should count zero offers after the rejection: \(summaryAfter.label)")
+        shot(app, "offer_rejected_se")
+        app.terminate()
+    }
+
+    // MARK: - Negotiations: personal-terms sheet round trip (ex Transfer Hub)
+
+    /// The fixture's deal is created through the REAL fee-agreed path and
+    /// reaches readiness through the production daily transition
+    /// (`checkPendingTransferDeals()` — the same call the game makes once
+    /// a day): the fixture's DEBUG helper fast-forwards the clock past
+    /// the medical date and runs it. The test pins the transition's
+    /// distinctive side-effect — the "ready to talk terms" inbox news,
+    /// which only the real check posts — then drives TALK TERMS through
+    /// PersonalTermsSheet: CANCEL dismisses without touching the store.
+    func testTransfersDealReachesReadyThroughRealDailyTransition() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_CAREER_TRANSFERS", "UITEST_TRANSFERS_SEED_READY_DEAL"]
+        app.launch()
+        openTransfers(app)
+        app.buttons["career.transfers.tab.negotiations"].tap()
+
+        // The deal is ready (through the real transition), so TALK TERMS
+        // exists and the summary counts exactly one deal.
+        let terms = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@ AND identifier ENDSWITH %@",
+                        "career.transfers.deal.", ".terms")).firstMatch
+        XCTAssertTrue(terms.waitForExistence(timeout: 6), "A ready deal should render TALK TERMS")
+        let summary = anyElement(app, "career.transfers.summary")
+        XCTAssertTrue(summary.waitForExistence(timeout: 4), "Summary missing on negotiations tab")
+        XCTAssertTrue(summary.label.contains("1 deals in progress"),
+                      "The seeded ready deal should be the only deal: \(summary.label)")
+        let budgetBefore = budget(fromSummary: summary.label)
+        shot(app, "deal_ready_terms_se")
+
+        // The readiness came from the production daily check: its news
+        // item ("… ready to talk terms") must be sitting unread in the
+        // Inbox — a hand-set flag could never produce it. The row is
+        // pinned by the title phrase (unique to this news) rather than
+        // the player's name, which the fixture doesn't rename.
+        gotoSidebar(app, "inbox")
+        let readyNews = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@",
+                        "career.inbox.row.", "ready to talk terms")).firstMatch
+        var newsScrolls = 0
+        while !readyNews.exists && newsScrolls < 4 {
+            app.scrollViews["career.inbox.scroll"].firstMatch.swipeUp()
+            newsScrolls += 1
+            Thread.sleep(forTimeInterval: 0.3)
+        }
+        XCTAssertTrue(readyNews.waitForExistence(timeout: 6),
+                      "The real readiness transition should have posted the 'ready to talk terms' news")
+        shot(app, "deal_ready_news_se")
+        gotoSidebar(app, "transfers")
+        XCTAssertTrue(screenVisible(app, "transfers", timeout: 8), "Returning to Transfers should work")
+        app.buttons["career.transfers.tab.negotiations"].tap()
+        XCTAssertTrue(terms.waitForExistence(timeout: 6), "TALK TERMS should still be present after the inbox detour")
+
+        terms.tap()
+        let propose = app.buttons["career.transfers.terms.propose"]
+        XCTAssertTrue(propose.waitForExistence(timeout: 8), "Personal-terms sheet should open from TALK TERMS")
+        XCTAssertTrue(app.buttons["career.transfers.terms.cancel"].exists, "Cancel control missing on the terms sheet")
+        shot(app, "terms_sheet_se")
+
+        // Cancel — the sheet closes, nothing was signed, the deal stays.
+        app.buttons["career.transfers.terms.cancel"].tap()
+        XCTAssertTrue(terms.waitForExistence(timeout: 8),
+                      "Cancelling the terms sheet should return to the deal on the NEGOTIATIONS tab")
+        let summaryAfter = anyElement(app, "career.transfers.summary")
+        XCTAssertEqual(budget(fromSummary: summaryAfter.label), budgetBefore,
+                       "Cancelling personal terms must not touch the transfer budget")
+        shot(app, "terms_cancelled_se")
+        app.terminate()
+    }
+
+    // MARK: - Deadline-day rush badge + AI-bid flood on the negotiations summary
+
+    /// With the fixture fast-forwarded to the real deadline date (the
+    /// window's last day, where the store's `isDeadlineDayRush` is true
+    /// by definition), the NEGOTIATIONS tab's summary carries a deadline
+    /// badge — the chip next to the title and a matching sentence in the
+    /// summary's accessibility label — and neither appears on other tabs
+    /// or away from the rush. The rush also floods the table: the fixture
+    /// generated extra AI bids through the REAL daily generator (each
+    /// posting its own "Bid received" news), three live offers land on
+    /// three DIFFERENT players, and two of them are resolved through the
+    /// real accept/reject store paths.
+    func testTransfersDeadlineDayBadgeShowsOnNegotiationsDuringRush() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_CAREER_TRANSFERS", "UITEST_TRANSFERS_DEADLINE_RUSH"]
+        app.launch()
+        openTransfers(app)
+
+        // On the MARKET tab the window status already says DEADLINE DAY,
+        // but the rush badge itself must stay off.
+        let summary = anyElement(app, "career.transfers.summary")
+        XCTAssertTrue(summary.waitForExistence(timeout: 6), "Summary missing on deadline day")
+        XCTAssertTrue(summary.label.contains("DEADLINE DAY"),
+                      "Window status should announce deadline day: \(summary.label)")
+        XCTAssertFalse(summary.label.contains("Deadline day rush"),
+                       "The rush badge must stay off the MARKET tab: \(summary.label)")
+
+        // Switching to NEGOTIATIONS lights the badge up.
+        app.buttons["career.transfers.tab.negotiations"].tap()
+        let negotiationsSummary = anyElement(app, "career.transfers.summary")
+        XCTAssertTrue(negotiationsSummary.waitForExistence(timeout: 6), "Summary missing on negotiations")
+        XCTAssertTrue(negotiationsSummary.label.contains("Deadline day rush"),
+                      "NEGOTIATIONS summary should carry the deadline-day badge: \(negotiationsSummary.label)")
+
+        // The rush floods the table: the fixture generated extra AI bids
+        // through the real daily generator, so three offers are live — on
+        // three DIFFERENT players (one bid per player is the generator's
+        // rule). The summary's OFFERS count is the authoritative figure.
+        XCTAssertEqual(offersCount(fromSummary: negotiationsSummary.label), 3,
+                       "Deadline-day flood should land three live offers: \(negotiationsSummary.label)")
+        var floodSwipes = 0
+        while acceptButtons(app).count < 3 && floodSwipes < 4 {
+            app.scrollViews["career.transfers.scroll"].firstMatch.swipeUp()
+            floodSwipes += 1
+            Thread.sleep(forTimeInterval: 0.3)
+        }
+        let offerIDs = acceptButtons(app).map { $0.identifier }
+        let distinctPlayers = Set(offerIDs.compactMap { id -> String? in
+            guard id.hasPrefix("career.transfers.offer."), id.hasSuffix(".accept") else { return nil }
+            return String(id.dropFirst("career.transfers.offer.".count).dropLast(".accept".count))
+        })
+        XCTAssertGreaterThanOrEqual(offerIDs.count, 3, "Every flood bid should render with its action row")
+        XCTAssertEqual(distinctPlayers.count, 3,
+                       "Each flood bid should sit on a different player: \(offerIDs)")
+        shot(app, "deadline_rush_flood_se")
+
+        // The flood bids came from the REAL generator: each one posts a
+        // "Bid received" inbox news item — the fixture's always-on offer
+        // never does, so finding two proves the real path ran.
+        gotoSidebar(app, "inbox")
+        let bidNews = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@",
+                        "career.inbox.row.", "Bid received"))
+        var newsSwipes = 0
+        while bidNews.count < 2 && newsSwipes < 4 {
+            app.scrollViews["career.inbox.scroll"].firstMatch.swipeUp()
+            newsSwipes += 1
+            Thread.sleep(forTimeInterval: 0.3)
+        }
+        XCTAssertGreaterThanOrEqual(bidNews.count, 2,
+                                    "Each real-generator bid should have posted 'Bid received' news")
+        shot(app, "deadline_rush_bid_news_se")
+        gotoSidebar(app, "transfers")
+        XCTAssertTrue(screenVisible(app, "transfers", timeout: 8), "Returning to Transfers should work")
+        app.buttons["career.transfers.tab.negotiations"].tap()
+        shot(app, "deadline_rush_negotiations_se")
+        app.buttons["career.transfers.tab.market"].tap()
+        XCTAssertFalse(anyElement(app, "career.transfers.summary").label.contains("Deadline day rush"),
+                       "Badge should clear when leaving NEGOTIATIONS")
+        app.buttons["career.transfers.tab.negotiations"].tap()
+        XCTAssertTrue(anyElement(app, "career.transfers.summary").label.contains("Deadline day rush"),
+                      "Badge should return on NEGOTIATIONS")
+        shot(app, "deadline_rush_return_se")
+
+        // Resolve the flood through the real store paths: accepting a bid
+        // sells the player and banks the fee (offer gone), rejecting
+        // another just clears the row.
+        let accept = acceptButtons(app).first
+        XCTAssertTrue(accept?.waitForExistence(timeout: 6) == true, "An accept action should be reachable")
+        accept?.tap()
+        let summaryAfterAccept = anyElement(app, "career.transfers.summary")
+        XCTAssertTrue(summaryAfterAccept.waitForExistence(timeout: 6), "Summary missing after accepting a bid")
+        XCTAssertEqual(offersCount(fromSummary: summaryAfterAccept.label), 2,
+                       "Accepting a bid should leave two live offers: \(summaryAfterAccept.label)")
+        let reject = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@ AND identifier ENDSWITH %@",
+                        "career.transfers.offer.", ".reject")).firstMatch
+        XCTAssertTrue(reject.waitForExistence(timeout: 6), "A reject action should remain after the acceptance")
+        reject.tap()
+        let summaryAfterReject = anyElement(app, "career.transfers.summary")
+        XCTAssertTrue(summaryAfterReject.waitForExistence(timeout: 6), "Summary missing after rejecting a bid")
+        XCTAssertEqual(offersCount(fromSummary: summaryAfterReject.label), 1,
+                       "Rejecting another bid should leave one: \(summaryAfterReject.label)")
+        shot(app, "deadline_rush_resolved_se")
+        app.terminate()
+    }
+
+    /// Outside the rush (the base fixture's mid-window date) no badge
+    /// sentence appears, even on the NEGOTIATIONS tab.
+    func testTransfersNoDeadlineBadgeOutsideRush() throws {
+        let app = launch()
+        openTransfers(app)
+        app.buttons["career.transfers.tab.negotiations"].tap()
+        let summary = anyElement(app, "career.transfers.summary")
+        XCTAssertTrue(summary.waitForExistence(timeout: 6), "Summary missing on negotiations")
+        XCTAssertFalse(summary.label.contains("Deadline day rush"),
+                       "No deadline badge outside the rush: \(summary.label)")
+        shot(app, "no_deadline_badge_se")
+        app.terminate()
+    }
+
+    // MARK: - Home dashboard deadline badge
+
+    /// The Home dashboard's deadline badge mirrors the NEGOTIATIONS tab's:
+    /// it appears only during the rush, counts the same still-pending
+    /// negotiations (agreed-fee deals + live offers), and tapping it
+    /// jumps straight to the Transfer Centre where they wait.
+    func testHomeDeadlineBadgeCountsPendingNegotiationsDuringRush() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_CAREER_TRANSFERS", "UITEST_TRANSFERS_DEADLINE_RUSH"]
+        app.launch()
+
+        let badge = app.buttons["career.home.deadlineBadge"]
+        XCTAssertTrue(badge.waitForExistence(timeout: 10), "Deadline badge should show on Home during the rush")
+        XCTAssertTrue(badge.label.contains("Deadline day"), "Badge should say deadline day: \(badge.label)")
+        XCTAssertTrue(badge.label.contains("3 negotiations"),
+                      "Badge should count the 3 pending negotiations (0 deals + 3 offers): \(badge.label)")
+        shot(app, "home_deadline_badge_se")
+
+        // The badge is a shortcut: tapping it lands on the Transfer Centre.
+        badge.tap()
+        XCTAssertTrue(anyElement(app, "career.transfers.summary").waitForExistence(timeout: 8),
+                      "Tapping the deadline badge should open the Transfer Centre")
+        XCTAssertTrue(screenVisible(app, "transfers", timeout: 4), "Should land on the Transfers destination")
+        shot(app, "home_badge_to_transfers_se")
+        app.terminate()
+    }
+
+    /// Away from the rush the Home badge is absent entirely — the base
+    /// fixture's mid-window date, even with a live offer on the table.
+    func testHomeDeadlineBadgeAbsentOutsideRush() throws {
+        let app = launch()
+        XCTAssertFalse(app.buttons["career.home.deadlineBadge"].waitForExistence(timeout: 4),
+                       "No deadline badge away from the rush")
+        shot(app, "home_no_deadline_badge_se")
+        app.terminate()
+    }
+
+    /// All ACCEPT actions across the live offer rows (one per offer).
+    private func acceptButtons(_ app: XCUIApplication) -> [XCUIElement] {
+        app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@ AND identifier ENDSWITH %@",
+                        "career.transfers.offer.", ".accept")).allElementsBoundByIndex
+    }
+
+    /// Parses the offers-received count out of the summary band's
+    /// accessibility label ("... N offers received. ...") without
+    /// duplicating formatting rules.
+    private func offersCount(fromSummary label: String) -> Int? {
+        guard let range = label.range(of: "offers received") else { return nil }
+        let before = label[..<range.lowerBound]
+        guard let number = before.split(separator: " ").last, let count = Int(number) else { return nil }
+        return count
     }
 
     /// Parses the transfer budget out of the summary band's accessibility

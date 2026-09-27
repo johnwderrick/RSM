@@ -279,13 +279,51 @@ struct HomeView: View {
                     .foregroundStyle(Retro.highlight)
                     .lineLimit(1)
             }
-            if store.isDeadlineDayRush, let days = store.daysUntilTransferDeadline {
-                Text(days == 0 ? "🔥 DEADLINE DAY" : "🔥 Deadline in \(days)d")
-                    .font(.system(.caption2, design: .monospaced).bold())
-                    .foregroundStyle(Color(red: 0.95, green: 0.35, blue: 0.35))
-                    .lineLimit(1)
+            if store.isDeadlineDayRush {
+                // The deadline badge mirrors the NEGOTIATIONS tab's and
+                // counts the same thing — deals in progress plus live
+                // offers. Tapping it jumps straight to the Transfer
+                // Centre, where those negotiations wait.
+                Button {
+                    Haptics.tap()
+                    section = .transfers
+                } label: {
+                    Text(deadlineBadgeText)
+                        .font(.system(.caption2, design: .monospaced).bold())
+                        .foregroundStyle(Self.deadlineRed)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(Self.deadlineRed.opacity(0.12))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Self.deadlineRed.opacity(0.35)))
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("career.home.deadlineBadge")
+                .accessibilityLabel(deadlineBadgeLabel)
             }
         }
+    }
+
+    private static let deadlineRed = Color(red: 0.95, green: 0.35, blue: 0.35)
+
+    /// Still-pending negotiations, same figure the Transfer Centre's
+    /// NEGOTIATIONS badge carries: agreed-fee deals plus incoming bids.
+    private var pendingNegotiationCount: Int {
+        store.pendingTransferDeals.count + store.pendingOffers.count
+    }
+
+    private var deadlineBadgeText: String {
+        let days = store.daysUntilTransferDeadline ?? 0
+        let when = days == 0 ? "DEADLINE DAY" : "Deadline in \(days)d"
+        let count = pendingNegotiationCount
+        return "🔥 \(when) · \(count) negotiation\(count == 1 ? "" : "s")"
+    }
+
+    private var deadlineBadgeLabel: String {
+        let days = store.daysUntilTransferDeadline ?? 0
+        let when = days == 0 ? "Deadline day" : "Deadline in \(days) days"
+        let count = pendingNegotiationCount
+        return "\(when). \(count == 1 ? "1 negotiation" : "\(count) negotiations") in progress."
     }
 
     private var canSkipToMatch: Bool {

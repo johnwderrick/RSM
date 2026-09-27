@@ -231,6 +231,15 @@ extension GameStore {
     func prepareCareerTransfersFixtureForDebug() -> GameStore {
         prepareCareerNavigationFixtureForDebug()
 
+        // Opt-in deadline-day rush: fast-forward the store's clock to the
+        // real deadline date (the last day of the window, where
+        // `isDeadlineDayRush` is true by definition) BEFORE any state is
+        // seeded, so every relative date below — the incoming offer's
+        // expiry, the scouting due date — derives from it consistently.
+        if ProcessInfo.processInfo.arguments.contains("UITEST_TRANSFERS_DEADLINE_RUSH") {
+            currentDate = transferDeadlineDate
+        }
+
         scoutedReports = [:]
         scoutingDue = [:]
         shortlistedPlayerIDs = []
@@ -275,6 +284,26 @@ extension GameStore {
             pendingOffers.append(TransferOffer(playerID: candidate.id, playerName: candidate.name,
                                                fromClubIndex: buyerIndex, amount: max(candidate.value, 100),
                                                expiryDate: expiry))
+        }
+
+        // 4b. Deadline-day flood: with the rush argument set, AI clubs bid
+        //     for MORE of the user's players through the REAL daily
+        //     generator (`generateOfferForUser()` — the same call the
+        //     clock's deadline scramble makes), topping the live offer
+        //     count up to three. Rival budgets are topped up first so a
+        //     funded buyer always exists for whatever target the generator
+        //     picks (it returns silently otherwise), and its one-bid-per-
+        //     player rule keeps every bid on a different player. Each
+        //     generated bid posts a real "Bid received" news item.
+        if ProcessInfo.processInfo.arguments.contains("UITEST_TRANSFERS_DEADLINE_RUSH") {
+            for index in clubs.indices where index != userClubIndex {
+                clubs[index].transferBudget += 1_000_000
+            }
+            var attempts = 0
+            while pendingOffers.count < 3 && attempts < 6 {
+                generateOfferForUser()
+                attempts += 1
+            }
         }
 
         // 5. Give one free agent a deterministic, searchable name so the UI
@@ -331,6 +360,27 @@ extension GameStore {
                                      askingPrice: max(1_000, userClub.transferBudget / 10))
                     : target
             }
+        }
+
+        // 7. A pending deal at the personal-terms stage for the
+        //    NEGOTIATIONS tab — seeded only when the launch argument opts
+        //    in, so the negotiation flow test's "exactly one deal" delta
+        //    stays exact under the base fixture. The deal is created
+        //    through the REAL `beginPersonalTermsWait` path (a club-listed
+        //    player outside the user's squad, so it starts NOT ready —
+        //    medical & paperwork in progress, like any freshly agreed
+        //    fee) and then reaches readiness through the production daily
+        //    transition: a DEBUG-only helper fast-forwards the store's
+        //    clock past the medical date and runs
+        //    `checkPendingTransferDeals()`, including its "ready to talk
+        //    terms" news. No readiness flag is ever hand-set.
+        if ProcessInfo.processInfo.arguments.contains("UITEST_TRANSFERS_SEED_READY_DEAL"),
+           let listed = transferMarket.first(where: {
+               $0.sellingClubIndex != nil && $0.player.id != negotiationPlayerID
+           }) {
+            _ = beginPersonalTermsWait(listed, price: max(1_000, userClub.transferBudget / 4),
+                                       sellOnPercentage: 0, buyBackFee: 0, includedPlayer: nil)
+            fastForwardPendingDealReadinessForDebug()
         }
 
         // 1 & 5. The fully-scouted shortlisted target — seeded here for this
@@ -847,6 +897,24 @@ extension GameStore {
 
         persist()
         return self
+    }
+
+    /// Fast-forwards a freshly agreed transfer deal through the medical
+    /// wait USING THE STORE'S OWN TRANSITION: the clock is advanced past
+    /// the deal's `readyDate` and the production daily check
+    /// `checkPendingTransferDeals()` runs — the same call the real game
+    /// makes once a day, which flips `isReady` and posts the "ready to
+    /// talk terms" news item. Nothing is hand-set; tests launch with a
+    /// deal whose readiness came from the real path.
+    func fastForwardPendingDealReadinessForDebug() {
+        if let dealIndex = pendingTransferDeals.indices.last,
+           !pendingTransferDeals[dealIndex].isReady {
+            let readyDate = pendingTransferDeals[dealIndex].readyDate
+            if currentDate < readyDate {
+                currentDate = readyDate
+            }
+            checkPendingTransferDeals()
+        }
     }
 
     /// The season label for an arbitrary season number (the same formula

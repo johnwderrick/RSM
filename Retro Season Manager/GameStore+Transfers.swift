@@ -502,7 +502,11 @@ extension GameStore {
     /// A rival club bids for one of the user's players.
     func generateOfferForUser() {
         let listed = userClub.players.filter { $0.isTransferListed }
-        let pool = listed.isEmpty ? userClub.players.filter { $0.rating >= 72 } : listed
+        // One live bid per player: a player already carrying an offer is
+        // off the market for further bids until that one resolves.
+        let alreadyBid = Set(pendingOffers.map(\.playerID))
+        let pool = (listed.isEmpty ? userClub.players.filter { $0.rating >= 72 } : listed)
+            .filter { !alreadyBid.contains($0.id) }
         guard let target = pool.randomElement() else { return }
         // A release clause is a contractual floor — any bid meets it or beats it.
         let price = max(target.releaseClause ?? 0, Int(Double(target.value) * Double.random(in: 1.0...1.5)))

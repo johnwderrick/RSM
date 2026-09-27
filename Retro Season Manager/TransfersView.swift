@@ -366,9 +366,24 @@ struct TransfersView: View {
                 .background(CareerPalette.line.opacity(0.11))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             VStack(alignment: .leading, spacing: 3) {
-                Text("TRANSFER CENTRE")
-                    .font(.system(size: 17, weight: .black, design: .monospaced))
-                    .foregroundStyle(CareerPalette.ink)
+                HStack(spacing: 8) {
+                    Text("TRANSFER CENTRE")
+                        .font(.system(size: 17, weight: .black, design: .monospaced))
+                        .foregroundStyle(CareerPalette.ink)
+                    // Deadline-day badge: only while the window's final
+                    // rush is on AND the negotiations tab is showing —
+                    // the place where the deals that need settling live.
+                    if store.isDeadlineDayRush && tab == .negotiations {
+                        Text("DEADLINE DAY")
+                            .font(.system(size: 7, weight: .black, design: .monospaced))
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(Retro.warning.opacity(0.16))
+                            .foregroundStyle(Retro.warning)
+                            .clipShape(Capsule())
+                            .overlay(Capsule().stroke(Retro.warning.opacity(0.4)))
+                    }
+                }
                 Text(windowSubtitle)
                     .font(.system(size: 8, weight: .bold, design: .monospaced))
                     .foregroundStyle(store.isDeadlineDayRush ? Retro.warning : CareerPalette.mutedInk)
@@ -392,7 +407,8 @@ struct TransfersView: View {
         Transfer Centre. Transfer budget \(formatMoney(store.userClub.transferBudget)). \
         Squad \(store.userClub.players.count) of 30. \(store.transferMarket.count) market targets. \
         \(store.pendingTransferDeals.count) deals in progress. \(store.pendingOffers.count) offers received. \
-        \(store.shortlistedPlayerIDs.count) shortlisted. \(store.transferWindowStatus).
+        \(store.shortlistedPlayerIDs.count) shortlisted. \(store.transferWindowStatus). \
+        \(store.isDeadlineDayRush && tab == .negotiations ? " Deadline day rush — settle your negotiations before the window shuts." : "")
         """)
     }
 

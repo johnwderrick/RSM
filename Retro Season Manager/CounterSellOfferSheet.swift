@@ -34,91 +34,100 @@ struct CounterSellOfferSheet: View {
     var body: some View {
         ZStack {
             CareerPalette.canvas.ignoresSafeArea()
-            VStack(spacing: 16) {
-                HStack {
-                    Spacer()
-                    Button { dismiss() } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 24))
-                            .foregroundStyle(CareerPalette.mutedInk)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("career.transfers.countersell.close")
-                }
-
-                VStack(spacing: 4) {
-                    Text(offer.playerName.uppercased())
-                        .font(.system(size: 17, weight: .black, design: .monospaced))
-                        .foregroundStyle(CareerPalette.ink)
-                    Text("\(buyerClub?.name ?? "Unknown club") want to sign him")
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
-                        .foregroundStyle(CareerPalette.mutedInk)
-                }
-
-                Panel(title: "THEIR OFFER") {
+            // One stable scroll container (the shared sheet convention):
+            // the result banner grows the content past a landscape sheet's
+            // height, so everything — header row included — scrolls here
+            // instead of being vertically centred and clipped at both ends.
+            ScrollView {
+                VStack(spacing: 16) {
                     HStack {
-                        Text(formatMoney(theirLatestOffer))
-                            .font(.system(size: 19, weight: .black, design: .monospaced))
-                            .foregroundStyle(CareerPalette.line)
+                        // The accept fallback lives in the top row so it is
+                        // visible the moment the sheet opens, whatever the
+                        // result banner does to the layout below.
+                        Button {
+                            Haptics.tap()
+                            var acceptedOffer = offer
+                            acceptedOffer.amount = theirLatestOffer
+                            onDone(store.acceptOffer(acceptedOffer))
+                        } label: {
+                            Text("ACCEPT THEIR OFFER")
+                                .font(.system(size: 9, weight: .black, design: .monospaced))
+                                .foregroundStyle(CareerPalette.mutedInk)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("career.transfers.countersell.accept")
+                        .accessibilityLabel("Accept their offer of \(formatMoney(theirLatestOffer))")
                         Spacer()
+                        Button { dismiss() } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 24))
+                                .foregroundStyle(CareerPalette.mutedInk)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("career.transfers.countersell.close")
                     }
-                }
 
-                Panel(title: "YOUR ASKING PRICE") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(formatMoney(Int(askingAmount)))
-                            .font(.system(size: 19, weight: .black, design: .monospaced))
+                    VStack(spacing: 4) {
+                        Text(offer.playerName.uppercased())
+                            .font(.system(size: 17, weight: .black, design: .monospaced))
                             .foregroundStyle(CareerPalette.ink)
-                        Slider(value: $askingAmount, in: Double(theirLatestOffer)...Double(offer.amount) * 2.2, step: 100)
-                            .tint(CareerPalette.line)
-                    }
-                }
-
-                if let lastResultReason {
-                    Text(lastResultReason)
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
-                        .foregroundStyle(CareerPalette.ink.opacity(0.85))
-                        .padding(10)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(CareerPalette.surface)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(CareerPalette.line.opacity(0.16)))
-                        .accessibilityIdentifier("career.transfers.countersell.result")
-                }
-
-                Spacer(minLength: 0)
-
-                VStack(spacing: 10) {
-                    Button {
-                        Haptics.tap()
-                        submitCounter()
-                    } label: {
-                        Text("SEND COUNTER: \(formatMoney(Int(askingAmount)))")
-                            .font(.system(size: 13, weight: .black, design: .monospaced))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(CareerPalette.line)
-                            .foregroundStyle(.white)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                    }
-                    .buttonStyle(PressableButtonStyle())
-                    .accessibilityIdentifier("career.transfers.countersell.send")
-
-                    Button {
-                        Haptics.tap()
-                        var acceptedOffer = offer
-                        acceptedOffer.amount = theirLatestOffer
-                        onDone(store.acceptOffer(acceptedOffer))
-                    } label: {
-                        Text("ACCEPT THEIR OFFER: \(formatMoney(theirLatestOffer))")
-                            .font(.system(size: 9, weight: .black, design: .monospaced))
+                        Text("\(buyerClub?.name ?? "Unknown club") want to sign him")
+                            .font(.system(size: 9, weight: .bold, design: .monospaced))
                             .foregroundStyle(CareerPalette.mutedInk)
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("career.transfers.countersell.accept")
+
+                    Panel(title: "THEIR OFFER") {
+                        HStack {
+                            Text(formatMoney(theirLatestOffer))
+                                .font(.system(size: 19, weight: .black, design: .monospaced))
+                                .foregroundStyle(CareerPalette.line)
+                            Spacer()
+                        }
+                    }
+
+                    Panel(title: "YOUR ASKING PRICE") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(formatMoney(Int(askingAmount)))
+                                .font(.system(size: 19, weight: .black, design: .monospaced))
+                                .foregroundStyle(CareerPalette.ink)
+                            Slider(value: $askingAmount, in: Double(theirLatestOffer)...Double(offer.amount) * 2.2, step: 100)
+                                .tint(CareerPalette.line)
+                        }
+                    }
+
+                    if let lastResultReason {
+                        Text(lastResultReason)
+                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            .foregroundStyle(CareerPalette.ink.opacity(0.85))
+                            .padding(10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(CareerPalette.surface)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(CareerPalette.line.opacity(0.16)))
+                            .accessibilityIdentifier("career.transfers.countersell.result")
+                    }
+
+                    VStack(spacing: 10) {
+                        Button {
+                            Haptics.tap()
+                            submitCounter()
+                        } label: {
+                            Text("SEND COUNTER: \(formatMoney(Int(askingAmount)))")
+                                .font(.system(size: 13, weight: .black, design: .monospaced))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(CareerPalette.line)
+                                .foregroundStyle(.white)
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                        }
+                        .buttonStyle(PressableButtonStyle())
+                        .accessibilityIdentifier("career.transfers.countersell.send")
+                    }
                 }
+                .padding(24)
+                .frame(maxWidth: .infinity)
             }
-            .padding(24)
+            .accessibilityIdentifier("career.transfers.countersell.scroll")
         }
         .font(.system(.body, design: .monospaced))
         .foregroundStyle(CareerPalette.ink)
