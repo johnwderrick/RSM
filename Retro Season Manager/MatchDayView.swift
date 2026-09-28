@@ -641,6 +641,12 @@ struct MatchView: View {
     @State private var showConfetti = false
     @State private var confettiColors: [Color] = []
     @State private var showKickoffIntro = false
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    /// Every iPhone in landscape reports compact height; the compact
+    /// branches below keep the score, the key stats and every match
+    /// control on screen there, instead of squeezing the commentary
+    /// feed (and the controls) out of the layout.
+    private var compact: Bool { verticalSizeClass == .compact }
 
     private var userGoals: Int { live.userSide == .home ? live.homeGoals : live.awayGoals }
     private var opponentGoals: Int { live.userSide == .home ? live.awayGoals : live.homeGoals }
@@ -966,12 +972,22 @@ struct MatchView: View {
                     .frame(width: 64, alignment: .leading)
                 Spacer()
                 HStack(spacing: 10) {
-                    Text(live.homeShort).fontWeight(.bold)
+                    Text(live.homeShort)
+                        .fontWeight(.bold)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                     Text("\(live.homeGoals) - \(live.awayGoals)")
                         .font(.system(.title3, design: .monospaced).bold())
                         .foregroundStyle(Retro.highlight)
-                    Text(live.awayShort).fontWeight(.bold)
+                        .monospacedDigit()
+                    Text(live.awayShort)
+                        .fontWeight(.bold)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                 }
+                .accessibilityElement(children: .ignore)
+                .accessibilityIdentifier("career.match.score")
+                .accessibilityLabel("\(live.homeName) \(live.homeGoals), \(live.awayName) \(live.awayGoals)")
                 Spacer()
                 playPauseButton
             }
@@ -1024,6 +1040,7 @@ struct MatchView: View {
         }
         .buttonStyle(.plain)
         .disabled(live.isFinished)
+        .accessibilityIdentifier("career.match.pause")
     }
 
     // MARK: Stats
@@ -1033,15 +1050,49 @@ struct MatchView: View {
             Text("\(live.stadium) · Att. \(live.attendance.formatted())")
                 .font(.system(.caption, design: .monospaced))
                 .foregroundStyle(Retro.text.opacity(0.8))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
 
-            VStack(spacing: 6) {
-                ForEach(Array(matchStatPairs.enumerated()), id: \.offset) { _, stat in
-                    statRow(home: stat.0, label: stat.1, away: stat.2)
+            if compact {
+                // Phone landscape: the six fixed rows squeezed the
+                // commentary feed off-screen entirely. One dense line
+                // keeps possession, shots and ratings readable while the
+                // feed gets the room; the half-time overlay still shows
+                // the full six-row recap from the same `matchStatPairs`.
+                compactStatsRow
+            } else {
+                VStack(spacing: 6) {
+                    ForEach(Array(matchStatPairs.enumerated()), id: \.offset) { _, stat in
+                        statRow(home: stat.0, label: stat.1, away: stat.2)
+                    }
                 }
+                .accessibilityIdentifier("career.match.stats")
             }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
+    }
+
+    /// The condensed always-visible stat line for phone landscape —
+    /// purely derived from the same live values the full rows read, no
+    /// new engine state.
+    private var compactStatsRow: some View {
+        let userPoss = live.userSide == .home ? live.homePossession : 100 - live.homePossession
+        let pair = live.userSide == .home
+            ? (live.shots.home, live.shots.away, live.shotsOnTarget.home, live.shotsOnTarget.away)
+            : (live.shots.away, live.shots.home, live.shotsOnTarget.away, live.shotsOnTarget.home)
+        let userRating = live.userSide == .home ? live.teamRating.home : live.teamRating.away
+        let oppRating = live.userSide == .home ? live.teamRating.away : live.teamRating.home
+        return Text("POSS \(userPoss)% · SHOTS \(pair.0) (\(pair.2)) vs \(pair.1) (\(pair.3)) · RAT \(ratingText(userRating)) vs \(ratingText(oppRating))")
+            .font(.system(.caption2, design: .monospaced).bold())
+            .foregroundStyle(Retro.text.opacity(0.85))
+            .monospacedDigit()
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+            .frame(maxWidth: .infinity)
+            .accessibilityElement(children: .ignore)
+            .accessibilityIdentifier("career.match.statsLine")
+            .accessibilityLabel("You \(pair.0) shots, \(pair.2) on target, possession \(userPoss) percent, team rating \(ratingText(userRating)). Opponent \(pair.1) shots, \(pair.3) on target, rating \(ratingText(oppRating)).")
     }
 
     /// The live head-to-head stat rows — shared by the always-visible
@@ -1156,51 +1207,114 @@ struct MatchView: View {
         VStack(spacing: 6) {
             momentumBar
             possessionBar
-            HStack(spacing: 8) {
-                ForEach([1.0, 2.0, 3.0], id: \.self) { value in
-                    Button {
-                        live.setSpeed(value)
-                    } label: {
-                        Text("\(Int(value))×")
-                            .font(.system(.caption, design: .monospaced).bold())
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(live.speed == value ? Retro.accent : Retro.panel)
-                            .foregroundStyle(live.speed == value ? Retro.background : Retro.text)
-                            .clipShape(RoundedRectangle(cornerRadius: 5))
+            if compact {
+                // Phone landscape: two balanced rows keep every control
+                // tappable at ~40pt heights instead of one overstuffed
+                // row that clipped the mentality/instruction menus.
+                HStack(spacing: 8) {
+                    ForEach([1.0, 2.0, 3.0], id: \.self) { value in
+                        speedButton(value)
                     }
-                    .buttonStyle(.plain)
+
+                    barButton("SKIP") { live.skipToEnd() }
+
+                    Spacer()
+
+                    barButton("SUBS \(live.userSubsLeft)/5") { showSubs = true }
+                        .disabled(live.userSubsLeft == 0)
                 }
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("career.match.controlsRow1")
 
-                barButton("SKIP") { live.skipToEnd() }
+                HStack(spacing: 8) {
+                    Text("MENTALITY")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundStyle(Retro.text.opacity(0.8))
+                    Picker("Mentality", selection: Binding(
+                        get: { live.userMentality },
+                        set: { live.userMentality = $0 }
+                    )) {
+                        ForEach(Mentality.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                    .pickerStyle(.menu)
+                    .tint(Retro.accent)
+                    .accessibilityIdentifier("career.match.mentality")
 
-                Spacer()
+                    Text("INSTRUCTION")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundStyle(Retro.text.opacity(0.8))
+                    Picker("Instruction", selection: Binding(
+                        get: { live.userInstruction },
+                        set: { live.userInstruction = $0 }
+                    )) {
+                        ForEach(MatchInstruction.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                    .pickerStyle(.menu)
+                    .tint(Retro.highlight)
+                    .accessibilityIdentifier("career.match.instruction")
 
-                Picker("Mentality", selection: Binding(
-                    get: { live.userMentality },
-                    set: { live.userMentality = $0 }
-                )) {
-                    ForEach(Mentality.allCases) { Text($0.rawValue).tag($0) }
+                    Spacer()
                 }
-                .pickerStyle(.menu)
-                .tint(Retro.accent)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("career.match.controlsRow2")
+            } else {
+                HStack(spacing: 8) {
+                    ForEach([1.0, 2.0, 3.0], id: \.self) { value in
+                        speedButton(value)
+                    }
 
-                Picker("Instruction", selection: Binding(
-                    get: { live.userInstruction },
-                    set: { live.userInstruction = $0 }
-                )) {
-                    ForEach(MatchInstruction.allCases) { Text($0.rawValue).tag($0) }
+                    barButton("SKIP") { live.skipToEnd() }
+
+                    Spacer()
+
+                    Picker("Mentality", selection: Binding(
+                        get: { live.userMentality },
+                        set: { live.userMentality = $0 }
+                    )) {
+                        ForEach(Mentality.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                    .pickerStyle(.menu)
+                    .tint(Retro.accent)
+                    .accessibilityIdentifier("career.match.mentality")
+
+                    Picker("Instruction", selection: Binding(
+                        get: { live.userInstruction },
+                        set: { live.userInstruction = $0 }
+                    )) {
+                        ForEach(MatchInstruction.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                    .pickerStyle(.menu)
+                    .tint(Retro.highlight)
+                    .accessibilityIdentifier("career.match.instruction")
+
+                    barButton("SUBS \(live.userSubsLeft)/5") { showSubs = true }
+                        .disabled(live.userSubsLeft == 0)
                 }
-                .pickerStyle(.menu)
-                .tint(Retro.highlight)
-
-                barButton("SUBS \(live.userSubsLeft)/5") { showSubs = true }
-                    .disabled(live.userSubsLeft == 0)
             }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
         .background(Retro.panel)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("career.match.controlBar")
+    }
+
+    private func speedButton(_ value: Double) -> some View {
+        Button {
+            live.setSpeed(value)
+        } label: {
+            Text("\(Int(value))×")
+                .font(.system(.caption, design: .monospaced).bold())
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(live.speed == value ? Retro.accent : Retro.panel)
+                .foregroundStyle(live.speed == value ? Retro.background : Retro.text)
+                .clipShape(RoundedRectangle(cornerRadius: 5))
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("career.match.speed.\(Int(value))")
+        .accessibilityLabel("Speed \(Int(value)) times")
+        .accessibilityAddTraits(live.speed == value ? [.isSelected] : [])
     }
 
     private var possessionBar: some View {

@@ -77,7 +77,29 @@ extension GameStore {
                         isHome: false, opponentIndex: fixture.homeIndex)
         }
         currentMatchday = 4
-        currentDate = date(forMatchday: currentMatchday)
+
+        // 4b. Bring the calendar forward through the real day loop instead
+        //     of teleporting to the matchday-4 date: the League Trophy's
+        //     first round falls between matchdays 3 and 4, and teleporting
+        //     stranded the user's live tie in the past — the round
+        //     processors only fire when the user has no tie left, so the
+        //     stale tie leaked into `nextUserMatchDate` and the dashboard
+        //     counted down to a negative "Next match in -12 days". Walking
+        //     like a real CONTINUE tap resolves any cup day in the window
+        //     abstractly (the store's own force-resolve path, which plays
+        //     the whole round and reports the user's result), so every
+        //     competition stays coherent and the next match is always in
+        //     the future. The league results above are untouched — the walk
+        //     never crosses a league day because `advanceDay` stops there.
+        var safety = 0
+        while currentDate < date(forMatchday: currentMatchday) && !isSeasonOver && safety < 60 {
+            if isUserMatchToday {
+                resolveTodaysUserMatchAbstractly()
+            } else {
+                advanceDay()
+            }
+            safety += 1
+        }
 
         // 5. The deterministic inbox, seeded AFTER the matchday simulation
         //    so the fixture's items sit newest-first at the top of the
