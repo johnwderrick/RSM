@@ -55,6 +55,22 @@ final class CareerPreMatchUITests: XCTestCase {
         app.descendants(matching: .any)["career.prematch.screen"].waitForExistence(timeout: timeout)
     }
 
+    /// The pinned action bar can cover a prompt that exists just below
+    /// the fold. XCUITest's automatic scroll-to-visible sometimes leaves
+    /// its hit point under the bar. One scroll reveals the prompt; asking
+    /// `isHittable` here is unreliable on this landscape-locked app and
+    /// repeated swipes can carry the prompt past the top edge.
+    private func revealPrompt(in app: XCUIApplication) {
+        let scroll = app.scrollViews["career.prematch.scroll"]
+        XCTAssertTrue(scroll.waitForExistence(timeout: 4), "Pre-match scroll container missing")
+        scroll.swipeUp()
+    }
+
+    private func disappears(_ element: XCUIElement, within timeout: TimeInterval = 4) -> Bool {
+        let gone = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: element)
+        return XCTWaiter.wait(for: [gone], timeout: timeout) == .completed
+    }
+
     // MARK: - Opening the hub
 
     func testPreMatchHubOpensWithFixtureFormAndOdds() throws {
@@ -146,15 +162,15 @@ final class CareerPreMatchUITests: XCTestCase {
         // (option 0) — the real store paths behind the buttons.
         let talkOption = app.buttons["career.prematch.talk.0"]
         XCTAssertTrue(talkOption.waitForExistence(timeout: 4), "Team talk options missing")
+        revealPrompt(in: app)
         talkOption.tap()
-        XCTAssertFalse(talk.waitForExistence(timeout: 4),
-                       "Team talk card should disappear once answered")
+        XCTAssertTrue(disappears(talk), "Team talk card should disappear once answered")
 
         let pressOption = app.buttons["career.prematch.press.0"]
         XCTAssertTrue(pressOption.waitForExistence(timeout: 4), "Press options missing")
+        revealPrompt(in: app)
         pressOption.tap()
-        XCTAssertFalse(press.waitForExistence(timeout: 4),
-                       "Press card should disappear once answered")
+        XCTAssertTrue(disappears(press), "Press card should disappear once answered")
 
         // Both cards gone: the hub still stands, and KICK OFF still works
         // from here.
