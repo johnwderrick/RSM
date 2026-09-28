@@ -1368,26 +1368,81 @@ struct MatchView: View {
 
     // MARK: Full time
 
+    /// The full-time presentation: one scroll container for the result
+    /// story (verdict, score, MOTM, ratings, interview) with CONTINUE
+    /// pinned in a footer bar, so the way out is never below the fold on
+    /// compact phone landscape. The result, ratings, interview effects
+    /// and the `finishLiveMatch()` commit are exactly the pre-existing
+    /// production paths — this is a presentation redesign only.
     private var fullTimeOverlay: some View {
         ZStack {
             Color.black.opacity(0.75).ignoresSafeArea()
-            GeometryReader { geo in
-                ScrollView {
-                    fullTimeCard
-                        .frame(maxWidth: .infinity, minHeight: geo.size.height)
+            VStack(spacing: 0) {
+                GeometryReader { geo in
+                    ScrollView {
+                        fullTimeCard
+                            .frame(maxWidth: .infinity, minHeight: geo.size.height)
+                    }
                 }
+                fullTimeFooter
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("career.postMatch.screen")
+    }
+
+    /// CONTINUE lives outside the scroll container so it stays reachable
+    /// at every size class; the commit path is unchanged.
+    private var fullTimeFooter: some View {
+        VStack(spacing: 0) {
+            Divider().overlay(Retro.accent.opacity(0.4))
+            Button {
+                store.finishLiveMatch()
+            } label: {
+                Text("CONTINUE ▸")
+                    .font(.system(.body, design: .monospaced).bold())
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 44)
+                    .padding(.vertical, 8)
+                    .background(Retro.accent)
+                    .foregroundStyle(Retro.background)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("career.postMatch.continue")
+        }
+        .background(Retro.panel)
     }
 
     private var fullTimeCard: some View {
         VStack(spacing: 12) {
             Text("FULL TIME")
-                .font(.system(.title2, design: .monospaced).bold())
-                .foregroundStyle(Retro.accent)
+                .font(.system(.caption, design: .monospaced).bold())
+                .foregroundStyle(Retro.text.opacity(0.8))
+
+            // The verdict leads: outcome word in the result's colour,
+            // then the score, so the hierarchy reads result → score → story.
+            Text(fullTimeVerdict.title)
+                .font(.system(.title, design: .monospaced).bold())
+                .padding(.horizontal, 18)
+                .padding(.vertical, 6)
+                .background(fullTimeVerdict.color)
+                .foregroundStyle(Retro.background)
+                .clipShape(Capsule())
+                .accessibilityElement(children: .ignore)
+                .accessibilityIdentifier("career.postMatch.verdict")
+                .accessibilityLabel("\(fullTimeVerdict.title). You \(userWon ? "won" : userDrew ? "drew" : "lost") \(userGoals)-\(opponentGoals) \(userDrew ? "with" : "against") \(live.userSide == .home ? live.awayName : live.homeName)")
+
             Text("\(live.homeName) \(live.homeGoals) - \(live.awayGoals) \(live.awayName)")
                 .font(.system(.title3, design: .monospaced).bold())
+                .monospacedDigit()
                 .foregroundStyle(Retro.highlight)
+                .multilineTextAlignment(.center)
+                .accessibilityElement(children: .ignore)
+                .accessibilityIdentifier("career.postMatch.score")
+
+            Text(fullTimeVerdict.flavor)
+                .font(.system(.caption, design: .monospaced))
+                .foregroundStyle(Retro.text.opacity(0.9))
                 .multilineTextAlignment(.center)
 
             if store.areRivals(live.homeName, live.awayName) {
@@ -1398,26 +1453,33 @@ struct MatchView: View {
 
             if let motm = live.userPlayerRatings.first, !live.motmName.isEmpty {
                 motmCard(name: live.motmName, rating: motm.rating)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityIdentifier("career.postMatch.motm")
+                    .accessibilityLabel("Man of the match \(live.motmName), rating \(String(format: "%.1f", motm.rating))")
             }
 
             Text("YOUR PLAYER RATINGS")
                 .font(.system(.caption, design: .monospaced).bold())
                 .foregroundStyle(Retro.text.opacity(0.8))
-            ScrollView {
-                VStack(spacing: 3) {
-                    ForEach(Array(live.userPlayerRatings.enumerated()), id: \.offset) { _, entry in
-                        HStack {
-                            Text(surname(entry.player.name))
-                            Spacer()
-                            Text(String(format: "%.1f", entry.rating))
-                                .foregroundStyle(ratingColor(entry.rating))
-                                .bold()
-                        }
-                        .font(.system(.callout, design: .monospaced))
+            // Flat list in the overlay's single scroll container — the
+            // old nested ScrollView trapped scrolling on compact phones.
+            VStack(spacing: 3) {
+                ForEach(Array(live.userPlayerRatings.enumerated()), id: \.offset) { _, entry in
+                    HStack {
+                        Text(surname(entry.player.name))
+                        Spacer()
+                        Text(String(format: "%.1f", entry.rating))
+                            .foregroundStyle(ratingColor(entry.rating))
+                            .bold()
                     }
+                    .font(.system(.callout, design: .monospaced))
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityIdentifier("career.postMatch.ratingRow")
+                    .accessibilityLabel("\(entry.player.name), rating \(String(format: "%.1f", entry.rating))")
                 }
             }
-            .frame(maxHeight: 130)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("career.postMatch.ratings")
 
             if !interviewAnswered {
                 let question = store.makePostMatchInterview(won: userWon, draw: userDrew)
@@ -1441,32 +1503,31 @@ struct MatchView: View {
                                     .clipShape(RoundedRectangle(cornerRadius: 6))
                             }
                             .buttonStyle(.plain)
+                            .accessibilityIdentifier("career.postMatch.interviewOption")
                         }
                     }
                 }
                 .padding(.vertical, 4)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("career.postMatch.interview")
+            } else {
+                Text("🎙 Interview filed.")
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundStyle(Retro.text.opacity(0.7))
             }
-
-            Button {
-                store.finishLiveMatch()
-            } label: {
-                Text("CONTINUE ▸")
-                    .font(.system(.body, design: .monospaced).bold())
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: 44)
-                    .padding(.vertical, 12)
-                    .background(Retro.accent)
-                    .foregroundStyle(Retro.background)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("career.postMatch.continue")
         }
         .padding(24)
         .frame(maxWidth: 420)
         .background(Retro.panel)
         .clipShape(RoundedRectangle(cornerRadius: 14))
-        .padding(24)
+        .padding(.horizontal, 24)
+        .padding(.top, 24)
+    }
+
+    /// The result verdict shown above the score — derived purely from the
+    /// finished match, mirroring how `finishLiveMatch` classifies it.
+    private var fullTimeVerdict: PostMatchVerdict {
+        PostMatchVerdict(won: userWon, drew: userDrew)
     }
 
     /// A small standout card for the Man of the Match — previously a
@@ -1609,5 +1670,46 @@ struct SubsSheet: View {
             }
         }
         .frame(maxWidth: .infinity)
+    }
+}
+
+/// The full-time presentation verdict, shared by the redesigned overlay
+/// and its tests. Purely presentational: `finishLiveMatch` classifies the
+/// result independently from `won`/`draw`, which this mirrors but never
+/// feeds.
+enum PostMatchVerdict {
+    case win
+    case draw
+    case loss
+
+    init(won: Bool, drew: Bool) {
+        self = won ? .win : (drew ? .draw : .loss)
+    }
+
+    var title: String {
+        switch self {
+        case .win: return "VICTORY"
+        case .draw: return "DRAW"
+        case .loss: return "DEFEAT"
+        }
+    }
+
+    /// The verdict's colour, drawn from the brand palette: emerald for the
+    /// high, gold for the point earned, warning red for the defeat.
+    var color: Color {
+        switch self {
+        case .win: return Retro.accent
+        case .draw: return Retro.highlight
+        case .loss: return Retro.warning
+        }
+    }
+
+    /// A short verdict line under the score.
+    var flavor: String {
+        switch self {
+        case .win: return "Three points in the bag."
+        case .draw: return "A point earned."
+        case .loss: return "Not our day — regroup and go again."
+        }
     }
 }
