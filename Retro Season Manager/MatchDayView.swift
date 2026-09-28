@@ -1707,8 +1707,8 @@ enum PostMatchVerdict {
     /// A short verdict line under the score.
     var flavor: String {
         switch self {
-        case .win: return "Three points in the bag."
-        case .draw: return "A point earned."
+        case .win: return "A win to celebrate."
+        case .draw: return "Honours even."
         case .loss: return "Not our day — regroup and go again."
         }
     }
