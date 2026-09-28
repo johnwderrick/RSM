@@ -60,6 +60,7 @@
 		B7E4F5A6C8D9071928374F01 /* CareerFacilitiesUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E4F5A6C8D9071928374F02 /* CareerFacilitiesUITests.swift */; };
 		BDE8A8B66B84FB66FC2D1421 /* CareerOfficeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDE8A8B66B84FB66FC2E311E /* CareerOfficeUITests.swift */; };
 		D0FACED0FACE000000000A01 /* CareerHallOfFameUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0FACED0FACE000000000A02 /* CareerHallOfFameUITests.swift */; };
+		D0FACED0FACE000000000B01 /* CareerLegacyMuseumUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0FACED0FACE000000000B02 /* CareerLegacyMuseumUITests.swift */; };
 		C0FAFAED0FAFE00000000A01 /* CareerAchievementsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FAFAED0FAFE00000000A02 /* CareerAchievementsUITests.swift */; };
 		C0FAFAED0FAFE00000000A03 /* CareerPreMatchUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FAFAED0FAFE00000000A04 /* CareerPreMatchUITests.swift */; };
 		A1B2C3D4E5F6071829384A01 /* TransfersFixtureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6071829384A02 /* TransfersFixtureTests.swift */; };
@@ -150,6 +151,7 @@
 		B7E4F5A6C8D9071928374F02 /* CareerFacilitiesUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CareerFacilitiesUITests.swift; sourceTree = "<group>"; };
 		BDE8A8B66B84FB66FC2E311E /* CareerOfficeUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CareerOfficeUITests.swift; sourceTree = "<group>"; };
 		D0FACED0FACE000000000A02 /* CareerHallOfFameUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CareerHallOfFameUITests.swift; sourceTree = "<group>"; };
+		D0FACED0FACE000000000B02 /* CareerLegacyMuseumUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CareerLegacyMuseumUITests.swift; sourceTree = "<group>"; };
 		C0FAFAED0FAFE00000000A02 /* CareerAchievementsUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CareerAchievementsUITests.swift; sourceTree = "<group>"; };
 		C0FAFAED0FAFE00000000A04 /* CareerPreMatchUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CareerPreMatchUITests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6071829384A02 /* TransfersFixtureTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TransfersFixtureTests.swift; sourceTree = "<group>"; };
@@ -321,6 +323,7 @@
 				B7E4F5A6C8D9071928374F02 /* CareerFacilitiesUITests.swift */,
 				BDE8A8B66B84FB66FC2E311E /* CareerOfficeUITests.swift */,
 				D0FACED0FACE000000000A02 /* CareerHallOfFameUITests.swift */,
+				D0FACED0FACE000000000B02 /* CareerLegacyMuseumUITests.swift */,
 				C0FAFAED0FAFE00000000A02 /* CareerAchievementsUITests.swift */,
 				C0FAFAED0FAFE00000000A04 /* CareerPreMatchUITests.swift */,
 				DED8E8CEA24F798E8869840C /* CareerContractSheetsUITests.swift */,
@@ -549,6 +552,7 @@
 				B7E4F5A6C8D9071928374F01 /* CareerFacilitiesUITests.swift in Sources */,
 				BDE8A8B66B84FB66FC2D1421 /* CareerOfficeUITests.swift in Sources */,
 				D0FACED0FACE000000000A01 /* CareerHallOfFameUITests.swift in Sources */,
+				D0FACED0FACE000000000B01 /* CareerLegacyMuseumUITests.swift in Sources */,
 				C0FAFAED0FAFE00000000A01 /* CareerAchievementsUITests.swift in Sources */,
 				C0FAFAED0FAFE00000000A03 /* CareerPreMatchUITests.swift in Sources */,
 				1676624D235FCD63EE4EA8DA /* CareerContractSheetsUITests.swift in Sources */,

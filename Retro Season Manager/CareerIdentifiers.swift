@@ -427,6 +427,118 @@ enum CareerIdentifiers {
     // MARK: Helpers
 
     /// Lowercased, hyphenated slug for identifier components.
+    // MARK: Football Museum (light-card hub over the legacy archive)
+
+    /// The museum hub's single vertical scroll container — the one
+    /// scrollable identity shared by every wing, matching the Hall of
+    /// Fame's one-container rule.
+    static let museumScroll = "career.museum.scroll"
+
+    /// The museum hub's header band (title, archive summary).
+    static let museumHeader = "career.museum.header"
+
+    /// The museum hub's close control (presented as a sheet from the
+    /// main menu).
+    static let museumClose = "career.museum.close"
+
+    /// Stable selector for one wing tab (by wing slug) in the museum's
+    /// always-3-across wing switcher.
+    static func museumWing(_ wing: String) -> String {
+        "career.museum.wing.\(slug(wing))"
+    }
+
+    /// The hub's overview strip (careers, trophies, legends, best tier).
+    static let museumOverview = "career.museum.overview"
+
+    /// Stable selector for one archived-career card in the Careers wing
+    /// (keyed by the manager-name slug — index-based ids would silently
+    /// shift whenever a career is deleted mid-session).
+    static func museumCareer(_ managerName: String) -> String {
+        "career.museum.career.\(slug(managerName))"
+    }
+
+    /// The delete control on one archived-career card (same key).
+    static func museumCareerDelete(_ managerName: String) -> String {
+        "career.museum.career.delete.\(slug(managerName))"
+    }
+
+    /// The delete confirmation alert's destructive button.
+    static let museumDeleteConfirm = "career.museum.delete.confirm"
+
+    /// The delete confirmation alert's cancel button.
+    static let museumDeleteCancel = "career.museum.delete.cancel"
+
+    /// Per-wing end-of-content scroll anchors (one per wing slug).
+    static func museumEnd(_ wing: String) -> String {
+        "career.museum.\(slug(wing)).end"
+    }
+
+    /// The museum's shared empty state (no archives at all, or an empty
+    /// aggregate wing).
+    static let museumEmpty = "career.museum.empty"
+
+    /// The career detail sheet's root (keyed by manager name slug so two
+    /// managers with the same name never share an anchor) and its close.
+    static func museumDetail(_ managerName: String) -> String {
+        "career.museum.detail.\(slug(managerName))"
+    }
+
+    static let museumDetailClose = "career.museum.detail.close"
+
+    /// One newspaper front-page card in the Newspapers wing (by index
+    /// across all careers, newest career group first).
+    static func museumNewspaper(_ index: Int) -> String {
+        "career.museum.newspaper.\(index)"
+    }
+
+    /// The Newspapers wing's article sheet and its close control.
+    static let museumPaperClose = "career.museum.paper.close"
+    static let museumPaper = "career.museum.paper"
+
+    /// One trophy in the Trophy Cabinet wing's grid (by index in the
+    /// cross-career honour tally).
+    static func museumTrophy(_ index: Int) -> String {
+        "career.museum.trophy.\(index)"
+    }
+
+    /// One leaderboard row in the Managers wing (by final position).
+    static func museumLeaderboardRow(_ index: Int) -> String {
+        "career.museum.leaderboard.\(index)"
+    }
+
+    /// The Managers wing's two comparison pickers ("Career A"/"Career B").
+    static func museumCompareSlot(_ label: String) -> String {
+        "career.museum.compare.\(slug(label))"
+    }
+
+    /// The Managers wing's comparison table (present once both slots
+    /// are picked).
+    static let museumCompareTable = "career.museum.compare.table"
+
+    /// One row of the Players wing's wall (by legend-score rank).
+    static func museumPlayer(_ index: Int) -> String {
+        "career.museum.player.\(index)"
+    }
+
+    /// One transfer row in the Record Book wing (by fee rank).
+    static func museumTransfer(_ index: Int) -> String {
+        "career.museum.transfer.\(index)"
+    }
+
+    /// The career detail sheet's own scroll container.
+    static let museumDetailScroll = "career.museum.detail.scroll"
+
+    /// One honour row in the career detail sheet (by index).
+    static func museumDetailHonour(_ index: Int) -> String {
+        "career.museum.detail.honour.\(index)"
+    }
+
+    /// One legend line in the career detail sheet (grouped by club, then
+    /// by index within the group).
+    static func museumDetailLegend(_ group: Int, _ index: Int) -> String {
+        "career.museum.detail.legend.\(group).\(index)"
+    }
+
     static func slug(_ text: String) -> String {
         text.lowercased()
             .replacingOccurrences(of: " ", with: "-")

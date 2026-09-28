@@ -128,6 +128,16 @@ struct ContentView: View {
             _store = State(initialValue: career)
             _experience = State(initialValue: .career)
         }
+        // Deterministic Football Museum fixture: seeds the LegacyArchive
+        // store (Documents/legacy) with two hand-built careers and boots
+        // into the career main menu with NO active save — the museum's
+        // real entry route (the menu tile is enabled because archives
+        // exist). Real player saves are never read or modified (see
+        // GameStore+UITestFixture.swift).
+        if ProcessInfo.processInfo.arguments.contains("UITEST_LEGACY_MUSEUM") {
+            GameStore.seedLegacyMuseumFixtureForDebug()
+            _experience = State(initialValue: .career)
+        }
         if ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_FACILITIES") {
             let career = GameStore()
             career.prepareCareerFacilitiesFixtureForDebug()

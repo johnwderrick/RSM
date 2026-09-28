@@ -935,5 +935,126 @@ extension GameStore {
         let start = (startYear - 1) + seasonNumber
         return "\(start)/\(String(format: "%02d", (start + 1) % 100))"
     }
+
+    // MARK: Football Museum fixture
+
+    /// Deterministic Football Museum fixture for UI tests, launched with
+    /// `UITEST_LEGACY_MUSEUM`. Unlike the Career fixtures this boots no
+    /// career at all — the museum is reachable from the main menu without
+    /// any active save — so it instead seeds the `LegacyArchive` store
+    /// (Documents/legacy) with two hand-built careers whose numbers the
+    /// tests assert against. Real player saves are never read or modified:
+    /// the store is cleared and rebuilt from scratch each launch, so the
+    /// archive state is fully deterministic.
+    ///
+    /// Career A (Ruth Whitmore) is the decorated one — a treble-winning
+    /// 8-season spell with legends, records, transfers and two front
+    /// pages; Career B (Arthur Booth) is the modest 2-season one with no
+    /// honours, legends or pages. The gap gives every wing a real spread:
+    /// a highest-score line, a two-row leaderboard, distinct compare
+    /// values, both a filled and an empty sub-section, and a delete
+    /// target whose removal provably empties the museum.
+    static func seedLegacyMuseumFixtureForDebug() {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let legacyDir = docs.appendingPathComponent("legacy", isDirectory: true)
+        try? FileManager.default.removeItem(at: legacyDir)
+
+        let seasonRecord: (Int, String, String, String) -> SeasonRecord = { season, label, club, division in
+            SeasonRecord(season: season, label: label, userClub: club, userDivision: division,
+                         userPosition: season <= 2 ? 3 : 1,
+                         champion: "Old Trafford Reds", cupWinner: "Riverton FC",
+                         euroWinner: "Continental Kings", communityShieldWinner: "—")
+        }
+
+        // Career A — Ruth Whitmore at Harbour City (2021–2028, 8 seasons).
+        let whitmore = LegacyCareer(
+            id: UUID(uuidString: "AAAAAAAA-0000-4000-8000-000000000001")!,
+            managerName: "Ruth Whitmore", clubName: "Harbour City", startYear: 2021, endYear: 2028,
+            seasonsManaged: 8, finalDivisionName: "Premier Division",
+            careerHonours: ["Premier Division title (2025/26)", "National Cup (2026/27)", "Continental Cup (2027/28)"],
+            autobiography: "Eight seasons of building. Ruth Whitmore arrived with a plan and left with a trophy cabinet that outgrew its room.",
+            timeline: [
+                LegacyCareerMoment(season: 1, year: 2021, icon: "📅", headline: "A new era begins", detail: "Took charge ahead of the new season."),
+                LegacyCareerMoment(season: 5, year: 2025, icon: "🏆", headline: "Champions at last", detail: "The title came home after five years of building."),
+            ],
+            achievementUnlocks: [
+                AchievementUnlock(kind: .promotion, season: 2, date: Date(timeIntervalSince1970: 1_650_000_000), context: "Promoted in the first attempt."),
+                AchievementUnlock(kind: .leagueTitle, season: 5, date: Date(timeIntervalSince1970: 1_750_000_000), context: "Champions at last."),
+                AchievementUnlock(kind: .cupWinner, season: 6, date: Date(timeIntervalSince1970: 1_780_000_000), context: "Cup winners at Wembley."),
+            ],
+            careerAchievementPoints: 120,
+            clubLegends: [
+                ClubLegend(playerID: UUID(uuidString: "BBBBBBBB-0000-4000-8000-000000000001")!,
+                           name: "Mara Voss", position: .forward, nationality: "Sweden", clubName: "Harbour City",
+                           joinedSeason: 1, retiredSeason: 8, finalAge: 33, appearances: 341, goals: 188, assists: 74,
+                           cleanSheets: 0, averageRating: 7.9, seasonsAsCaptain: 4,
+                           trophiesWon: ["Premier Division title (2025/26)", "National Cup (2026/27)", "Continental Cup (2027/28)"],
+                           individualAwards: 3, peakRating: 92, legendScore: 86, isGlobalLegend: false,
+                           biography: "Harbour City's greatest ever goalscorer."),
+                ClubLegend(playerID: UUID(uuidString: "BBBBBBBB-0000-4000-8000-000000000002")!,
+                           name: "Tomas Keller", position: .goalkeeper, nationality: "Germany", clubName: "Harbour City",
+                           joinedSeason: 3, retiredSeason: 8, finalAge: 34, appearances: 190, goals: 0, assists: 0,
+                           cleanSheets: 71, averageRating: 7.4, seasonsAsCaptain: 1,
+                           trophiesWon: ["Premier Division title (2025/26)"],
+                           individualAwards: 1, peakRating: 88, legendScore: 61, isGlobalLegend: false,
+                           biography: "The safe pair of hands behind the title years."),
+            ],
+            history: (1...8).map { seasonRecord($0, "Season \($0)", "Harbour City", "Premier Division") },
+            careerRecordByClub: [:],
+            legacyScore: 500, legacyTier: .legend,
+            recordBook: [
+                "Mara Voss scored 188 goals across eight seasons.",
+                "Tomas Keller kept 71 clean sheets.",
+            ],
+            archivedDate: Date(timeIntervalSince1970: 1_800_000_000),
+            topScorer: LegacyRecordHolder(name: "Mara Voss", value: 188, detail: "188 goals in 341 games"),
+            topAppearances: LegacyRecordHolder(name: "Mara Voss", value: 341, detail: "Eight seasons of service"),
+            topMOTM: LegacyRecordHolder(name: "Mara Voss", value: 42, detail: "Man of the match awards"),
+            recordWin: LegacyRecordHolder(name: "Harbour City", value: 6, detail: "6–0 vs Old Athletic, 2026/27"),
+            bestSeason: LegacyRecordHolder(name: "Harbour City", value: 1, detail: "Champions, 2025/26"),
+            topTransfers: [
+                TransferHistoryEntry(date: Date(timeIntervalSince1970: 1_700_000_000), playerName: "Diego Sarr",
+                                     action: "Sold", otherClub: "Old Athletic", fee: 2400),
+                TransferHistoryEntry(date: Date(timeIntervalSince1970: 1_650_000_000), playerName: "Danny Draper",
+                                     action: "Signed", otherClub: "Riverton FC", fee: 1200),
+            ],
+            frontPages: [
+                Newspaper(date: Date(timeIntervalSince1970: 1_760_000_000), season: 5, outlet: .national,
+                          masthead: "THE DAILY WHISTLE", headline: "CHAMPIONS AT LAST",
+                          standfirst: "Harbour City end a 30-year wait for the title.",
+                          body: "A title won with games to spare, sealed on home turf in front of a disbelieving, delirious full house.",
+                          category: .result, importance: .historic, playerName: "Mara Voss",
+                          playerPosition: .forward, playerAge: 30, clubName: "Harbour City"),
+                Newspaper(date: Date(timeIntervalSince1970: 1_790_000_000), season: 8, outlet: .european,
+                          masthead: "THE CONTINENTAL GAME", headline: "EUROPEAN GLORY FOR HARBOUR CITY",
+                          standfirst: "The Continental Cup comes home.",
+                          body: "A final won on penalties after a night of relentless pressure.",
+                          category: .world, importance: .major, clubName: "Harbour City"),
+            ])
+
+        // Career B — Arthur Booth at Midfield Rovers (2019–2020, 2 seasons).
+        let booth = LegacyCareer(
+            id: UUID(uuidString: "AAAAAAAA-0000-4000-8000-000000000002")!,
+            managerName: "Arthur Booth", clubName: "Midfield Rovers", startYear: 2019, endYear: 2020,
+            seasonsManaged: 2, finalDivisionName: "Regional League",
+            careerHonours: [],
+            autobiography: "Two steady seasons at a small club. Arthur Booth kept Midfield Rovers honest and went home content.",
+            timeline: [
+                LegacyCareerMoment(season: 1, year: 2019, icon: "📅", headline: "A quiet start", detail: "Steadied the side mid-table."),
+            ],
+            achievementUnlocks: [],
+            careerAchievementPoints: 10,
+            clubLegends: [],
+            history: (1...2).map { seasonRecord($0, "Season \($0)", "Midfield Rovers", "Regional League") },
+            careerRecordByClub: [:],
+            legacyScore: 74, legacyTier: .journeyman,
+            recordBook: [],
+            archivedDate: Date(timeIntervalSince1970: 1_700_000_000),
+            topScorer: nil, topAppearances: nil, topMOTM: nil, recordWin: nil, bestSeason: nil,
+            topTransfers: nil, frontPages: nil)
+
+        LegacyArchive.archive(booth)   // archived first → shown second
+        LegacyArchive.archive(whitmore) // archived last → shown first
+    }
 }
 #endif
