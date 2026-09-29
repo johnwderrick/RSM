@@ -258,6 +258,7 @@ struct HomeView: View {
                 .font(.system(.caption, design: .monospaced).bold())
                 .foregroundStyle(store.isUserMatchToday ? Retro.highlight : CareerPalette.mutedInk)
                 .lineLimit(1)
+                .accessibilityIdentifier("career.home.countdown")
         }
     }
 
@@ -315,6 +316,7 @@ struct HomeView: View {
             .clipShape(RoundedRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("career.home.skipToMatch")
     }
 
     private var countdownText: String {
