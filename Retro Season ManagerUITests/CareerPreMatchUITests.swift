@@ -55,15 +55,17 @@ final class CareerPreMatchUITests: XCTestCase {
         app.descendants(matching: .any)["career.prematch.screen"].waitForExistence(timeout: timeout)
     }
 
-    /// The pinned action bar can cover a prompt that exists just below
-    /// the fold. XCUITest's automatic scroll-to-visible sometimes leaves
-    /// its hit point under the bar. One scroll reveals the prompt; asking
-    /// `isHittable` here is unreliable on this landscape-locked app and
-    /// repeated swipes can carry the prompt past the top edge.
+    /// A full `swipeUp()` overshoots the talk choice on CI: XCUITest then
+    /// computes a hit point at the very top edge, where the tap does not
+    /// select it. Use the shorter window drag already proven by the
+    /// lower-content test so the option lands within the scroll viewport.
     private func revealPrompt(in app: XCUIApplication) {
         let scroll = app.scrollViews["career.prematch.scroll"]
         XCTAssertTrue(scroll.waitForExistence(timeout: 4), "Pre-match scroll container missing")
-        scroll.swipeUp()
+        let window = app.windows.firstMatch
+        window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.72))
+            .press(forDuration: 0.05, thenDragTo: window
+                .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.38)))
     }
 
     private func disappears(_ element: XCUIElement, within timeout: TimeInterval = 4) -> Bool {
@@ -168,7 +170,6 @@ final class CareerPreMatchUITests: XCTestCase {
 
         let pressOption = app.buttons["career.prematch.press.0"]
         XCTAssertTrue(pressOption.waitForExistence(timeout: 4), "Press options missing")
-        revealPrompt(in: app)
         pressOption.tap()
         XCTAssertTrue(disappears(press), "Press card should disappear once answered")
 
