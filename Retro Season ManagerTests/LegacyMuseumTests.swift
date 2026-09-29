@@ -19,6 +19,7 @@ final class LegacyMuseumTests: XCTestCase {
     // MARK: - archiveLegacyCareer() populates the new fields
 
     func testArchiveLegacyCareerPopulatesNewMuseumFields() async throws {
+        let existingArchiveIDs = Set(LegacyArchive.all().map(\.id))
         let store = await makeTestStore()
         store.newGame(clubIndex: 0, startYear: 2000, managerName: "Museum Test")
 
@@ -46,8 +47,9 @@ final class LegacyMuseumTests: XCTestCase {
 
         store.returnToMenuAfterCareer()
 
-        guard let info = LegacyArchive.all().first, let career = LegacyArchive.load(id: info.id) else {
-            return XCTFail("Expected the career to be archived")
+        guard let info = LegacyArchive.all().first(where: { !existingArchiveIDs.contains($0.id) }),
+              let career = LegacyArchive.load(id: info.id) else {
+            return XCTFail("Expected this test's career to be archived")
         }
         defer { LegacyArchive.remove(id: career.id) }
 
