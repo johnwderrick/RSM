@@ -38,11 +38,12 @@ final class CareerFixtureCalendarTests: XCTestCase {
         let userLeagueCupTies = store.leagueCupTies.filter {
             !$0.isBye && ($0.homeIndex == userIndex || $0.awayIndex == userIndex)
         }
-        XCTAssertFalse(userLeagueCupTies.isEmpty,
-                       "The draw pairs every club, so the fixture club has a real tie")
-        for tie in userLeagueCupTies where tie.played {
-            XCTAssertFalse(store.leagueCupWinnerName == nil && store.leagueCupRound == tie.round,
-                           "A played user tie must never linger in the still-current round")
+        // The user can be knocked out in round one, so the current round
+        // need not contain a user tie. Any live tie that remains must be
+        // scheduled for today or later, never stranded behind the clock.
+        for tie in userLeagueCupTies where !tie.played {
+            XCTAssertGreaterThanOrEqual(store.leagueCupRoundDate(tie.round), store.currentDate,
+                "An unplayed user tie must never linger behind the current date")
         }
     }
 

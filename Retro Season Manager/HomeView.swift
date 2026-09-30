@@ -279,6 +279,7 @@ struct HomeView: View {
                     .font(.system(.caption2, design: .monospaced).bold())
                     .foregroundStyle(Retro.highlight)
                     .lineLimit(1)
+                    .accessibilityIdentifier("career.home.pendingOffers")
             }
             if store.isDeadlineDayRush, let days = store.daysUntilTransferDeadline {
                 Text(days == 0 ? "🔥 DEADLINE DAY" : "🔥 Deadline in \(days)d")

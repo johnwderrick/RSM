@@ -57,6 +57,12 @@ final class CareerLiveMatchUITests: XCTestCase {
         return Int(token)
     }
 
+    private func pendingOfferCount(_ app: XCUIApplication) -> Int {
+        let badge = anyElement(app, "career.home.pendingOffers")
+        guard badge.exists else { return 0 }
+        return Int(badge.label.split(separator: " ").first(where: { Int($0) != nil }) ?? "") ?? 0
+    }
+
     /// Re-evaluates the element until the predicate holds — plain
     /// re-queries after a tap are racy because SwiftUI may not have
     /// re-rendered the changed trait yet. Uses a standalone expectation
@@ -234,14 +240,29 @@ final class CareerLiveMatchUITests: XCTestCase {
         let model = UIDevice.current.name
         shot(app, "after_fulltime_\(model.contains("17") ? "17pro" : "se")")
 
-        // SKIP TO MATCH must lead to a valid upcoming match: the hub for
-        // the next real fixture.
+        // A newly arrived transfer bid deliberately interrupts SKIP TO
+        // MATCH. Keep skipping after that interruption, as a manager would
+        // with another tap; each interruption must show a new bid rather
+        // than silently leaving the dashboard unchanged.
         let skipToMatch = app.buttons["career.home.skipToMatch"]
         XCTAssertTrue(skipToMatch.waitForExistence(timeout: 6), "SKIP TO MATCH missing")
-        skipToMatch.tap()
-        XCTAssertTrue(app.descendants(matching: .any)["career.prematch.screen"]
-            .waitForExistence(timeout: 15),
-            "SKIP TO MATCH should open the pre-match hub for the next valid match")
+        let preMatch = anyElement(app, "career.prematch.screen")
+        for _ in 0..<5 where !preMatch.exists {
+            let offersBefore = pendingOfferCount(app)
+            skipToMatch.tap()
+            let deadline = Date().addingTimeInterval(20)
+            var offersAfter = offersBefore
+            while Date() < deadline && !preMatch.exists && offersAfter <= offersBefore {
+                offersAfter = pendingOfferCount(app)
+                if offersAfter <= offersBefore { Thread.sleep(forTimeInterval: 0.25) }
+            }
+            if !preMatch.exists {
+                XCTAssertGreaterThan(offersAfter, offersBefore,
+                    "SKIP TO MATCH stopped before the next fixture without a new transfer bid")
+            }
+        }
+        XCTAssertTrue(preMatch.exists,
+            "SKIP TO MATCH should reach the pre-match hub after any new bids interrupting the skip")
         app.terminate()
     }
 }
