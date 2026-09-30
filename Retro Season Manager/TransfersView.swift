@@ -660,6 +660,10 @@ struct TransfersView: View {
 
     private func targetCard(_ target: TransferTarget, context: String) -> some View {
         let player = target.player
+        // A suggested target can also appear in the market grid. Give the
+        // suggested copy its own identifiers so XCUITest and VoiceOver can
+        // distinguish the two controls without changing the market IDs.
+        let actionPrefix = context == "suggested" ? "career.transfers.suggested" : "career.transfers"
         let clubName = sellerName(target)
         let state = store.scoutState(for: target)
         var report: ScoutReport?
@@ -767,7 +771,7 @@ struct TransfersView: View {
                     } label: {
                         Label("ASSIGN SCOUT", systemImage: "binoculars.fill")
                     }
-                    .accessibilityIdentifier("career.transfers.scout.\(player.id.uuidString)")
+                    .accessibilityIdentifier("\(actionPrefix).scout.\(player.id.uuidString)")
                 }
                 Button {
                     Haptics.tap()
@@ -777,10 +781,10 @@ struct TransfersView: View {
                 } label: {
                     Label(shortlisted ? "SHORTLISTED" : "SHORTLIST", systemImage: shortlisted ? "star.fill" : "star")
                 }
-                .accessibilityIdentifier("career.transfers.shortlist.\(player.id.uuidString)")
+                .accessibilityIdentifier("\(actionPrefix).shortlist.\(player.id.uuidString)")
                 Spacer()
                 Button("VIEW PROFILE") { Haptics.tap(); profile = .market(target) }
-                    .accessibilityIdentifier("career.transfers.profile.\(player.id.uuidString)")
+                    .accessibilityIdentifier("\(actionPrefix).profile.\(player.id.uuidString)")
             }
             .font(.system(size: 7, weight: .black, design: .monospaced))
             .buttonStyle(TransferCompactButtonStyle())

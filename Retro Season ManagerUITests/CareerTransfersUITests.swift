@@ -198,6 +198,8 @@ final class CareerTransfersUITests: XCTestCase {
         // both copies invoke the same shortlist action for this player.
         let addShortlist = app.buttons.matching(identifier: "career.transfers.shortlist.\(playerID)").firstMatch
         XCTAssertTrue(addShortlist.waitForExistence(timeout: 6), "The same market card should still offer SHORTLIST")
+        XCTAssertEqual(app.buttons.matching(identifier: "career.transfers.shortlist.\(playerID)").count, 1,
+                       "Suggested and market cards must not expose duplicate shortlist identifiers")
         addShortlist.tap()
 
         // And the shortlist shows a card again.

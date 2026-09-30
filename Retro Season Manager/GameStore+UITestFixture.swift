@@ -77,7 +77,29 @@ extension GameStore {
                         isHome: false, opponentIndex: fixture.homeIndex)
         }
         currentMatchday = 4
-        currentDate = date(forMatchday: currentMatchday)
+
+        // 4b. Bring the calendar forward through the real day loop instead
+        //     of teleporting to the matchday-4 date: the League Trophy's
+        //     first round falls between matchdays 3 and 4, and teleporting
+        //     stranded the user's live tie in the past — the round
+        //     processors only fire when the user has no tie left, so the
+        //     stale tie leaked into `nextUserMatchDate` and the dashboard
+        //     counted down to a negative "Next match in -12 days". Walking
+        //     like a real CONTINUE tap resolves any cup day in the window
+        //     abstractly (the store's own force-resolve path, which plays
+        //     the whole round and reports the user's result), so every
+        //     competition stays coherent and the next match is always in
+        //     the future. The league results above are untouched — the walk
+        //     never crosses a league day because `advanceDay` stops there.
+        var safety = 0
+        while currentDate < date(forMatchday: currentMatchday) && !isSeasonOver && safety < 60 {
+            if isUserMatchToday {
+                resolveTodaysUserMatchAbstractly()
+            } else {
+                advanceDay()
+            }
+            safety += 1
+        }
 
         // 5. The deterministic inbox, seeded AFTER the matchday simulation
         //    so the fixture's items sit newest-first at the top of the
@@ -917,11 +939,212 @@ extension GameStore {
         }
     }
 
+    /// Builds on the shared Career navigation fixture with exactly what
+    /// the redesigned pre-match hub needs, all through the real store
+    /// paths and without touching match outcomes:
+    ///
+    /// - Lands on a matchday whose fixture is the user's league game
+    ///   TODAY, with `pendingTeamTalk` and `pendingPressQuestion`
+    ///   deterministic (set after `enterPreMatch()` clears whatever the
+    ///   random 50% press roll and delegation left behind),
+    /// - the user's lineup intact (a full starting XI lets the tests
+    ///   pin `CONFIRMED LINEUPS` and KICK OFF),
+    /// - the opponent deterministic in position and name.
+    ///
+    /// `UITEST_CAREER_PREMATCH_NO_PROMPTS` opts out of the prompt
+    /// seeding so the tests can also cover the no-prompts variant of
+    /// the hub.
+    @discardableResult
+    func prepareCareerPreMatchFixtureForDebug(skipPrompts: Bool = false) -> GameStore {
+        prepareCareerNavigationFixtureForDebug()
+
+        // The navigation fixture's matchday-4 fixture is not necessarily
+        // the user's; walk the real calendar forward with the same
+        // stopping rules as the CONTINUE fast-forward (advanceDay's own
+        // guard: it never crosses a user match day) until the user has a
+        // match TODAY. No user match is ever played — the store lands in
+        // the exact state a real CONTINUE tap reaches.
+        var safety = 0
+        while !isUserMatchToday && !isSeasonOver && safety < 40 {
+            advanceDay()
+            safety += 1
+        }
+        guard isUserMatchToday else { return self }
+
+        // The hub opens through the production entry point: this is what
+        // seeds the team-talk/press prompts in real play (including the
+        // random press roll and any assistant delegation).
+        enterPreMatch()
+
+        if !skipPrompts {
+            // Make the prompts deterministic: whatever the random roll
+            // left behind is replaced with the known real generators, so
+            // the tests can assert on a definite team talk AND press
+            // conference with stable option labels.
+            pendingTeamTalk = makeTeamTalk()
+            pendingPressQuestion = makePressQuestion()
+        } else {
+            // The no-prompts variant: answer any prompts through the
+            // production delegation path (the same assistant handling the
+            // manager uses), leaving the hub prompt-free exactly as it
+            // appears in real play after delegation.
+            if let question = pendingPressQuestion,
+               let best = question.options.max(by: { ($0.moraleDelta + $0.confidenceDelta) < ($1.moraleDelta + $1.confidenceDelta) }) {
+                answerPress(best, headline: "Press conference (assistant)")
+            }
+            if let talk = pendingTeamTalk,
+               let best = talk.options.max(by: { ($0.moraleDelta + $0.confidenceDelta) < ($1.moraleDelta + $1.confidenceDelta) }) {
+                answerTeamTalk(best)
+            }
+        }
+
+        // Freeze the lineup so the tests can pin CONFIRMED LINEUPS and
+        // KICK OFF against a full, known XI (the engine's preview uses
+        // `matchXIForPreview`, so this only re-asserts what the engine
+        // would already field).
+        let bestXI = bestXI(for: clubs[userClubIndex],
+                            formation: aiFormation(for: clubs[userClubIndex]))
+        userStarterIDs = Set(bestXI.map(\.id))
+
+        opponentShortNameForUITests = clubs[opponentIndexForUITests].shortName
+
+        persist()
+        return self
+    }
+
+    /// The next opponent's club index for the pre-match fixture
+    /// (the side the user is not, from the authoritative fixture list).
+    private var opponentIndexForUITests: Int {
+        guard let match = nextUserMatchInfo else { return userClubIndex }
+        return match.homeIndex == userClubIndex ? match.awayIndex : match.homeIndex
+    }
+
     /// The season label for an arbitrary season number (the same formula
     /// as `seasonLabel`, parameterised — fixture-local helper).
     private func officeSeasonLabel(for seasonNumber: Int) -> String {
         let start = (startYear - 1) + seasonNumber
         return "\(start)/\(String(format: "%02d", (start + 1) % 100))"
+    }
+
+    // MARK: Football Museum fixture
+
+    /// Deterministic Football Museum fixture for UI tests, launched with
+    /// `UITEST_LEGACY_MUSEUM`. Unlike the Career fixtures this boots no
+    /// career at all — the museum is reachable from the main menu without
+    /// any active save — so it instead seeds the `LegacyArchive` store
+    /// (Documents/legacy) with two hand-built careers whose numbers the
+    /// tests assert against. Real player saves are never read or modified:
+    /// the store is cleared and rebuilt from scratch each launch, so the
+    /// archive state is fully deterministic.
+    ///
+    /// Career A (Ruth Whitmore) is the decorated one — a treble-winning
+    /// 8-season spell with legends, records, transfers and two front
+    /// pages; Career B (Arthur Booth) is the modest 2-season one with no
+    /// honours, legends or pages. The gap gives every wing a real spread:
+    /// a highest-score line, a two-row leaderboard, distinct compare
+    /// values, both a filled and an empty sub-section, and a delete
+    /// target whose removal provably empties the museum.
+    static func seedLegacyMuseumFixtureForDebug() {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let legacyDir = docs.appendingPathComponent("legacy", isDirectory: true)
+        try? FileManager.default.removeItem(at: legacyDir)
+
+        let seasonRecord: (Int, String, String, String) -> SeasonRecord = { season, label, club, division in
+            SeasonRecord(season: season, label: label, userClub: club, userDivision: division,
+                         userPosition: season <= 2 ? 3 : 1,
+                         champion: "Old Trafford Reds", cupWinner: "Riverton FC",
+                         euroWinner: "Continental Kings", communityShieldWinner: "—")
+        }
+
+        // Career A — Ruth Whitmore at Harbour City (2021–2028, 8 seasons).
+        let whitmore = LegacyCareer(
+            id: UUID(uuidString: "AAAAAAAA-0000-4000-8000-000000000001")!,
+            managerName: "Ruth Whitmore", clubName: "Harbour City", startYear: 2021, endYear: 2028,
+            seasonsManaged: 8, finalDivisionName: "Premier Division",
+            careerHonours: ["Premier Division title (2025/26)", "National Cup (2026/27)", "Continental Cup (2027/28)"],
+            autobiography: "Eight seasons of building. Ruth Whitmore arrived with a plan and left with a trophy cabinet that outgrew its room.",
+            timeline: [
+                LegacyCareerMoment(season: 1, year: 2021, icon: "📅", headline: "A new era begins", detail: "Took charge ahead of the new season."),
+                LegacyCareerMoment(season: 5, year: 2025, icon: "🏆", headline: "Champions at last", detail: "The title came home after five years of building."),
+            ],
+            achievementUnlocks: [
+                AchievementUnlock(kind: .promotion, season: 2, date: Date(timeIntervalSince1970: 1_650_000_000), context: "Promoted in the first attempt."),
+                AchievementUnlock(kind: .leagueTitle, season: 5, date: Date(timeIntervalSince1970: 1_750_000_000), context: "Champions at last."),
+                AchievementUnlock(kind: .cupWinner, season: 6, date: Date(timeIntervalSince1970: 1_780_000_000), context: "Cup winners at Wembley."),
+            ],
+            careerAchievementPoints: 120,
+            clubLegends: [
+                ClubLegend(playerID: UUID(uuidString: "BBBBBBBB-0000-4000-8000-000000000001")!,
+                           name: "Mara Voss", position: .forward, nationality: "Sweden", clubName: "Harbour City",
+                           joinedSeason: 1, retiredSeason: 8, finalAge: 33, appearances: 341, goals: 188, assists: 74,
+                           cleanSheets: 0, averageRating: 7.9, seasonsAsCaptain: 4,
+                           trophiesWon: ["Premier Division title (2025/26)", "National Cup (2026/27)", "Continental Cup (2027/28)"],
+                           individualAwards: 3, peakRating: 92, legendScore: 86, isGlobalLegend: false,
+                           biography: "Harbour City's greatest ever goalscorer."),
+                ClubLegend(playerID: UUID(uuidString: "BBBBBBBB-0000-4000-8000-000000000002")!,
+                           name: "Tomas Keller", position: .goalkeeper, nationality: "Germany", clubName: "Harbour City",
+                           joinedSeason: 3, retiredSeason: 8, finalAge: 34, appearances: 190, goals: 0, assists: 0,
+                           cleanSheets: 71, averageRating: 7.4, seasonsAsCaptain: 1,
+                           trophiesWon: ["Premier Division title (2025/26)"],
+                           individualAwards: 1, peakRating: 88, legendScore: 61, isGlobalLegend: false,
+                           biography: "The safe pair of hands behind the title years."),
+            ],
+            history: (1...8).map { seasonRecord($0, "Season \($0)", "Harbour City", "Premier Division") },
+            careerRecordByClub: [:],
+            legacyScore: 500, legacyTier: .legend,
+            recordBook: [
+                "Mara Voss scored 188 goals across eight seasons.",
+                "Tomas Keller kept 71 clean sheets.",
+            ],
+            archivedDate: Date(timeIntervalSince1970: 1_800_000_000),
+            topScorer: LegacyRecordHolder(name: "Mara Voss", value: 188, detail: "188 goals in 341 games"),
+            topAppearances: LegacyRecordHolder(name: "Mara Voss", value: 341, detail: "Eight seasons of service"),
+            topMOTM: LegacyRecordHolder(name: "Mara Voss", value: 42, detail: "Man of the match awards"),
+            recordWin: LegacyRecordHolder(name: "Harbour City", value: 6, detail: "6–0 vs Old Athletic, 2026/27"),
+            bestSeason: LegacyRecordHolder(name: "Harbour City", value: 1, detail: "Champions, 2025/26"),
+            topTransfers: [
+                TransferHistoryEntry(date: Date(timeIntervalSince1970: 1_700_000_000), playerName: "Diego Sarr",
+                                     action: "Sold", otherClub: "Old Athletic", fee: 2400),
+                TransferHistoryEntry(date: Date(timeIntervalSince1970: 1_650_000_000), playerName: "Danny Draper",
+                                     action: "Signed", otherClub: "Riverton FC", fee: 1200),
+            ],
+            frontPages: [
+                Newspaper(date: Date(timeIntervalSince1970: 1_760_000_000), season: 5, outlet: .national,
+                          masthead: "THE DAILY WHISTLE", headline: "CHAMPIONS AT LAST",
+                          standfirst: "Harbour City end a 30-year wait for the title.",
+                          body: "A title won with games to spare, sealed on home turf in front of a disbelieving, delirious full house.",
+                          category: .result, importance: .historic, playerName: "Mara Voss",
+                          playerPosition: .forward, playerAge: 30, clubName: "Harbour City"),
+                Newspaper(date: Date(timeIntervalSince1970: 1_790_000_000), season: 8, outlet: .european,
+                          masthead: "THE CONTINENTAL GAME", headline: "EUROPEAN GLORY FOR HARBOUR CITY",
+                          standfirst: "The Continental Cup comes home.",
+                          body: "A final won on penalties after a night of relentless pressure.",
+                          category: .world, importance: .major, clubName: "Harbour City"),
+            ])
+
+        // Career B — Arthur Booth at Midfield Rovers (2019–2020, 2 seasons).
+        let booth = LegacyCareer(
+            id: UUID(uuidString: "AAAAAAAA-0000-4000-8000-000000000002")!,
+            managerName: "Arthur Booth", clubName: "Midfield Rovers", startYear: 2019, endYear: 2020,
+            seasonsManaged: 2, finalDivisionName: "Regional League",
+            careerHonours: [],
+            autobiography: "Two steady seasons at a small club. Arthur Booth kept Midfield Rovers honest and went home content.",
+            timeline: [
+                LegacyCareerMoment(season: 1, year: 2019, icon: "📅", headline: "A quiet start", detail: "Steadied the side mid-table."),
+            ],
+            achievementUnlocks: [],
+            careerAchievementPoints: 10,
+            clubLegends: [],
+            history: (1...2).map { seasonRecord($0, "Season \($0)", "Midfield Rovers", "Regional League") },
+            careerRecordByClub: [:],
+            legacyScore: 74, legacyTier: .journeyman,
+            recordBook: [],
+            archivedDate: Date(timeIntervalSince1970: 1_700_000_000),
+            topScorer: nil, topAppearances: nil, topMOTM: nil, recordWin: nil, bestSeason: nil,
+            topTransfers: nil, frontPages: nil)
+
+        LegacyArchive.archive(booth)   // archived first → shown second
+        LegacyArchive.archive(whitmore) // archived last → shown first
     }
 }
 #endif

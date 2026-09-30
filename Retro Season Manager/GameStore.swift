@@ -256,6 +256,11 @@ final class GameStore {
     /// unaffordable, so tests can find the OVER BUDGET card without
     /// duplicating affordability rules. Always nil in normal play.
     var unaffordableTargetIDForUITests: UUID?
+    /// DEBUG UI-test fixture only: the pre-match opponent's short name,
+    /// re-derived by the fixture at launch (persisted indices can't
+    /// survive a relaunch) so tests can pin the fixture card without
+    /// duplicating fixture-list rules. Always empty in normal play.
+    var opponentShortNameForUITests = ""
     /// The dated news / inbox feed, newest first.
     var news: [NewsItem] = []
     /// Rival clubs' outstanding bids for the user's players.
