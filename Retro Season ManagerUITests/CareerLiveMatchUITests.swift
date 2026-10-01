@@ -170,6 +170,13 @@ final class CareerLiveMatchUITests: XCTestCase {
                            NSPredicate(format: "isSelected == true")),
                       "1× should be selectable again")
 
+        // Native menus can make XCTest wait for animation quiescence.
+        // Freeze the match while choosing tactics so that CI latency cannot
+        // advance it to the half-time overlay behind the open menu.
+        pause.tap()
+        XCTAssertTrue(wait(pause, NSPredicate(format: "label CONTAINS 'PLAY'")),
+                      "Match should pause before opening the tactics menu")
+
         // Tactics: the mentality menu opens and offers its cases.
         let mentality = app.buttons["career.match.mentality"]
         mentality.tap()
@@ -177,7 +184,15 @@ final class CareerLiveMatchUITests: XCTestCase {
         XCTAssertTrue(attacking.waitForExistence(timeout: 4), "Mentality menu should list its options")
         attacking.tap()
 
-        // The match is still running afterwards (score bar present).
+        XCTAssertTrue(wait(mentality, NSPredicate(format: "label CONTAINS 'Attacking'")),
+                      "Choosing Attacking should update the mentality control")
+        XCTAssertTrue(wait(pause, NSPredicate(format: "label CONTAINS 'PLAY'")),
+                      "Choosing tactics should leave the paused match paused")
+        pause.tap()
+        XCTAssertTrue(wait(pause, NSPredicate(format: "label CONTAINS 'PAUSE'")),
+                      "Playback should resume after choosing tactics")
+
+        // The live score remains present after resuming playback.
         XCTAssertTrue(anyElement(app, "career.match.score").exists,
                       "Score bar should remain after control interactions")
         shot(app, "after_controls")
