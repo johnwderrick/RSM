@@ -58,9 +58,18 @@ final class CareerLiveMatchUITests: XCTestCase {
     }
 
     private func pendingOfferCount(_ app: XCUIApplication) -> Int {
-        let badge = anyElement(app, "career.home.pendingOffers")
-        guard badge.exists else { return 0 }
-        return Int(badge.label.split(separator: " ").first(where: { Int($0) != nil }) ?? "") ?? 0
+        // Match the label in the query itself: Home can disappear between
+        // an exists check and a subsequent label read when pre-match opens.
+        // Deadline day caps live offers at four (ordinary days at two).
+        for count in (1...4).reversed() {
+            let label = "⚠️ \(count) bid\(count == 1 ? "" : "s")"
+            let predicate = NSPredicate(format: "identifier == %@ AND label == %@",
+                                        "career.home.pendingOffers", label)
+            if app.descendants(matching: .any).matching(predicate).firstMatch.exists {
+                return count
+            }
+        }
+        return 0
     }
 
     /// Re-evaluates the element until the predicate holds — plain

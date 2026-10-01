@@ -249,7 +249,24 @@ final class CareerSettingsUITests: XCTestCase {
         _ = waitFor(app, "career.settings.summary")
     }
 
-    // MARK: - E. Save & Exit
+    // MARK: - E. Negotiations moved into the Transfers tab
+
+    /// Transfer Hub was deduplicated into the Transfers tab's NEGOTIATIONS
+    /// section (same deals/offers, same sheets, same store calls). The menu
+    /// row must be gone while the archive rows — distinct destinations —
+    /// stay.
+    func testTransferHubMenuRowRemovedAfterDedupe() throws {
+        let app = launchToSettings()
+
+        XCTAssertFalse(app.descendants(matching: .any)["career.settings.row.transfer-hub"].exists,
+                       "The duplicate Transfer Hub row should be gone from Settings")
+        for slug in ["transfer-history", "season-history"] {
+            _ = settingsRow(app, slug)
+        }
+        shot(app, "menu_without_hub")
+    }
+
+    // MARK: - F. Save & Exit
 
     func testSaveAndExitReturnsToMainMenuWithSaveIntact() throws {
         let app = launchToSettings()

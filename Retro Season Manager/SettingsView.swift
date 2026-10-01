@@ -33,7 +33,6 @@ enum SettingsDestination: String, CaseIterable, Identifiable {
     case bestXI = "Best XI"
     case newspaperArchive = "Newspaper Archive"
     case supporterZone = "Supporter Zone"
-    case transferHub = "Transfer Hub"
     case transferHistory = "Transfer History"
     case seasonHistory = "Season History"
     case currentSave = "Current Save"
@@ -55,7 +54,6 @@ enum SettingsDestination: String, CaseIterable, Identifiable {
         case .bestXI:           return "star.square.on.square.fill"
         case .newspaperArchive: return "newspaper.fill"
         case .supporterZone:    return "megaphone.fill"
-        case .transferHub:      return "arrow.triangle.2.circlepath.circle.fill"
         case .transferHistory:  return "arrow.left.arrow.right.circle.fill"
         case .seasonHistory:    return "calendar.badge.clock"
         case .currentSave:      return "gamecontroller.fill"
@@ -64,7 +62,7 @@ enum SettingsDestination: String, CaseIterable, Identifiable {
         }
     }
 
-    static let manager: [SettingsDestination] = [.managerProfile, .boardConfidence, .trophyCabinet, .achievements, .seasonObjectives, .managerCV, .records, .hallOfFame, .bestXI, .newspaperArchive, .supporterZone, .transferHub, .transferHistory, .seasonHistory]
+    static let manager: [SettingsDestination] = [.managerProfile, .boardConfidence, .trophyCabinet, .achievements, .seasonObjectives, .managerCV, .records, .hallOfFame, .bestXI, .newspaperArchive, .supporterZone, .transferHistory, .seasonHistory]
     static let options: [SettingsDestination] = [.currentSave, .difficulty, .teamSelection]
 }
 
@@ -76,7 +74,6 @@ struct SettingsView: View {
     @State private var showingSupporterZone = false
     @State private var showingAchievements = false
     @State private var showingSeasonObjectives = false
-    @State private var showingTransferHub = false
 
     var body: some View {
         Group {
@@ -90,7 +87,7 @@ struct SettingsView: View {
                     Haptics.tap()
                     // Whole buildings (Hall of Fame, Newspaper Archive,
                     // Supporter Zone, Achievements, Season
-                    // Objectives, Transfer Hub) present as
+                    // Objectives) present as
                     // full sheets — the grander, "somewhere you visit"
                     // presentation, unchanged from the previous menu.
                     switch selected {
@@ -99,7 +96,6 @@ struct SettingsView: View {
                     case .supporterZone:    showingSupporterZone = true
                     case .achievements:     showingAchievements = true
                     case .seasonObjectives: showingSeasonObjectives = true
-                    case .transferHub:      showingTransferHub = true
                     default:                destination = selected
                     }
                 }
@@ -110,9 +106,6 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showingNewspaperArchive) {
             NewspaperArchiveView(store: store, isSheet: true)
-        }
-        .sheet(isPresented: $showingTransferHub) {
-            TransferHubView(store: store)
         }
         .sheet(isPresented: $showingAchievements) {
             AchievementGalleryView(store: store)
@@ -580,7 +573,7 @@ struct SettingsDetailView: View {
     /// never nested.
     private static let wholeBuildingDestinations: Set<SettingsDestination> = [
         .achievements, .seasonObjectives, .hallOfFame, .newspaperArchive,
-        .supporterZone, .transferHub,
+        .supporterZone,
     ]
 
     var body: some View {
@@ -632,7 +625,6 @@ struct SettingsDetailView: View {
         case .hallOfFame:       HallOfFameView(store: store, showsClose: false)
         case .newspaperArchive: NewspaperArchiveView(store: store)
         case .supporterZone:    SupporterZoneView(store: store)
-        case .transferHub:      TransferHubView(store: store)
         default:                EmptyView()
         }
     }
@@ -646,7 +638,7 @@ struct SettingsDetailView: View {
         // Whole-building destinations render through `building` above the
         // detail scroll (they bring their own scroll containers).
         case .achievements, .seasonObjectives, .hallOfFame, .newspaperArchive,
-             .supporterZone, .transferHub:
+             .supporterZone:
             EmptyView()
         case .currentSave:      card { currentSavePanel }
         case .difficulty:       card { difficultyPanel }

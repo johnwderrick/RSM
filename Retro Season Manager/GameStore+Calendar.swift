@@ -484,11 +484,13 @@ extension GameStore {
                 addNews(.info, "Deadline day", "Transfer deadline day is here — clubs will be busy right up to the wire.")
             }
             // A last-minute scramble: AI clubs chase far more business in
-            // the final 48 hours than on an ordinary day.
+            // the final 48 hours than on an ordinary day — including
+            // bidding for YOUR players, several times over the rush.
             let aiTransferAttempts = isDeadlineDayRush ? Int.random(in: 2...4) : (Double.random(in: 0..<1) < 0.5 ? 1 : 0)
             for _ in 0..<aiTransferAttempts { processAITransfer() }
-            let offerChance = isDeadlineDayRush ? 0.20 : 0.08
-            if pendingOffers.count < 2 && Double.random(in: 0..<1) < offerChance { generateOfferForUser() }
+            let offerChance = isDeadlineDayRush ? 0.45 : 0.08
+            let offerCap = isDeadlineDayRush ? 4 : 2
+            if pendingOffers.count < offerCap && Double.random(in: 0..<1) < offerChance { generateOfferForUser() }
             maybeGenerateTransferRumour()
         }
     }
