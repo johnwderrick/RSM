@@ -245,6 +245,7 @@ struct ClubSquadSheet: View {
         }
         .font(.system(.body, design: .monospaced))
         .foregroundStyle(Retro.text)
+        .accessibilityIdentifier("career.squad.clubSheet")
         .sheet(item: $profile) { context in
             PlayerProfileSheet(store: store, context: context) { _ in }
         }
@@ -450,16 +451,20 @@ struct PlayerToken: View {
                 HStack(spacing: 3) {
                     Text(role)
                     Image(systemName: "arrow.triangle.2.circlepath")
-                        .font(.system(size: 6, weight: .black))
+                        .font(.system(size: 7, weight: .black))
                 }
-                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
                 .foregroundStyle(CareerPalette.ink)
-                .padding(.horizontal, 5)
-                .padding(.vertical, 2)
+                // The pitch is dense on compact landscape: the min frame
+                // lives inside the label so the accessibility hit shape
+                // (and the tappable area) meets the 24pt floor without
+                // absorbing taps between neighbouring tokens.
+                .frame(minWidth: 44, minHeight: 24)
                 .background(Retro.highlight)
-                .clipShape(RoundedRectangle(cornerRadius: 4))
+                .clipShape(RoundedRectangle(cornerRadius: 5))
+                .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PressableButtonStyle())
             .accessibilityLabel("Change \(role) player")
             .accessibilityIdentifier("career.squad.pitch.slot.\(role.lowercased())")
 

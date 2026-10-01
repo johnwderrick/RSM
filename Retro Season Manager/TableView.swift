@@ -163,8 +163,14 @@ struct TableView: View {
             .font(.system(size: 10, design: .monospaced)).foregroundStyle(CareerPalette.ink)
             .padding(.horizontal, 8).padding(.vertical, 6).background(isUser ? CareerPalette.line.opacity(0.11) : Color.clear)
             .overlay(alignment: .leading) { Rectangle().fill(isUser ? CareerPalette.line : Color.clear).frame(width: 3) }
+            // Compact landscape: the 20pt text row alone is a stray-tap
+            // trap inside a 24-club table, so extend the hit target to the
+            // 24pt+ floor without changing the row's drawn height.
+            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain).accessibilityIdentifier(isUser ? "career.table.userRow" : "career.table.club.\(rank)")
+        .frame(minHeight: 24)
+        .buttonStyle(PressableButtonStyle())
+        .accessibilityIdentifier(isUser ? "career.table.userRow" : "career.table.club.\(rank)")
         .accessibilityLabel("Position \(rank), \(club.name), played \(club.played), won \(club.won), drawn \(club.drawn), lost \(club.lost), goal difference \(club.goalDifference), \(club.points) points\(isUser ? ", your club" : "")")
     }
 

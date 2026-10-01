@@ -148,6 +148,116 @@ extension GameStore {
         // 5. Persist exactly once so the save on disk matches memory.
         persist()
         return self
+    }    /// Builds a fresh, saved career in the fully hand-authored 2020 era
+    /// with exactly what the redesigned Squad Depth sheet presents,
+    /// deterministically. With everyone available, that squad's exact cover
+    /// counts leave Left-Back (Patrice Almada alone) as the only role with
+    /// fewer than two fits, so the fixture:
+    ///
+    /// - injures Rafael Almada and Owen Radcliffe through the real
+    ///   availability flag, making Right-Back's available fit count exactly
+    ///   one (the amber "1 fit" row), and Patrice Almada, making Left-Back
+    ///   available-fit count exactly zero (the red "none fit" row),
+    /// - replaces the market with exactly two affordable left-back targets
+    ///   — one free agent, one listed at a deliberately affordable fee —
+    ///   so the FREE/fee labels and the suggestion card are stable across
+    ///   launches.
+    ///
+    /// It also heals the engine's random seed injuries (only the scripted
+    /// ones remain) and restores budget/wage headroom that the club's
+    /// baked-in 2005-debt ownership change would otherwise zero at the
+    /// 2020 start year.        /// With `fullCover` the fixture instead closes the two thin roles
+    /// (Left-Back via a Kacper Duda deputy, Left Midfield via an Antonio
+    /// Valera deputy) so every role is covered: the sheet shows its
+    /// all-covered state and `suggestedTransferTargets` returns nothing.
+    /// The navigation fixture's league/inbox extras are deliberately not
+    /// needed here. Real saves are never read or modified; the arguments
+    /// are only ever set by the UI-test runner.
+    @discardableResult
+    func prepareCareerDepthFixtureForDebug(fullCover: Bool = false) -> GameStore {
+        // A fresh, saved career for a known club in the hand-authored 2020
+        // era (cover counts below are exact for that squad book).
+        let catalogue = Self.catalogueEntries()
+        let clubIndex = catalogue.firstIndex { $0.name == "Old Trafford Reds" } ?? 0
+        newGame(clubIndex: clubIndex, startYear: 2020, managerName: "Depth Fixture Manager")
+
+        // Determinism: `newGame` seeds 0–2 random injuries per club, which
+        // could independently strip the scripted Right-Back cover or add
+        // accidental cover elsewhere. The depth math below is only exact
+        // when the fixture's own injuries are the sole availability noise,
+        // so heal the user's squad first. (Other clubs' injuries are
+        // irrelevant — `squadNeeds` reads only the user's club.)
+        for index in clubs[userClubIndex].players.indices {
+            clubs[userClubIndex].players[index].injuryWeeks = 0
+            clubs[userClubIndex].players[index].suspensionMatches = 0
+        }
+
+        // Deterministic headroom: a 2020 start bakes the Harrow family's
+        // 2005 leveraged buyout (see `OwnershipChanges`) into the club's
+        // opening finances, which zeroes Old Trafford Reds' budgets —
+        // leaving `suggestedTransferTargets` legitimately empty (a club
+        // with no budget gets no suggestions). Give the fixture club the
+        // same healthy-headroom treatment as the settings fixture so the
+        // affordability and wage filters pass exactly as designed. The
+        // 20_000 floor clears the free agent's full-value asking price
+        // with room to spare.
+        clubs[userClubIndex].transferBudget = max(20_000, userClub.transferBudget + 20_000)
+        clubs[userClubIndex].wageBudget = max(userClub.wageBill + 3_000, userClub.wageBudget)
+
+        let squad = clubs[userClubIndex].players
+        if fullCover {
+            // Close the only two thin roles in this squad book: give the
+            // lone natural left-back a deputy (Kacper Duda, the left
+            // winger) and Left Midfield its second fit (Antonio Valera,
+            // the right winger who already covers the left flank). Every
+            // role then has at least two available fits.
+            for index in squad.indices {
+                switch squad[index].name {
+                case "Kacper Duda":
+                    clubs[userClubIndex].players[index].secondaryPositions.append(.leftBack)
+                case "Antonio Valera":
+                    clubs[userClubIndex].players[index].secondaryPositions.append(.leftMid)
+                default:
+                    break
+                }
+            }
+        } else {
+            // Deterministic thin cover through the real availability flag:
+            // both right-back-shaped players out (Rafael Almada natural RB,
+            // Owen Radcliffe CB with an RB secondary) leaves Chris
+            // Smallwood as Right-Back's only available fit, and left-back
+            // Patrice Almada out leaves Left-Back with nobody.
+            let injuredNames: Set<String> = ["Rafael Almada", "Owen Radcliffe", "Patrice Almada"]
+            for index in squad.indices where injuredNames.contains(squad[index].name) {
+                clubs[userClubIndex].players[index].injuryWeeks = 3
+            }
+
+            // Exactly two affordable left-back targets (LB is the red
+            // role). Injected players use fixed names so the UI-test
+            // target selectors are stable. Ratings of 66–67 keep values
+            // and wages far inside a top-flight club's budget and wage
+            // headroom at any era.
+            var feeLB = Self.makePlayer(name: "Marcus Tyne", position: .defender,
+                                        detailedPosition: .leftBack,
+                                        secondaryPositions: [.centreBack],
+                                        nationality: "England",
+                                        age: 24, rating: 67, startYear: startYear)
+            feeLB.contractYears = 3
+            var freeLB = Self.makePlayer(name: "Karel Dvorak", position: .defender,
+                                         detailedPosition: .leftBack,
+                                         secondaryPositions: [],
+                                         nationality: "Czech Republic",
+                                         age: 29, rating: 66, startYear: startYear)
+            freeLB.contractYears = 0
+            transferMarket = [
+                TransferTarget(player: freeLB, sellingClubIndex: nil, askingPrice: freeLB.value),
+                TransferTarget(player: feeLB, sellingClubIndex: 1,
+                               askingPrice: max(20, feeLB.value / 2)),
+            ]
+        }
+
+        persist()
+        return self
     }
 
     /// Builds on the shared Career navigation fixture with exactly what

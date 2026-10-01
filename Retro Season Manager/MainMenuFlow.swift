@@ -292,10 +292,12 @@ struct ClubSelectView: View {
     var onBack: (() -> Void)? = nil
     @State private var pendingClubIndex: Int? = nil
     @State private var selectedStartYear = GameStore.availableStartYears.first ?? 2000
+    @State private var managerName = ""
 
     var body: some View {
         if let pendingClubIndex, let preview = store.clubPreview(forClubIndex: pendingClubIndex, startYear: selectedStartYear) {
-            ClubConfirmView(store: store, clubIndex: pendingClubIndex, preview: preview, startYear: selectedStartYear) {
+            ClubConfirmView(store: store, clubIndex: pendingClubIndex, preview: preview,
+                            startYear: selectedStartYear, managerName: $managerName) {
                 withAnimation(.easeInOut(duration: 0.25)) { self.pendingClubIndex = nil }
             }
             .transition(.asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .leading)).combined(with: .opacity))
@@ -306,102 +308,214 @@ struct ClubSelectView: View {
     }
 
     private var selectionList: some View {
-        VStack(spacing: 16) {
-            HStack {
-                if let onBack {
-                    Button { onBack() } label: {
-                        Text("‹ Back")
-                            .font(.system(.callout, design: .monospaced).bold())
-                            .foregroundStyle(Retro.text)
-                    }
-                    .buttonStyle(.plain)
-                }
-                Spacer()
-            }
-            .padding(.horizontal)
-            .padding(.top, 12)
-
-            VStack(spacing: 4) {
-                Text("⚽️ NEW GAME")
-                    .font(.system(.title, design: .monospaced).bold())
-                    .foregroundStyle(Retro.accent)
-                Text("Choose the club you wish to manage")
-                    .font(.system(.footnote, design: .monospaced))
-            }
+        VStack(spacing: 0) {
+            selectionHeader
 
             if GameStore.availableStartYears.count > 1 {
                 startYearPicker
+                    .padding(.bottom, 8)
             }
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
+                LazyVStack(alignment: .leading, spacing: 14) {
                     ForEach(store.clubsByDivision, id: \.tier) { division in
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(division.name.uppercased())
-                                .font(.system(.subheadline, design: .monospaced).bold())
-                                .foregroundStyle(Retro.accent)
+                        VStack(alignment: .leading, spacing: 7) {
+                            HStack(spacing: 8) {
+                                Rectangle()
+                                    .fill(CareerPalette.line)
+                                    .frame(width: 4, height: 16)
+                                    .clipShape(Capsule())
+                                Text(division.name.uppercased())
+                                    .font(.system(size: 11, weight: .black, design: .monospaced))
+                                    .foregroundStyle(CareerPalette.ink)
+                                Spacer()
+                                Text("\(division.clubs.count) CLUBS")
+                                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(CareerPalette.mutedInk)
+                            }
+                            .padding(.horizontal, 2)
+
                             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
                                 ForEach(division.clubs, id: \.index) { club in
-                                    Button {
-                                        Haptics.tap()
-                                        withAnimation(.easeInOut(duration: 0.25)) { pendingClubIndex = club.index }
-                                    } label: {
-                                        HStack {
-                                            Text(club.short)
-                                                .font(.system(.footnote, design: .monospaced).bold())
-                                                .foregroundStyle(Retro.highlight)
-                                                .frame(width: 44, alignment: .leading)
-                                            Text(club.name)
-                                                .font(.system(.footnote, design: .monospaced))
-                                                .lineLimit(1)
-                                            Spacer()
-                                        }
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 10)
-                                        .background(Retro.panel)
-                                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Retro.accent.opacity(0.15), lineWidth: 1))
-                                    }
-                                    .buttonStyle(PressableButtonStyle())
+                                    clubChoice(club)
                                 }
                             }
                         }
                     }
+                    Color.clear
+                        .frame(height: 2)
+                        .accessibilityIdentifier("career.newGame.clubs.end")
                 }
-                .padding()
+                .padding(.horizontal, 14)
+                .padding(.top, 4)
+                .padding(.bottom, 18)
+                .frame(maxWidth: 900)
+                .frame(maxWidth: .infinity, alignment: .top)
             }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier(CareerIdentifiers.newGameClubScroll)
+            .scrollDismissesKeyboard(.interactively)
+        }
+        .background(CareerPalette.canvas.ignoresSafeArea())
+        .font(.system(.body, design: .monospaced))
+        .overlay(alignment: .topLeading) {
+            Color.clear
+                .frame(width: 1, height: 1)
+                .accessibilityElement()
+                .accessibilityIdentifier(CareerIdentifiers.newGameSelect)
         }
     }
 
+    private var selectionHeader: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 10) {
+                if let onBack {
+                    Button {
+                        Haptics.tap()
+                        onBack()
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 14, weight: .black))
+                            .foregroundStyle(CareerPalette.line)
+                            .frame(width: 36, height: 36)
+                            .background(CareerPalette.surface)
+                            .overlay(Circle().stroke(CareerPalette.line.opacity(0.18)))
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(PressableButtonStyle())
+                    .accessibilityIdentifier(CareerIdentifiers.newGameBack)
+                    .accessibilityLabel("Back to main menu")
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("NEW CAREER")
+                        .font(.system(size: 17, weight: .black, design: .monospaced))
+                        .foregroundStyle(CareerPalette.ink)
+                    Text("Choose your era and club")
+                        .font(.system(size: 9, weight: .medium, design: .monospaced))
+                        .foregroundStyle(CareerPalette.mutedInk)
+                }
+                Spacer(minLength: 2)
+                Image(systemName: "sportscourt.fill")
+                    .font(.system(size: 18, weight: .black))
+                    .foregroundStyle(CareerPalette.line)
+                    .frame(width: 38, height: 38)
+                    .background(CareerPalette.line.opacity(0.10))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .accessibilityHidden(true)
+            }
+
+            Text("Pick a starting season, then choose any club from the four-division pyramid.")
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundStyle(CareerPalette.mutedInk)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 10)
+        .padding(.bottom, 8)
+        .frame(maxWidth: 900)
+        .frame(maxWidth: .infinity, alignment: .top)
+    }
+
+    private func clubChoice(_ club: (index: Int, name: String, short: String)) -> some View {
+        Button {
+            Haptics.tap()
+            withAnimation(.easeInOut(duration: 0.25)) { pendingClubIndex = club.index }
+        } label: {
+            HStack(spacing: 8) {
+                Text(club.short)
+                    .font(.system(size: 8, weight: .black, design: .monospaced))
+                    .foregroundStyle(CareerPalette.line)
+                    .frame(width: 34, height: 34)
+                    .background(CareerPalette.line.opacity(0.10))
+                    .clipShape(RoundedRectangle(cornerRadius: 9))
+                Text(club.name)
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundStyle(CareerPalette.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 8, weight: .black))
+                    .foregroundStyle(CareerPalette.mutedInk.opacity(0.55))
+                    .accessibilityHidden(true)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 7)
+            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+            .background(CareerPalette.surface)
+            .overlay(RoundedRectangle(cornerRadius: 11).stroke(CareerPalette.line.opacity(0.16)))
+            .clipShape(RoundedRectangle(cornerRadius: 11))
+            .shadow(color: CareerPalette.ink.opacity(0.05), radius: 4, y: 2)
+        }
+        .buttonStyle(PressableButtonStyle())
+        .accessibilityIdentifier(CareerIdentifiers.newGameClub(club.index))
+        .accessibilityLabel("\(club.name), \(club.short), \(ClubSelectView.seasonLabel(for: selectedStartYear))")
+    }
+
     private var startYearPicker: some View {
-        VStack(spacing: 6) {
-            Text("CAREER START")
-                .font(.system(.caption2, design: .monospaced).bold())
-                .foregroundStyle(Retro.text.opacity(0.7))
-            // A horizontally scrolling row rather than a fixed HStack, so
-            // this keeps working cleanly as more start years are added in
-            // future — a plain HStack would eventually overflow a narrow
-            // phone screen once there are enough options to not fit in one row.
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("STARTING ERA")
+                    .font(.system(size: 9, weight: .black, design: .monospaced))
+                    .foregroundStyle(CareerPalette.ink)
+                Spacer()
+                Text("SEASON \(Self.seasonLabel(for: selectedStartYear))")
+                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                    .foregroundStyle(CareerPalette.line)
+                    .accessibilityIdentifier(CareerIdentifiers.newGameSelectedEra)
+            }
+
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
+                HStack(spacing: 7) {
                     ForEach(GameStore.availableStartYears, id: \.self) { year in
+                        let selected = selectedStartYear == year
                         Button {
                             Haptics.tap()
                             selectedStartYear = year
                         } label: {
-                            Text(Self.seasonLabel(for: year))
-                                .font(.system(.footnote, design: .monospaced).bold())
-                                .foregroundStyle(selectedStartYear == year ? Retro.background : Retro.text)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
-                                .background(selectedStartYear == year ? Retro.accent : Retro.panel)
-                                .clipShape(Capsule())
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(Self.seasonLabel(for: year))
+                                    .font(.system(size: 12, weight: .black, design: .monospaced))
+                                Text(eraSubtitle(for: year))
+                                    .font(.system(size: 7, weight: .bold, design: .monospaced))
+                                    .lineLimit(1)
+                            }
+                            .foregroundStyle(selected ? Color.white : CareerPalette.ink)
+                            .frame(minWidth: 86, alignment: .leading)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 7)
+                            .background(selected ? CareerPalette.line : CareerPalette.surface)
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(selected ? CareerPalette.line : CareerPalette.line.opacity(0.18)))
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
                         }
                         .buttonStyle(PressableButtonStyle())
+                        .accessibilityIdentifier(CareerIdentifiers.newGameEra(year))
+                        .accessibilityLabel("\(Self.seasonLabel(for: year)) era")
+                        .accessibilityAddTraits(selected ? [.isSelected] : [])
                     }
                 }
-                .padding(.horizontal, 2)
+                .padding(.vertical, 1)
             }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier(CareerIdentifiers.newGameEraScroll)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
+        .frame(maxWidth: 900)
+        .frame(maxWidth: .infinity, alignment: .top)
+        .background(CareerPalette.surface)
+        .accessibilityElement(children: .contain)
+        .overlay(alignment: .top) { Rectangle().fill(CareerPalette.line.opacity(0.12)).frame(height: 1) }
+        .overlay(alignment: .bottom) { Rectangle().fill(CareerPalette.line.opacity(0.12)).frame(height: 1) }
+    }
+
+    private func eraSubtitle(for year: Int) -> String {
+        switch year {
+        case 2000: return "THE MILLENNIUM"
+        case 2010: return "A NEW DECADE"
+        case 2020: return "THE MODERN ERA"
+        default: return "START IN \(year)"
         }
     }
 
@@ -419,112 +533,263 @@ struct ClubConfirmView: View {
     let clubIndex: Int
     let preview: GameStore.ClubPreview
     var startYear: Int = 2000
+    @Binding var managerName: String
     var onBack: () -> Void
-    @State private var managerName = ""
     @FocusState private var nameFieldFocused: Bool
 
     private var clubColor: Color { Color(rgb: preview.colorRGB) }
 
     var body: some View {
-        // A plain VStack left the "MANAGE [CLUB]" button — the only way to
-        // actually start a new career — unreachable on a landscape iPhone:
-        // the back-button row + both Spacers + club info + two Panels +
-        // the button group together exceed the ~402pt of landscape height,
-        // and with no scroll container the button was simply clipped
-        // off-screen. Same failure class already fixed elsewhere (the
-        // post-match Continue button, RSM Legends manager onboarding).
-        ScrollView {
-            VStack(spacing: 16) {
-            HStack {
-                Button {
-                    Haptics.tap()
-                    onBack()
-                } label: {
-                    Text("‹ Choose a different club")
-                        .font(.system(.callout, design: .monospaced).bold())
-                        .foregroundStyle(Retro.text)
-                }
-                .buttonStyle(PressableButtonStyle())
-                Spacer()
-            }
-            .padding(.horizontal)
-            .padding(.top, 12)
+        VStack(spacing: 0) {
+            confirmationHeader
 
-            VStack(spacing: 14) {
-                CrestView(shortName: preview.short, size: 72, color: clubColor)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 10) {
+                    clubIdentityCard
+                    managerNameCard
+                    previewCard
+                    Color.clear
+                        .frame(height: 1)
+                        .accessibilityIdentifier("career.newGame.confirm.end")
+                }
+                .padding(.horizontal, 14)
+                .padding(.top, 10)
+                .padding(.bottom, 12)
+                .frame(maxWidth: 760)
+                .frame(maxWidth: .infinity, alignment: .top)
+            }
+            .accessibilityIdentifier(CareerIdentifiers.newGameConfirm)
+            .scrollDismissesKeyboard(.interactively)
+
+            confirmationFooter
+        }
+        .background(CareerPalette.canvas.ignoresSafeArea())
+        .font(.system(.body, design: .monospaced))
+    }
+
+    private var confirmationHeader: some View {
+        HStack(spacing: 10) {
+            Button {
+                Haptics.tap()
+                nameFieldFocused = false
+                onBack()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 10, weight: .black))
+                    Text("CLUBS")
+                        .font(.system(size: 9, weight: .black, design: .monospaced))
+                }
+                .foregroundStyle(CareerPalette.line)
+                .padding(.horizontal, 10)
+                .frame(height: 34)
+                .background(CareerPalette.surface)
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(CareerPalette.line.opacity(0.18)))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+            .buttonStyle(PressableButtonStyle())
+            .accessibilityIdentifier(CareerIdentifiers.newGameBackToClubs)
+            .accessibilityLabel("Back to club selection")
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("YOUR NEW CLUB")
+                    .font(.system(size: 15, weight: .black, design: .monospaced))
+                    .foregroundStyle(CareerPalette.ink)
+                Text("SEASON \(ClubSelectView.seasonLabel(for: startYear)) · READY TO BUILD")
+                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                    .foregroundStyle(CareerPalette.mutedInk)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 9)
+        .padding(.bottom, 8)
+        .frame(maxWidth: 760)
+        .frame(maxWidth: .infinity, alignment: .top)
+        .accessibilityElement(children: .contain)
+    }
+
+    private var clubIdentityCard: some View {
+        HStack(spacing: 12) {
+            CrestView(shortName: preview.short, size: 54, color: clubColor)
+            VStack(alignment: .leading, spacing: 4) {
                 Text(preview.name)
-                    .font(.system(.title, design: .monospaced).bold())
-                    .foregroundStyle(Retro.accent)
-                Text(preview.divisionName)
-                    .font(.system(.subheadline, design: .monospaced))
-                    .foregroundStyle(Retro.text.opacity(0.85))
+                    .font(.system(size: 16, weight: .black, design: .monospaced))
+                    .foregroundStyle(CareerPalette.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                Text(preview.divisionName.uppercased())
+                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                    .foregroundStyle(CareerPalette.mutedInk)
+                    .lineLimit(1)
                 StarRatingView(stars: preview.stars)
             }
+            Spacer(minLength: 0)
+            Image(systemName: "checkmark.seal.fill")
+                .font(.system(size: 19, weight: .black))
+                .foregroundStyle(CareerPalette.line.opacity(0.82))
+                .accessibilityHidden(true)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(CareerPalette.surface)
+        .overlay(RoundedRectangle(cornerRadius: 13).stroke(CareerPalette.line.opacity(0.2)))
+        .clipShape(RoundedRectangle(cornerRadius: 13))
+        .shadow(color: CareerPalette.ink.opacity(0.06), radius: 6, y: 3)
+        .accessibilityElement(children: .ignore)
+        .accessibilityIdentifier(CareerIdentifiers.newGameClubSummary)
+        .accessibilityLabel("\(preview.name), \(preview.divisionName), \(preview.stars) stars, season \(ClubSelectView.seasonLabel(for: startYear))")
+    }
 
-            Panel(title: "YOUR NAME") {
-                TextField("e.g. John Derrick (leave blank for a random name)", text: $managerName)
+    private var managerNameCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            cardHeading("YOUR NAME", icon: "person.crop.circle")
+            HStack(spacing: 8) {
+                Image(systemName: "person.text.rectangle")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(CareerPalette.line)
+                TextField("e.g. John Derrick", text: $managerName)
                     .focused($nameFieldFocused)
-                    .font(.system(.body, design: .monospaced))
-                    .foregroundStyle(Retro.text)
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundStyle(CareerPalette.ink)
                     .textInputAutocapitalization(.words)
+                    .autocorrectionDisabled()
                     .submitLabel(.done)
                     .onSubmit { nameFieldFocused = false }
-            }
-            .frame(maxWidth: 420)
-
-            Panel(title: "WHAT TO EXPECT") {
-                VStack(alignment: .leading, spacing: 8) {
-                    confirmStat("Starting season", ClubSelectView.seasonLabel(for: startYear))
-                    confirmStat("League standing", "\(ordinal(preview.divisionRank)) of \(preview.divisionSize) seeds")
-                    confirmStat("Transfer budget", formatMoney(preview.estimatedBudget))
-                    confirmStat("Board objective", preview.boardObjective)
-                }
-            }
-            .frame(maxWidth: 420)
-
-            VStack(spacing: 10) {
-                Button {
-                    Haptics.success()
-                    store.runHeavy("Building the \(preview.name) squad…") {
-                        store.newGame(clubIndex: clubIndex, startYear: startYear, managerName: managerName)
+                    .accessibilityIdentifier(CareerIdentifiers.newGameManagerName)
+                if !managerName.isEmpty {
+                    Button {
+                        managerName = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 15))
+                            .foregroundStyle(CareerPalette.mutedInk.opacity(0.65))
                     }
-                } label: {
-                    Text("MANAGE \(preview.name.uppercased())")
-                        .font(.system(.headline, design: .monospaced).bold())
-                        .foregroundStyle(Retro.background)
-                        .frame(maxWidth: 420)
-                        .padding(.vertical, 14)
-                        .background(
-                            LinearGradient(colors: [clubColor, clubColor.opacity(0.75)],
-                                           startPoint: .top, endPoint: .bottom)
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                        .shadow(color: clubColor.opacity(0.45), radius: 10, y: 5)
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Clear manager name")
                 }
-                .buttonStyle(PressableButtonStyle())
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 9)
+            .background(CareerPalette.canvas.opacity(0.65))
+            .clipShape(RoundedRectangle(cornerRadius: 9))
+            Text("Leave blank and we'll choose a name for you.")
+                .font(.system(size: 8, design: .monospaced))
+                .foregroundStyle(CareerPalette.mutedInk)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(CareerPalette.surface)
+        .overlay(RoundedRectangle(cornerRadius: 13).stroke(CareerPalette.line.opacity(0.18)))
+        .clipShape(RoundedRectangle(cornerRadius: 13))
+        .shadow(color: CareerPalette.ink.opacity(0.05), radius: 5, y: 2)
+    }
 
-                Button {
-                    Haptics.tap()
-                    onBack()
-                } label: {
-                    Text("Go back to club selection")
-                        .font(.system(.footnote, design: .monospaced))
-                        .foregroundStyle(Retro.text.opacity(0.75))
-                }
-                .buttonStyle(PressableButtonStyle())
+    private var previewCard: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            cardHeading("WHAT TO EXPECT", icon: "chart.bar.doc.horizontal")
+            VStack(spacing: 0) {
+                confirmStat("Starting season", ClubSelectView.seasonLabel(for: startYear))
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityIdentifier("career.newGame.preview.startingSeason")
+                    .accessibilityLabel("Starting season \(ClubSelectView.seasonLabel(for: startYear))")
+                statDivider
+                confirmStat("League standing", "\(ordinal(preview.divisionRank)) of \(preview.divisionSize) seeds")
+                statDivider
+                confirmStat("Transfer budget", formatMoney(preview.estimatedBudget))
+                statDivider
+                confirmStat("Board objective", preview.boardObjective)
             }
-            .padding(.bottom, 24)
-            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(CareerPalette.surface)
+        .overlay(RoundedRectangle(cornerRadius: 13).stroke(CareerPalette.line.opacity(0.18)))
+        .clipShape(RoundedRectangle(cornerRadius: 13))
+        .shadow(color: CareerPalette.ink.opacity(0.05), radius: 5, y: 2)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(CareerIdentifiers.newGamePreview)
+    }
+
+    private var statDivider: some View {
+        Rectangle()
+            .fill(CareerPalette.line.opacity(0.10))
+            .frame(height: 1)
+    }
+
+    private func cardHeading(_ title: String, icon: String) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: icon)
+                .font(.system(size: 11, weight: .black))
+                .foregroundStyle(CareerPalette.line)
+            Text(title)
+                .font(.system(size: 9, weight: .black, design: .monospaced))
+                .foregroundStyle(CareerPalette.ink)
+            Spacer()
         }
     }
 
-    private func confirmStat(_ label: String, _ value: String) -> some View {
-        HStack {
-            Text(label).foregroundStyle(Retro.text.opacity(0.85))
-            Spacer()
-            Text(value).foregroundStyle(Retro.accent).bold()
+    private var confirmationFooter: some View {
+        VStack(spacing: 5) {
+            Button {
+                Haptics.success()
+                nameFieldFocused = false
+                store.runHeavy("Building the \(preview.name) squad…") {
+                    store.newGame(clubIndex: clubIndex, startYear: startYear, managerName: managerName)
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "person.crop.circle.badge.checkmark")
+                        .font(.system(size: 13, weight: .black))
+                    Text("MANAGE \(preview.name.uppercased())")
+                        .font(.system(size: 12, weight: .black, design: .monospaced))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 11, weight: .black))
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: 520)
+                .frame(height: 46)
+                .background(LinearGradient(colors: [CareerPalette.line, CareerPalette.ink],
+                                           startPoint: .leading, endPoint: .trailing))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .shadow(color: CareerPalette.line.opacity(0.24), radius: 7, y: 3)
+            }
+            .buttonStyle(PressableButtonStyle())
+            .accessibilityIdentifier(CareerIdentifiers.newGameManage)
+            .accessibilityLabel("Manage \(preview.name)")
+
+            Text("A fresh, independent career save — existing saves stay untouched.")
+                .font(.system(size: 7, weight: .medium, design: .monospaced))
+                .foregroundStyle(CareerPalette.mutedInk)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
         }
-        .font(.system(.callout, design: .monospaced))
+        .padding(.horizontal, 14)
+        .padding(.top, 7)
+        .padding(.bottom, 7)
+        .frame(maxWidth: 760)
+        .frame(maxWidth: .infinity, alignment: .bottom)
+        .background(CareerPalette.canvas)
+        .overlay(alignment: .top) { Rectangle().fill(CareerPalette.line.opacity(0.18)).frame(height: 1) }
+    }
+
+    private func confirmStat(_ label: String, _ value: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Text(label)
+                .font(.system(size: 9, weight: .medium, design: .monospaced))
+                .foregroundStyle(CareerPalette.mutedInk)
+            Spacer(minLength: 6)
+            Text(value)
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .foregroundStyle(CareerPalette.ink)
+                .multilineTextAlignment(.trailing)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.vertical, 6)
     }
 
     private func ordinal(_ n: Int) -> String {

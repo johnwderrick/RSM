@@ -62,6 +62,12 @@ struct HomeView: View {
         }
         .scrollIndicators(.hidden)
         .background(CareerPalette.canvas)
+        .overlay(alignment: .topLeading) {
+            Color.clear
+                .frame(width: 1, height: 1)
+                .accessibilityElement()
+                .accessibilityIdentifier(CareerIdentifiers.homeScreen)
+        }
     }
 
     private var careerHero: some View {

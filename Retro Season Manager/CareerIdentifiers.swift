@@ -25,6 +25,127 @@ enum CareerIdentifiers {
     /// The post-match CONTINUE action. (Pre-existing identifier, kept stable.)
     static let postMatchContinue = "career.postMatch.continue"
 
+    /// The Career Home dashboard root.
+    static let homeScreen = "career.home.screen"
+
+    // MARK: New Career setup
+
+    /// The club-and-era picker root and its sole vertical scroll container.
+    static let newGameSelect = "career.newGame.select"
+    static let newGameClubScroll = "career.newGame.clubs.scroll"
+    static let newGameEraScroll = "career.newGame.eras.scroll"
+    static let newGameSelectedEra = "career.newGame.selectedEra"
+    static let newGameBack = "career.newGame.back"
+    static let newGameConfirm = "career.newGame.confirm"
+    static let newGameBackToClubs = "career.newGame.confirm.back"
+    static let newGameClubSummary = "career.newGame.confirm.club"
+    static let newGameManagerName = "career.newGame.confirm.managerName"
+    static let newGamePreview = "career.newGame.confirm.preview"
+
+    /// The pinned primary action that starts the selected new career.
+    static let newGameManage = "career.newGame.manage"
+
+    /// A club choice keyed by its stable catalogue index.
+    static func newGameClub(_ index: Int) -> String {
+        "career.newGame.club.\(index)"
+    }
+
+    /// A start-era choice keyed by the actual start year.
+    static func newGameEra(_ year: Int) -> String {
+        "career.newGame.era.\(year)"
+    }
+
+    // MARK: Squad Team Setup sheet (light-card)
+
+    /// The Team Setup sheet's root canvas.
+    static let teamSetupSheet = "career.teamSetup.sheet"
+
+    /// The Team Setup sheet's single vertical scroll container.
+    static let teamSetupScroll = "career.teamSetup.scroll"
+
+    /// The sheet's pinned header close control.
+    static let teamSetupClose = "career.teamSetup.close"
+
+    /// The sheet's pinned footer Done action.
+    static let teamSetupDone = "career.teamSetup.done"
+
+    /// The end-of-content scroll anchor inside the sheet.
+    static let teamSetupEnd = "career.teamSetup.end"
+
+    /// The ASSIST ON badge, present only when auto-pick assist is enabled.
+    static let teamSetupAssistBadge = "career.teamSetup.assistBadge"
+
+    /// The formation bedding-in notice, present only while unfamiliar.
+    static let teamSetupBeddingIn = "career.teamSetup.beddingIn"
+
+    /// Stable selector for one formation choice, keyed by the Formation's
+    /// stable name (e.g. `4-4-2`).
+    static func teamSetupFormation(_ name: String) -> String {
+        "career.teamSetup.formation.\(slug(name))"
+    }
+
+    /// Stable selector for one mentality choice, keyed by the Mentality
+    /// raw value (e.g. `balanced`).
+    static func teamSetupMentality(_ mentality: Mentality) -> String {
+        "career.teamSetup.mentality.\(slug(mentality.rawValue))"
+    }
+
+    /// Stable selector for one training-focus choice, keyed by the
+    /// `TrainingFocus` raw value (e.g. `physical`).
+    static func teamSetupTraining(_ focus: TrainingFocus) -> String {
+        "career.teamSetup.training.\(slug(focus.rawValue))"
+    }
+
+    /// The RESET SLOTS action.
+    static let teamSetupResetSlots = "career.teamSetup.resetSlots"
+
+    /// The assistant's TRY <formation> action (absent when the recommended
+    /// formation is already active).
+    static let teamSetupTrySuggested = "career.teamSetup.trySuggested"
+
+    /// The AUTO-PICK action.
+    static let teamSetupAutoPick = "career.teamSetup.autoPick"
+
+    /// The CLEAR XI action.
+    static let teamSetupClearXI = "career.teamSetup.clearXI"
+
+    // MARK: Squad Depth sheet (light-card)
+
+    /// The Squad Depth sheet's root canvas.
+    static let depthSheet = "career.depth.sheet"
+
+    /// The Squad Depth sheet's single vertical scroll container.
+    static let depthScroll = "career.depth.scroll"
+
+    /// The sheet's pinned header close control.
+    static let depthClose = "career.depth.close"
+
+    /// The end-of-content scroll anchor inside the sheet.
+    static let depthEnd = "career.depth.end"
+
+    /// The cover-by-position card.
+    static let depthCoverList = "career.depth.coverList"
+
+    /// The all-covered state banner, present only when no role is thin.
+    static let depthAllCovered = "career.depth.allCovered"
+
+    /// The transfer-suggestions card, present only when suggestions exist.
+    static let depthSuggestions = "career.depth.suggestions"
+
+    /// Stable selector for one thin-role row, keyed by the DetailedPosition
+    /// raw value (e.g. `gk`) — the model's stable identity, never display
+    /// wording.
+    static func depthRole(_ role: DetailedPosition) -> String {
+        "career.depth.role.\(slug(role.rawValue))"
+    }
+
+    /// Stable selector for one market-suggestion row, keyed by the player's
+    /// name slug (fixture-injected targets use fixed names so the selector
+    /// is deterministic across launches).
+    static func depthTarget(_ playerName: String) -> String {
+        "career.depth.target.\(slug(playerName))"
+    }
+
     // MARK: Settings sub-destinations
 
     /// Selector for one Settings menu row, derived from the destination's

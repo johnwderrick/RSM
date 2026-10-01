@@ -12,6 +12,7 @@ struct ContentView: View {
     @State private var store = GameStore()
     @State private var legendsStore = LegendsStore()
     @State private var experience: GameExperience? = nil
+    @State private var startsAtNewGame = false
 
     init() {
         let legends = LegendsStore()
@@ -76,6 +77,13 @@ struct ContentView: View {
         _legendsStore = State(initialValue: legends)
 
         #if DEBUG
+        // Isolated starting point for the New Game UI test: an in-memory,
+        // empty store, no fixture save, and no implicit resume/load route.
+        if ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_NEW_GAME") {
+            _store = State(initialValue: GameStore())
+            _startsAtNewGame = State(initialValue: true)
+        }
+
         // Deterministic Career navigation fixture: boots straight into an
         // active, saved career with stable injuries and inbox content
         // (see GameStore+UITestFixture.swift).
@@ -119,6 +127,18 @@ struct ContentView: View {
             let career = GameStore()
             career.prepareCareerSheetsFixtureForDebug(
                 forceRenewalBudgetDecline: ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_SHEETS_DECLINE"))
+            _store = State(initialValue: career)
+            _experience = State(initialValue: .career)
+        }
+        // Deterministic Squad Depth fixture: the navigation career with
+        // exactly one red (no cover) and one amber (thin cover) role, plus
+        // two affordable left-back targets (free agent + fee). The
+        // fullCover variant shows the all-covered/no-suggestions state
+        // instead (see GameStore+UITestFixture.swift).
+        if ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_DEPTH") {
+            let career = GameStore()
+            career.prepareCareerDepthFixtureForDebug(
+                fullCover: ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_DEPTH_FULL_COVER"))
             _store = State(initialValue: career)
             _experience = State(initialValue: .career)
         }
@@ -174,7 +194,12 @@ struct ContentView: View {
     var body: some View {
         ZStack {
             Retro.background.ignoresSafeArea()
-            if let live = store.live {
+            if startsAtNewGame && !store.hasStarted {
+                ClubSelectView(store: store, onBack: {
+                    startsAtNewGame = false
+                    experience = nil
+                })
+            } else if let live = store.live {
                 MatchView(store: store, live: live)
             } else if store.atPreMatch {
                 PreMatchHubView(store: store)
