@@ -151,20 +151,28 @@ struct AchievementGalleryView: View {
                     .foregroundStyle(done == kinds.count ? CareerPalette.line : CareerPalette.mutedInk)
                     .monospacedDigit()
             }
-            // Achievement tiles flow 2-across on compact landscape phones
-            // (3 on wide iPad-class widths), stacking instead of clipping.
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                ForEach(kinds) { kind in
-                    Button {
-                        Haptics.tap()
-                        selected = kind
-                    } label: {
-                        AchievementCard(kind: kind, unlocked: store.unlockedAchievements.contains(kind))
+            // Keep this small, fixed catalogue eager so cards remain in the
+            // accessibility tree after scrolling and detail-sheet round trips.
+            VStack(spacing: 10) {
+                ForEach(Array(stride(from: 0, to: kinds.count, by: 2)), id: \.self) { start in
+                    HStack(alignment: .top, spacing: 10) {
+                        ForEach(kinds[start..<min(start + 2, kinds.count)]) { kind in
+                            Button {
+                                Haptics.tap()
+                                selected = kind
+                            } label: {
+                                AchievementCard(kind: kind, unlocked: store.unlockedAchievements.contains(kind))
+                            }
+                            .buttonStyle(PressableButtonStyle())
+                            .frame(maxWidth: .infinity)
+                            .accessibilityIdentifier(CareerIdentifiers.achievementsCard(kind.rawValue))
+                            .accessibilityLabel("\(kind.rawValue). \(unlocked(kind) ? "Unlocked" : "Locked"). \(kind.subtitle)")
+                            .accessibilityAddTraits(.isButton)
+                        }
+                        if start + 1 == kinds.count {
+                            Color.clear.frame(maxWidth: .infinity).accessibilityHidden(true)
+                        }
                     }
-                    .buttonStyle(PressableButtonStyle())
-                    .accessibilityIdentifier(CareerIdentifiers.achievementsCard(kind.rawValue))
-                    .accessibilityLabel("\(kind.rawValue). \(unlocked(kind) ? "Unlocked" : "Locked"). \(kind.subtitle)")
-                    .accessibilityAddTraits(.isButton)
                 }
             }
             .accessibilityElement(children: .contain)
