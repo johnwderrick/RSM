@@ -32,9 +32,9 @@ final class CareerSettingsUITests: XCTestCase {
     // MARK: - Launch & capture
 
     @discardableResult
-    private func launch() -> XCUIApplication {
+    private func launch(extraArguments: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["UITEST_CAREER_SETTINGS"]
+        app.launchArguments = ["UITEST_CAREER_SETTINGS"] + extraArguments
         app.launch()
         return app
     }
@@ -117,8 +117,8 @@ final class CareerSettingsUITests: XCTestCase {
     }
 
     @discardableResult
-    private func launchToSettings() -> XCUIApplication {
-        let app = launch()
+    private func launchToSettings(extraArguments: [String] = []) -> XCUIApplication {
+        let app = launch(extraArguments: extraArguments)
         XCTAssertTrue(app.descendants(matching: .any)["career.home.screen"].waitForExistence(timeout: 15),
                       "Career home should appear after launch")
         let tab = app.buttons["career.nav.settings"]
@@ -280,6 +280,30 @@ final class CareerSettingsUITests: XCTestCase {
                       "SAVE & EXIT should land on the main menu")
         XCTAssertTrue(app.staticTexts["Resume"].waitForExistence(timeout: 8),
                       "The persisted career should offer Resume on the menu")
+    }
+
+    func testSaveAndExitFileFailureStaysInCareerUntilRetry() throws {
+        assertSaveFailureAndRetry("UITEST_CAREER_SAVE_FAIL_FILE")
+    }
+
+    func testSaveAndExitIndexFailureStaysInCareerUntilRetry() throws {
+        assertSaveFailureAndRetry("UITEST_CAREER_SAVE_FAIL_INDEX")
+    }
+
+    private func assertSaveFailureAndRetry(_ launchArgument: String) {
+        let app = launchToSettings(extraArguments: [launchArgument])
+        let exit = waitFor(app, "career.settings.saveExit")
+        exit.tap()
+
+        let error = app.alerts["Unable to save career"]
+        XCTAssertTrue(error.waitForExistence(timeout: 8))
+        XCTAssertTrue(error.staticTexts["Your career is still open. Please try saving again before leaving."].exists)
+        XCTAssertTrue(exists(app, "career.settings.summary", 5), "A failed save must keep Settings open")
+        error.buttons["OK"].tap()
+
+        exit.tap()
+        XCTAssertTrue(app.staticTexts["⚽︎ RETRO SEASON MANAGER"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Resume"].waitForExistence(timeout: 8))
     }
 
     // MARK: - F. Scroll stability

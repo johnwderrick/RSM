@@ -127,6 +127,7 @@ struct SettingsView: View {
 struct SettingsMenuView: View {
     let store: GameStore
     let onSelect: (SettingsDestination) -> Void
+    @State private var saveExitFailed = false
 
     var body: some View {
         ScrollView {
@@ -145,6 +146,11 @@ struct SettingsMenuView: View {
         }
         .accessibilityIdentifier(CareerIdentifiers.settingsScroll)
         .background(CareerPalette.canvas.ignoresSafeArea())
+        .alert("Unable to save career", isPresented: $saveExitFailed) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("Your career is still open. Please try saving again before leaving.")
+        }
     }
 
     // MARK: Career summary
@@ -210,7 +216,7 @@ struct SettingsMenuView: View {
                     .foregroundStyle(CareerPalette.ink)
                 Spacer()
             }
-            Text("Your career saves automatically after every match, and whenever you leave the game from this screen. Progress is never lost between sessions.")
+            Text("Your career saves automatically after every match and when you leave from this screen. If that final save fails, you will stay in your career and can try again.")
                 .font(.system(size: 9, design: .monospaced))
                 .foregroundStyle(CareerPalette.mutedInk)
                 .fixedSize(horizontal: false, vertical: true)
@@ -229,7 +235,7 @@ struct SettingsMenuView: View {
             }
             Button {
                 Haptics.tap()
-                store.quitToMenu()
+                if !store.quitToMenu() { saveExitFailed = true }
             } label: {
                 Text("⟲  SAVE & EXIT TO MENU")
                     .font(.system(size: 12, weight: .black, design: .monospaced))
@@ -731,7 +737,7 @@ struct SettingsDetailView: View {
             if let id = store.currentSaveID,
                let slot = SaveSlots.all().first(where: { $0.id == id }) {
                 Divider().overlay(CareerPalette.line.opacity(0.14))
-                recordLine("Save slot", slot.clubName)
+                recordLine("Save slot", slot.displayName)
                 recordLine("Last saved", slot.lastPlayed.formatted(.relative(presentation: .named)))
             }
         }

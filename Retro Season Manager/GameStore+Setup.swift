@@ -405,10 +405,12 @@ extension GameStore {
         }
     }
 
-    /// Returns to the main menu (the game is saved automatically).
-    func quitToMenu() {
-        persist()
+    /// Returns to the main menu only after both the career and slot index save.
+    @discardableResult
+    func quitToMenu() -> Bool {
+        guard persist() else { return false }
         hasStarted = false
+        return true
     }
 
 }

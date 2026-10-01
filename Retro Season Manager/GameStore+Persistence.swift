@@ -36,10 +36,13 @@ extension GameStore {
               let data = try? Data(contentsOf: legacySaveURL),
               let state = try? JSONDecoder().decode(SaveState.self, from: data) else { return }
         let id = UUID()
-        try? data.write(to: SaveSlots.fileURL(for: id))
+        guard SaveSlots.writeSaveData(data, for: id) else { return }
         let clubName = state.clubs.indices.contains(state.userClubIndex) ? state.clubs[state.userClubIndex].name : "Unknown"
-        SaveSlots.upsert(SaveSlotInfo(id: id, clubName: clubName, managerName: "Manager",
-                                       season: state.season, divisionName: "", lastPlayed: state.currentDate))
+        guard SaveSlots.upsert(SaveSlotInfo(id: id, clubName: clubName, managerName: "Manager",
+                                            season: state.season, divisionName: "", lastPlayed: state.currentDate)) else {
+            try? FileManager.default.removeItem(at: SaveSlots.fileURL(for: id))
+            return
+        }
         try? FileManager.default.removeItem(at: legacySaveURL)
     }
 
@@ -49,8 +52,9 @@ extension GameStore {
     }
 
     /// Writes the essential game state to disk.
-    func persist() {
-        guard hasStarted else { return }
+    @discardableResult
+    func persist() -> Bool {
+        guard hasStarted else { return false }
         let state = SaveState(season: season,
                               currentMatchday: currentMatchday,
                               userClubIndex: userClubIndex,
@@ -171,18 +175,23 @@ extension GameStore {
                               transferMarket: transferMarket,
                               scoutedReports: scoutedReports,
                               scoutingDue: scoutingDue)
-        guard let id = currentSaveID, let data = try? JSONEncoder().encode(state) else { return }
-        try? data.write(to: SaveSlots.fileURL(for: id))
-        SaveSlots.upsert(SaveSlotInfo(id: id, clubName: userClub.name, managerName: "Manager",
-                                       season: season, divisionName: divisionName(userDivisionTier),
-                                       lastPlayed: Date()))
+        guard let id = currentSaveID, let data = try? JSONEncoder().encode(state),
+              SaveSlots.writeSaveData(data, for: id) else { return false }
+        return SaveSlots.upsert(SaveSlotInfo(id: id, clubName: userClub.name, managerName: "Manager",
+                                             season: season, divisionName: divisionName(userDivisionTier),
+                                             lastPlayed: Date(), customName: SaveSlots.all().first { $0.id == id }?.customName))
     }
 
     /// Restores a saved game from a specific slot, regenerating transient state.
     @discardableResult
     func loadSavedGame(id: UUID) -> Bool {
         guard let data = try? Data(contentsOf: SaveSlots.fileURL(for: id)),
-              let state = try? JSONDecoder().decode(SaveState.self, from: data) else { return false }
+              let state = try? JSONDecoder().decode(SaveState.self, from: data),
+              state.clubs.indices.contains(state.userClubIndex) else { return false }
+        // Validate before changing either live career state or slot metadata.
+        if state.clubs.indices.contains(state.userClubIndex) {
+            SaveSlots.preserveLegacyRename(id, savedClubName: state.clubs[state.userClubIndex].name)
+        }
         // Every field added since version 1 already defaults itself on
         // load via `?? something` below, so there's nothing to migrate
         // yet — `saveVersion` exists as the hook for the day a change

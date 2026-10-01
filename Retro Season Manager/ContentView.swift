@@ -120,6 +120,11 @@ struct ContentView: View {
         if ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_SETTINGS") {
             let career = GameStore()
             career.prepareCareerSettingsFixtureForDebug()
+            if ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_SAVE_FAIL_FILE") {
+                SaveSlots.debugFailNextWrite = .saveFile
+            } else if ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_SAVE_FAIL_INDEX") {
+                SaveSlots.debugFailNextWrite = .index
+            }
             _store = State(initialValue: career)
             _experience = State(initialValue: .career)
         }
@@ -146,6 +151,11 @@ struct ContentView: View {
             let career = GameStore()
             career.prepareCareerSupporterFixtureForDebug()
             _store = State(initialValue: career)
+            _experience = State(initialValue: .career)
+        }
+        if ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_SAVE_SLOTS") {
+            GameStore.seedCareerSaveSlotsFixtureForDebug(
+                corruptNewest: ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_SAVE_SLOTS_CORRUPT"))
             _experience = State(initialValue: .career)
         }
         // Deterministic Football Museum fixture: seeds the LegacyArchive

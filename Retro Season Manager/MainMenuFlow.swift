@@ -20,41 +20,43 @@ struct SaveSlotListSheet: View {
     @State private var renaming: SaveSlotInfo?
     @State private var renameText = ""
     @State private var pendingDelete: SaveSlotInfo?
+    @State private var loadFailed = false
 
     var body: some View {
-        ZStack {
-            Retro.background.ignoresSafeArea()
-            VStack(alignment: .leading, spacing: 14) {
-                HStack {
-                    Text("CAREER SAVES")
-                        .font(.system(.headline, design: .monospaced).bold())
-                        .foregroundStyle(Retro.accent)
-                    Spacer()
-                    Button("Close") { dismiss() }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(Retro.text)
-                }
-                if saves.isEmpty {
-                    Spacer()
-                    Text("No career saves yet.")
-                        .font(.system(.footnote, design: .monospaced))
-                        .foregroundStyle(Retro.text.opacity(0.7))
-                        .frame(maxWidth: .infinity, alignment: .center)
-                    Spacer()
-                } else {
-                    ScrollView {
-                        VStack(spacing: 8) {
-                            ForEach(saves) { slot in
-                                row(slot)
-                            }
+        ZStack(alignment: .topTrailing) {
+            CareerPalette.canvas.ignoresSafeArea()
+            VStack(alignment: .leading, spacing: 0) {
+                header
+                    .padding(.trailing, 48)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 12) {
+                        if saves.isEmpty {
+                            emptyState
+                        } else {
+                            ForEach(saves) { slot in row(slot) }
                         }
                     }
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .padding(.top, 14)
+                    .padding(.bottom, 24)
                 }
+                .accessibilityIdentifier("career.saves.scroll")
             }
             .padding(20)
+
+            Button { dismiss() } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 26))
+                    .foregroundStyle(CareerPalette.mutedInk.opacity(0.65))
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(PressableButtonStyle())
+            .accessibilityIdentifier("career.saves.close")
+            .accessibilityLabel("Close career saves")
+            .padding(12)
         }
         .font(.system(.body, design: .monospaced))
-        .foregroundStyle(Retro.text)
+        .foregroundStyle(CareerPalette.ink)
         .alert("Rename Save", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
             TextField("Save name", text: $renameText)
             Button("Cancel", role: .cancel) { renaming = nil }
@@ -78,44 +80,125 @@ struct SaveSlotListSheet: View {
         } message: {
             Text("This can't be undone.")
         }
+        .alert("Unable to load career", isPresented: $loadFailed) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("This save could not be opened. Your other saves have not been changed.")
+        }
+    }
+
+    private var header: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "folder.fill")
+                .font(.system(size: 25))
+                .foregroundStyle(CareerPalette.line)
+                .frame(width: 50, height: 50)
+                .background(CareerPalette.line.opacity(0.10))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+            VStack(alignment: .leading, spacing: 3) {
+                Text("CAREER SAVES")
+                    .font(.system(.headline, design: .monospaced).bold())
+                    .accessibilityIdentifier("career.saves.header")
+                Text("\(saves.count) SAVED \(saves.count == 1 ? "CAREER" : "CAREERS") · SELECT ONE TO CONTINUE")
+                    .font(.system(.caption2, design: .monospaced).bold())
+                    .foregroundStyle(CareerPalette.mutedInk)
+                    .accessibilityIdentifier("career.saves.count")
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "folder.badge.questionmark")
+                .font(.system(size: 28))
+                .foregroundStyle(CareerPalette.line)
+            Text("NO CAREER SAVES YET")
+                .font(.system(.headline, design: .monospaced).bold())
+            Text("Start a new career to create your first save.")
+                .font(.system(.caption, design: .monospaced))
+                .foregroundStyle(CareerPalette.mutedInk)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(24)
+        .background(CareerPalette.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(CareerPalette.line.opacity(0.18)))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("career.saves.empty")
     }
 
     private func row(_ slot: SaveSlotInfo) -> some View {
-        Button {
-            Haptics.tap()
-            store.runHeavy("Loading \(slot.clubName)…") {
-                store.loadSavedGame(id: slot.id)
-            }
-        } label: {
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(slot.clubName)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Image(systemName: "soccerball")
+                    .font(.system(size: 23))
+                    .foregroundStyle(CareerPalette.line)
+                    .frame(width: 42, height: 42)
+                    .background(CareerPalette.line.opacity(0.10))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(slot.displayName)
                         .font(.system(.callout, design: .monospaced).bold())
-                        .foregroundStyle(Retro.text)
-                    Text("Season \(slot.season) · \(slot.divisionName.isEmpty ? "In progress" : slot.divisionName) · \(slot.lastPlayed.formatted(.dateTime.day().month(.abbreviated).year()))")
+                        .accessibilityIdentifier("career.saves.name.\(slot.id.uuidString)")
+                    Text("SEASON \(slot.season) · \(slot.divisionName.isEmpty ? "IN PROGRESS" : slot.divisionName.uppercased())")
+                        .font(.system(.caption2, design: .monospaced).bold())
+                        .foregroundStyle(CareerPalette.mutedInk)
+                    Text("LAST PLAYED \(slot.lastPlayed.formatted(.dateTime.day().month(.abbreviated).year()).uppercased())")
                         .font(.system(.caption2, design: .monospaced))
-                        .foregroundStyle(Retro.text.opacity(0.65))
+                        .foregroundStyle(CareerPalette.mutedInk)
                 }
-                Spacer()
+                Spacer(minLength: 0)
+            }
+
+            HStack(spacing: 8) {
                 Button {
-                    renameText = slot.clubName
+                    Haptics.tap()
+                    store.runHeavy("Loading \(slot.displayName)…") {
+                        if !store.loadSavedGame(id: slot.id) { loadFailed = true }
+                    }
+                } label: {
+                    Label("LOAD CAREER", systemImage: "play.fill")
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 44)
+                        .foregroundStyle(.white)
+                        .background(CareerPalette.line)
+                        .clipShape(RoundedRectangle(cornerRadius: 9))
+                }
+                .accessibilityIdentifier("career.saves.load.\(slot.id.uuidString)")
+
+                Button {
+                    renameText = slot.displayName
                     renaming = slot
                 } label: {
-                    Image(systemName: "pencil").foregroundStyle(Retro.text.opacity(0.7))
+                    Label("RENAME", systemImage: "pencil")
+                        .frame(minHeight: 44)
+                        .padding(.horizontal, 12)
+                        .background(CareerPalette.canvas)
+                        .clipShape(RoundedRectangle(cornerRadius: 9))
                 }
-                .buttonStyle(.plain)
+                .accessibilityIdentifier("career.saves.rename.\(slot.id.uuidString)")
+
                 Button {
                     pendingDelete = slot
                 } label: {
-                    Image(systemName: "trash").foregroundStyle(Color(red: 0.9, green: 0.4, blue: 0.35))
+                    Label("DELETE", systemImage: "trash")
+                        .foregroundStyle(.red)
+                        .frame(minHeight: 44)
+                        .padding(.horizontal, 12)
+                        .background(Color.red.opacity(0.08))
+                        .clipShape(RoundedRectangle(cornerRadius: 9))
                 }
-                .buttonStyle(.plain)
+                .accessibilityIdentifier("career.saves.delete.\(slot.id.uuidString)")
             }
-            .padding(12)
-            .background(Retro.panel.opacity(0.6))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .font(.system(size: 10, weight: .black, design: .monospaced))
+            .buttonStyle(PressableButtonStyle())
         }
-        .buttonStyle(PressableButtonStyle())
+        .padding(14)
+        .background(CareerPalette.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(CareerPalette.line.opacity(0.18)))
+        .shadow(color: CareerPalette.ink.opacity(0.06), radius: 7, y: 3)
     }
 }
 
@@ -127,6 +210,8 @@ struct MainMenuView: View {
     @State private var showClubSelect = false
     @State private var showSaveList = false
     @State private var showLegacyCareers = false
+    @State private var loadFailed = false
+    @State private var availableSaves: [SaveSlotInfo] = GameStore.savedGames()
 
     var body: some View {
         if showClubSelect {
@@ -176,22 +261,24 @@ struct MainMenuView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
                         menuTile(icon: "play.fill", title: "Resume",
-                                 subtitle: mostRecentSave.map { "Continue \($0.clubName)" } ?? "No save to resume",
+                                 subtitle: mostRecentSave.map { "Continue \($0.displayName)" } ?? "No save to resume",
                                  enabled: mostRecentSave != nil) {
                             guard let slot = mostRecentSave else { return }
-                            store.runHeavy("Loading \(slot.clubName)…") {
-                                store.loadSavedGame(id: slot.id)
+                            store.runHeavy("Loading \(slot.displayName)…") {
+                                if !store.loadSavedGame(id: slot.id) { loadFailed = true }
                             }
                         }
+                        .accessibilityIdentifier("career.menu.resume")
                         menuTile(icon: "gearshape.fill", title: "New Game",
                                  subtitle: "Pick a club and start", enabled: true) {
                             withAnimation(.easeInOut(duration: 0.25)) { showClubSelect = true }
                         }
                         menuTile(icon: "folder.fill", title: "Load Game",
-                                 subtitle: GameStore.hasSavedGame ? "\(GameStore.savedGames().count) career save\(GameStore.savedGames().count == 1 ? "" : "s")" : "No saves yet",
-                                 enabled: GameStore.hasSavedGame) {
+                                 subtitle: availableSaves.isEmpty ? "No saves yet" : "\(availableSaves.count) career save\(availableSaves.count == 1 ? "" : "s")",
+                                 enabled: !availableSaves.isEmpty) {
                             showSaveList = true
                         }
+                        .accessibilityIdentifier("career.menu.loadGame")
                         menuTile(icon: "trophy.fill", title: "Museum",
                                  subtitle: legacyCareers.isEmpty ? "No careers finished yet" : "\(legacyCareers.count) past career\(legacyCareers.count == 1 ? "" : "s")",
                                  enabled: !legacyCareers.isEmpty) {
@@ -228,18 +315,26 @@ struct MainMenuView: View {
                 .padding()
             }
         }
-        .sheet(isPresented: $showSaveList) {
+        .onAppear { availableSaves = GameStore.savedGames() }
+        .sheet(isPresented: $showSaveList, onDismiss: {
+            availableSaves = GameStore.savedGames()
+        }) {
             SaveSlotListSheet(store: store)
         }
         .sheet(isPresented: $showLegacyCareers) {
             LegacyCareersListView()
+        }
+        .alert("Unable to load career", isPresented: $loadFailed) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("This save could not be opened. Your other saves have not been changed.")
         }
     }
 
     /// A subtitle describing which start years a new career can begin in —
     /// The most recently played save, if any — `savedGames()` is already
     /// sorted newest first, so this is the one "Resume" jumps straight into.
-    private var mostRecentSave: SaveSlotInfo? { GameStore.savedGames().first }
+    private var mostRecentSave: SaveSlotInfo? { availableSaves.first }
 
     /// Every permanently archived career — see `LegacyCareer.swift`.
     private var legacyCareers: [LegacyCareerInfo] { LegacyArchive.all() }
@@ -803,4 +898,3 @@ struct ClubConfirmView: View {
         return "\(n)\(suffix)"
     }
 }
-
