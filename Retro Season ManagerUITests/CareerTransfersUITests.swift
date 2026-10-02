@@ -91,6 +91,43 @@ final class CareerTransfersUITests: XCTestCase {
                       "Transfer Centre summary missing")
     }
 
+    /// Tab taps can be swallowed by an in-flight SwiftUI update. Check the
+    /// selected trait before querying negotiation content; a second tap on
+    /// the same tab is idempotent and never sends a transfer action.
+    private func openNegotiations(_ app: XCUIApplication) {
+        let tab = app.buttons["career.transfers.tab.negotiations"]
+        XCTAssertTrue(tab.waitForExistence(timeout: 6), "NEGOTIATIONS tab missing")
+        let selected = NSPredicate(format: "isSelected == true")
+        func isSelected() -> Bool {
+            XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: selected, object: tab)],
+                          timeout: 4) == .completed
+        }
+        tab.tap()
+        if !isSelected() { tab.tap() }
+        XCTAssertTrue(isSelected(), "NEGOTIATIONS tab should become selected")
+    }
+
+    /// Offer actions sit below the summary and tab controls. Reveal the
+    /// actual button on compact layouts instead of assuming it is already
+    /// in the accessibility viewport. Missing fixture offers still fail.
+    private func incomingOfferAction(_ app: XCUIApplication, _ action: String) -> XCUIElement {
+        let button = app.buttons.matching(NSPredicate(
+            format: "identifier BEGINSWITH %@ AND identifier ENDSWITH %@",
+            "career.transfers.offer.", ".\(action)")).firstMatch
+        let scroll = app.scrollViews["career.transfers.scroll"]
+        XCTAssertTrue(scroll.waitForExistence(timeout: 6), "Transfer scroll container missing")
+        for _ in 0..<5 {
+            if button.waitForExistence(timeout: 1) && button.isHittable { return button }
+            scroll.swipeUp()
+        }
+        let diagnostic = XCTAttachment(string: app.debugDescription)
+        diagnostic.name = "missing_incoming_offer_\(action)"
+        diagnostic.lifetime = .keepAlways
+        add(diagnostic)
+        XCTFail("Fixture's incoming offer should expose a reachable \(action.uppercased()) action")
+        return button
+    }
+
     // MARK: - Summary, market cards, states, prices, actions
 
     func testTransferCentreSummaryMarketCardsAndPrimaryActions() throws {
@@ -313,11 +350,8 @@ final class CareerTransfersUITests: XCTestCase {
         let app = launch()
         openTransfers(app)
 
-        app.buttons["career.transfers.tab.negotiations"].tap()
-        let accept = app.buttons.matching(
-            NSPredicate(format: "identifier BEGINSWITH %@ AND identifier ENDSWITH %@",
-                        "career.transfers.offer.", ".accept")).firstMatch
-        XCTAssertTrue(accept.waitForExistence(timeout: 6), "Fixture's incoming offer should render with an ACCEPT action")
+        openNegotiations(app)
+        let accept = incomingOfferAction(app, "accept")
         shot(app, "negotiations_se")
 
         // Accepting runs the real completeSale path: the offer disappears.
@@ -475,7 +509,7 @@ final class CareerTransfersUITests: XCTestCase {
         XCTAssertTrue(summaryAfterAccept.label.contains("1 deals in progress"),
                       "The accepted bid must create exactly one deal (0 → 1): \(summaryAfterAccept.label)")
 
-        app.buttons["career.transfers.tab.negotiations"].tap()
+        openNegotiations(app)
         // A fresh deal is in medical/paperwork (isReady == false), so the
         // TALK TERMS control doesn't exist yet — the deal row renders a
         // clock and the always-present withdraw control instead. NOTE: the
@@ -511,12 +545,9 @@ final class CareerTransfersUITests: XCTestCase {
     func testTransfersCounterSheetOnIncomingOfferResolves() throws {
         let app = launch()
         openTransfers(app)
-        app.buttons["career.transfers.tab.negotiations"].tap()
+        openNegotiations(app)
 
-        let counter = app.buttons.matching(
-            NSPredicate(format: "identifier BEGINSWITH %@ AND identifier ENDSWITH %@",
-                        "career.transfers.offer.", ".counter")).firstMatch
-        XCTAssertTrue(counter.waitForExistence(timeout: 6), "Fixture's incoming offer should render a COUNTER action")
+        let counter = incomingOfferAction(app, "counter")
         counter.tap()
 
         let send = app.buttons["career.transfers.countersell.send"]
@@ -552,17 +583,14 @@ final class CareerTransfersUITests: XCTestCase {
     func testTransfersRejectIncomingOfferRemovesIt() throws {
         let app = launch()
         openTransfers(app)
-        app.buttons["career.transfers.tab.negotiations"].tap()
+        openNegotiations(app)
 
         let summary = anyElement(app, "career.transfers.summary")
         XCTAssertTrue(summary.waitForExistence(timeout: 6), "Summary missing before rejecting")
         let offersBefore = offersCount(fromSummary: summary.label)
         XCTAssertEqual(offersBefore, 1, "Fixture should start with exactly one incoming offer: \(summary.label)")
 
-        let reject = app.buttons.matching(
-            NSPredicate(format: "identifier BEGINSWITH %@ AND identifier ENDSWITH %@",
-                        "career.transfers.offer.", ".reject")).firstMatch
-        XCTAssertTrue(reject.waitForExistence(timeout: 6), "Fixture's incoming offer should render a REJECT action")
+        let reject = incomingOfferAction(app, "reject")
         shot(app, "offer_before_reject_se")
         reject.tap()
 
@@ -590,7 +618,7 @@ final class CareerTransfersUITests: XCTestCase {
         app.launchArguments = ["UITEST_CAREER_TRANSFERS", "UITEST_TRANSFERS_SEED_READY_DEAL"]
         app.launch()
         openTransfers(app)
-        app.buttons["career.transfers.tab.negotiations"].tap()
+        openNegotiations(app)
 
         // The deal is ready (through the real transition), so TALK TERMS
         // exists and the summary counts exactly one deal.
@@ -625,7 +653,7 @@ final class CareerTransfersUITests: XCTestCase {
         shot(app, "deal_ready_news_se")
         gotoSidebar(app, "transfers")
         XCTAssertTrue(screenVisible(app, "transfers", timeout: 8), "Returning to Transfers should work")
-        app.buttons["career.transfers.tab.negotiations"].tap()
+        openNegotiations(app)
         XCTAssertTrue(terms.waitForExistence(timeout: 6), "TALK TERMS should still be present after the inbox detour")
 
         terms.tap()
@@ -673,7 +701,7 @@ final class CareerTransfersUITests: XCTestCase {
                        "The rush badge must stay off the MARKET tab: \(summary.label)")
 
         // Switching to NEGOTIATIONS lights the badge up.
-        app.buttons["career.transfers.tab.negotiations"].tap()
+        openNegotiations(app)
         let negotiationsSummary = anyElement(app, "career.transfers.summary")
         XCTAssertTrue(negotiationsSummary.waitForExistence(timeout: 6), "Summary missing on negotiations")
         XCTAssertTrue(negotiationsSummary.label.contains("Deadline day rush"),
@@ -719,12 +747,12 @@ final class CareerTransfersUITests: XCTestCase {
         shot(app, "deadline_rush_bid_news_se")
         gotoSidebar(app, "transfers")
         XCTAssertTrue(screenVisible(app, "transfers", timeout: 8), "Returning to Transfers should work")
-        app.buttons["career.transfers.tab.negotiations"].tap()
+        openNegotiations(app)
         shot(app, "deadline_rush_negotiations_se")
         app.buttons["career.transfers.tab.market"].tap()
         XCTAssertFalse(anyElement(app, "career.transfers.summary").label.contains("Deadline day rush"),
                        "Badge should clear when leaving NEGOTIATIONS")
-        app.buttons["career.transfers.tab.negotiations"].tap()
+        openNegotiations(app)
         XCTAssertTrue(anyElement(app, "career.transfers.summary").label.contains("Deadline day rush"),
                       "Badge should return on NEGOTIATIONS")
         shot(app, "deadline_rush_return_se")
@@ -757,7 +785,7 @@ final class CareerTransfersUITests: XCTestCase {
     func testTransfersNoDeadlineBadgeOutsideRush() throws {
         let app = launch()
         openTransfers(app)
-        app.buttons["career.transfers.tab.negotiations"].tap()
+        openNegotiations(app)
         let summary = anyElement(app, "career.transfers.summary")
         XCTAssertTrue(summary.waitForExistence(timeout: 6), "Summary missing on negotiations")
         XCTAssertFalse(summary.label.contains("Deadline day rush"),
