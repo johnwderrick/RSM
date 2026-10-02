@@ -17,6 +17,10 @@ extension GameStore {
         try? FileManager.default.removeItem(at: docs.appendingPathComponent("saves", isDirectory: true))
         try? FileManager.default.removeItem(at: legacySaveURL)
 
+        // Keep deterministic ordering without future-dated slots. Other UI
+        // tests share this container, and a later real save must outrank
+        // both fixture careers when the normal Resume tile is used.
+        let fixtureDate = Date().addingTimeInterval(-2 * 86_400)
         let entries = catalogueEntries()
         for (offset, name) in ["Old Trafford Reds", "Highbury"].enumerated() {
             let clubIndex = entries.firstIndex { $0.name == name } ?? offset
@@ -24,7 +28,7 @@ extension GameStore {
             career.newGame(clubIndex: clubIndex, managerName: "Save Fixture \(offset + 1)")
             guard let id = career.currentSaveID,
                   var slot = SaveSlots.all().first(where: { $0.id == id }) else { continue }
-            slot.lastPlayed = Date(timeIntervalSince1970: 1_800_000_000 + Double(offset * 86_400))
+            slot.lastPlayed = fixtureDate.addingTimeInterval(Double(offset * 86_400))
             SaveSlots.upsert(slot)
         }
         if corruptNewest, let newest = SaveSlots.all().first {

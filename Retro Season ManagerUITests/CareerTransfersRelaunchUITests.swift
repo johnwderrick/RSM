@@ -84,6 +84,16 @@ final class CareerTransfersRelaunchUITests: XCTestCase {
     // MARK: - Persistence across a real relaunch
 
     func testMarketAndShortlistSurviveTerminateRelaunchWithoutReseeding() throws {
+        // Reproduce the full-suite predecessor: save-picker fixture slots
+        // remain in the shared app container when this test starts. Resume
+        // must still choose the newer transfer career, without deleting
+        // those slots or bypassing the normal menu.
+        let predecessor = XCUIApplication()
+        predecessor.launchArguments = ["UITEST_CAREER_SAVE_SLOTS"]
+        predecessor.launch()
+        XCTAssertTrue(predecessor.buttons["career.menu.resume"].waitForExistence(timeout: 10))
+        predecessor.terminate()
+
         // Session 1: seed the deterministic fixture career.
         let app = XCUIApplication()
         app.launchArguments = ["UITEST_CAREER_TRANSFERS"]
