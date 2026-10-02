@@ -137,6 +137,27 @@ final class CareerSettingsTests: XCTestCase {
         XCTAssertEqual(reloaded.difficulty, .hard)
     }
 
+    func testFailedRenamePreservesSaveAndTitleAndAllowsRetry() async throws {
+        let store = await freshCareer()
+        let id = try XCTUnwrap(store.currentSaveID)
+        defer { SaveSlots.debugFailNextWrite = nil; SaveSlots.remove(id) }
+        XCTAssertTrue(SaveSlots.rename(id, to: "Original Career"))
+        let previousSlots = SaveSlots.all()
+        let previousData = try Data(contentsOf: SaveSlots.fileURL(for: id))
+
+        SaveSlots.debugFailNextWrite = .index
+        XCTAssertFalse(SaveSlots.rename(id, to: "New Career"))
+        XCTAssertEqual(SaveSlots.all(), previousSlots)
+        XCTAssertEqual(try Data(contentsOf: SaveSlots.fileURL(for: id)), previousData)
+        XCTAssertTrue(store.hasStarted)
+        XCTAssertEqual(store.currentSaveID, id)
+
+        XCTAssertTrue(SaveSlots.rename(id, to: "New Career"))
+        XCTAssertEqual(SaveSlots.all().first { $0.id == id }?.displayName, "New Career")
+        XCTAssertEqual(try Data(contentsOf: SaveSlots.fileURL(for: id)), previousData)
+        XCTAssertTrue(GameStore().loadSavedGame(id: id))
+    }
+
     func testRenamedSaveTitleSurvivesAutosaveReloadAndClubChange() async {
         let store = await freshCareer()
         let id = store.currentSaveID!

@@ -21,6 +21,7 @@ struct SaveSlotListSheet: View {
     @State private var renameText = ""
     @State private var pendingDelete: SaveSlotInfo?
     @State private var loadFailed = false
+    @State private var renameFailed = false
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -62,11 +63,17 @@ struct SaveSlotListSheet: View {
             Button("Cancel", role: .cancel) { renaming = nil }
             Button("Save") {
                 if let slot = renaming {
-                    SaveSlots.rename(slot.id, to: renameText)
+                    renameFailed = !SaveSlots.rename(slot.id, to: renameText)
                     saves = GameStore.savedGames()
                 }
                 renaming = nil
             }
+            .disabled(renameText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+        .alert("Unable to rename save", isPresented: $renameFailed) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("The new name could not be saved. Your career and its previous name have not been changed. Please try again.")
         }
         .alert("Delete this save?", isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } })) {
             Button("Cancel", role: .cancel) { pendingDelete = nil }

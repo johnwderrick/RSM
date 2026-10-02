@@ -109,13 +109,14 @@ enum SaveSlots {
         return (try? FileManager.default.removeItem(at: url)) != nil
     }
 
-    static func rename(_ id: UUID, to name: String) {
+    @discardableResult
+    static func rename(_ id: UUID, to name: String) -> Bool {
         let title = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !title.isEmpty else { return }
-        guard var list = try? readIndex() else { return }
-        guard let index = list.firstIndex(where: { $0.id == id }) else { return }
+        guard !title.isEmpty else { return false }
+        guard var list = try? readIndex() else { return false }
+        guard let index = list.firstIndex(where: { $0.id == id }) else { return false }
         list[index].customName = title == list[index].clubName ? nil : title
-        write(list)
+        return write(list)
     }
 
     /// Older builds stored a renamed title in `clubName`. A successful load

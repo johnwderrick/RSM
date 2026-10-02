@@ -12,10 +12,11 @@ final class CareerSaveSlotsUITests: XCTestCase {
         continueAfterFailure = false
     }
 
-    private func launch(corruptNewest: Bool = false) -> XCUIApplication {
+    private func launch(corruptNewest: Bool = false, failRename: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["UITEST_CAREER_SAVE_SLOTS"]
         if corruptNewest { app.launchArguments.append("UITEST_CAREER_SAVE_SLOTS_CORRUPT") }
+        if failRename { app.launchArguments.append("UITEST_CAREER_SAVE_FAIL_INDEX") }
         app.launch()
         return app
     }
@@ -68,6 +69,40 @@ final class CareerSaveSlotsUITests: XCTestCase {
         app.buttons["career.saves.load.\(id)"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["career.home.screen"].firstMatch.waitForExistence(timeout: 15),
                       "LOAD CAREER should open the saved game")
+    }
+
+    func testRenameFailureShowsErrorPreservesTitleAndAllowsRetry() {
+        let app = launch(failRename: true)
+        openSaves(app)
+        let rename = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "career.saves.rename.")).firstMatch
+        XCTAssertTrue(rename.waitForExistence(timeout: 5))
+        let id = rename.identifier.replacingOccurrences(of: "career.saves.rename.", with: "")
+        let name = app.staticTexts["career.saves.name.\(id)"]
+        let originalName = name.label
+
+        func enterNewName() {
+            app.buttons["career.saves.rename.\(id)"].tap()
+            let field = app.alerts.textFields["Save name"]
+            XCTAssertTrue(field.waitForExistence(timeout: 5))
+            field.tap()
+            let existing = field.value as? String ?? ""
+            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: existing.count) + "Retry Career")
+            app.alerts.buttons["Save"].tap()
+        }
+
+        enterNewName()
+        let error = app.alerts["Unable to rename save"]
+        XCTAssertTrue(error.waitForExistence(timeout: 5))
+        shot(app, "rename_failed")
+        error.buttons["OK"].tap()
+        XCTAssertEqual(name.label, originalName)
+        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "career.saves.load.")).count, 2)
+
+        enterNewName()
+        XCTAssertTrue(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "label == %@", "Retry Career"), object: name)], timeout: 5) == .completed)
+        app.buttons["career.saves.load.\(id)"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["career.home.screen"].firstMatch.waitForExistence(timeout: 15))
     }
 
     func testDeleteCommitShowsEmptyState() {

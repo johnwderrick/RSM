@@ -163,6 +163,9 @@ struct ContentView: View {
         if ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_SAVE_SLOTS") {
             GameStore.seedCareerSaveSlotsFixtureForDebug(
                 corruptNewest: ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_SAVE_SLOTS_CORRUPT"))
+            if ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_SAVE_FAIL_INDEX") {
+                SaveSlots.debugFailNextWrite = .index
+            }
             _experience = State(initialValue: .career)
         }
         // Deterministic Football Museum fixture: seeds the LegacyArchive
