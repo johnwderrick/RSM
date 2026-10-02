@@ -47,15 +47,30 @@ final class CareerTransfersRelaunchUITests: XCTestCase {
         tab.tap()
     }
 
-    /// The shortlist control's identifier appears both on the market card
-    /// and on the shortlist tab's REMOVE row (kept alive in the
-    /// hierarchy), so look for the one whose label reads SHORTLISTED.
-    private func hasShortlistedControl(_ app: XCUIApplication, _ identifier: String) -> Bool {
-        let matches = app.buttons.matching(NSPredicate(format: "identifier == %@", identifier))
-        guard matches.firstMatch.waitForExistence(timeout: 6) else { return false }
-        for index in 0..<min(matches.count, 6)
-        where matches.element(boundBy: index).label == "SHORTLISTED" { return true }
-        return false
+    /// Search through the real market filter instead of assuming a card
+    /// is in the initial accessibility viewport. Suggestions above the
+    /// market can move the same saved target below the fold on relaunch.
+    private func searchMarket(_ app: XCUIApplication, for name: String) {
+        let search = anyElement(app, "career.transfers.filter.search")
+        // Use the same existence-wait + tap route as the negotiation
+        // tests: landscape-lock makes XCTest hit-test probes unreliable.
+        XCTAssertTrue(search.waitForExistence(timeout: 8), "Market search missing")
+        search.tap()
+        let value = search.value as? String ?? ""
+        let existing = value == "Search player name" ? "" : value
+        search.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue,
+                               count: existing.count) + name + "\n")
+    }
+
+    private func assertShortlistedControl(_ app: XCUIApplication, _ identifier: String) {
+        let control = app.buttons.matching(NSPredicate(
+            format: "identifier == %@ AND label == %@", identifier, "SHORTLISTED")).firstMatch
+        let scroll = app.scrollViews["career.transfers.scroll"]
+        for _ in 0..<8 {
+            if control.waitForExistence(timeout: 1) { return }
+            scroll.swipeUp()
+        }
+        XCTFail("The exact saved target must still be SHORTLISTED after relaunch")
     }
 
     private func openTransfers(_ app: XCUIApplication) {
@@ -87,9 +102,14 @@ final class CareerTransfersRelaunchUITests: XCTestCase {
         let shortlistedCardID = shortlistedControls.firstMatch.identifier
             .replacingOccurrences(of: "career.transfers.shortlist.", with: "career.transfers.card.")
 
+        // The existing fixture names this priced club-listed target.
+        // Filter both sessions identically so viewport position and the
+        // suggested-target panel cannot masquerade as lost save data.
+        let pricedPlayerName = "Marcus Bidwell"
+        searchMarket(app, for: pricedPlayerName)
         let pricedCard = app.descendants(matching: .any)
-            .matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@",
-                                  "career.transfers.card.", "Asking price")).firstMatch
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@ AND label CONTAINS %@",
+                                  "career.transfers.card.", pricedPlayerName, "Asking price")).firstMatch
         XCTAssertTrue(pricedCard.waitForExistence(timeout: 8),
                       "A priced market card should be visible")
         let pricedCardID = pricedCard.identifier
@@ -130,12 +150,15 @@ final class CareerTransfersRelaunchUITests: XCTestCase {
         XCTAssertTrue(screenVisible(relaunched, "home", timeout: 12),
                       "A resumed career should land on the dashboard")
         gotoSidebar(relaunched, "transfers")
+        XCTAssertTrue(screenVisible(relaunched, "transfers", timeout: 8),
+                      "Transfers destination should open after relaunch")
         XCTAssertTrue(anyElement(relaunched, "career.transfers.summary").waitForExistence(timeout: 6),
                       "Transfer Centre summary missing after relaunch")
 
         // 1. The priced card is the exact same target with an identical
         //    label — a regenerated market would reshuffle prices, players
         //    and order, so this equality is the persistence proof.
+        searchMarket(relaunched, for: pricedPlayerName)
         let pricedCardAfter = relaunched.descendants(matching: .any)
             .matching(NSPredicate(format: "identifier == %@", pricedCardID)).firstMatch
         XCTAssertTrue(pricedCardAfter.waitForExistence(timeout: 8),
@@ -146,8 +169,9 @@ final class CareerTransfersRelaunchUITests: XCTestCase {
         // 2. The shortlist survived: the same target's control still reads
         //    SHORTLISTED (nothing reseeded it — the relaunch carries no
         //    fixture arguments; this state came from the save).
-        XCTAssertTrue(hasShortlistedControl(relaunched, shortlistedCardID.replacingOccurrences(of: "career.transfers.card.", with: "career.transfers.shortlist.")),
-                      "The shortlist must survive the relaunch")
+        searchMarket(relaunched, for: "")
+        assertShortlistedControl(relaunched, shortlistedCardID.replacingOccurrences(
+            of: "career.transfers.card.", with: "career.transfers.shortlist."))
         shot(relaunched, "relaunch_session2")
         relaunched.terminate()
     }

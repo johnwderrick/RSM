@@ -14,6 +14,15 @@ struct ContentView: View {
     @State private var experience: GameExperience? = nil
     @State private var startsAtNewGame = false
 
+    #if DEBUG
+    // SwiftUI can reconstruct ContentView while retaining its @State.
+    // Seed once per process so discarded initializers cannot create a
+    // newer, unrelated save that the normal Resume tile would select.
+    private static let transfersFixture: GameStore = {
+        GameStore().prepareCareerTransfersFixtureForDebug()
+    }()
+    #endif
+
     init() {
         let legends = LegendsStore()
         #if DEBUG
@@ -112,9 +121,7 @@ struct ContentView: View {
             _experience = State(initialValue: .career)
         }
         if ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_TRANSFERS") {
-            let career = GameStore()
-            career.prepareCareerTransfersFixtureForDebug()
-            _store = State(initialValue: career)
+            _store = State(initialValue: Self.transfersFixture)
             _experience = State(initialValue: .career)
         }
         if ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_SETTINGS") {
@@ -191,12 +198,6 @@ struct ContentView: View {
             career.prepareCareerAchievementsFixtureForDebug()
             _store = State(initialValue: career)
             _experience = State(initialValue: .career)
-        }
-        // The transfers fixture re-asserts its shortlist against the
-        // current market's target IDs on every launch — the persisted
-        // entry can't survive a relaunch (see the fixture's doc comment).
-        if ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_TRANSFERS") {
-            store.ensureTransfersFixtureStateForDebug()
         }
         #endif
     }
