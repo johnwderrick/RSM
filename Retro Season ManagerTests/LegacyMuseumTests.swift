@@ -45,14 +45,26 @@ final class LegacyMuseumTests: XCTestCase {
                       headline: "Routine win", standfirst: "...", body: "...", category: .result, importance: .minor),
         ]
 
+        store.endCareer()
+        let activeSaveID = store.currentSaveID
+        store.endCareer() // duplicate transition delivery is deliberately a no-op
+        store.returnToMenuAfterCareer()
+        // A repeated delivery after the menu transition must not archive
+        // this same finished career twice.
         store.returnToMenuAfterCareer()
 
-        guard let info = LegacyArchive.all().first(where: { !existingArchiveIDs.contains($0.id) }),
+        let createdArchives = LegacyArchive.all().filter { !existingArchiveIDs.contains($0.id) }
+        guard let info = createdArchives.first,
               let career = LegacyArchive.load(id: info.id) else {
             return XCTFail("Expected this test's career to be archived")
         }
         defer { LegacyArchive.remove(id: career.id) }
 
+        XCTAssertEqual(createdArchives.count, 1, "The duplicate endCareer call must not create another archive")
+        XCTAssertNil(store.currentSaveID, "Leaving the career clears the active save ID")
+        if let activeSaveID {
+            XCTAssertFalse(SaveSlots.all().contains { $0.id == activeSaveID }, "Leaving the career deletes its active save slot")
+        }
         XCTAssertEqual(career.topScorer?.name, "Test Striker")
         XCTAssertEqual(career.topScorer?.value, 42)
         XCTAssertEqual(career.topAppearances?.name, "Test Keeper")

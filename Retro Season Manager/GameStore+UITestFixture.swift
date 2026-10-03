@@ -1031,6 +1031,62 @@ extension GameStore {
         return self
     }
 
+    /// Deterministic end-of-career data for the CareerEndView UI audit.
+    /// `newGame` creates its own disposable save; ordinary presentation
+    /// fixtures remove only that generated slot, while the archive-handoff
+    /// variant keeps it so the real return-to-menu action exercises normal
+    /// save deletion. No pre-existing save or archive is touched.
+    @discardableResult
+    func prepareCareerEndFixtureForDebug(longContent: Bool = false, sparse: Bool = false) -> GameStore {
+        let catalogue = Self.catalogueEntries()
+        let clubIndex = catalogue.firstIndex { $0.name == "Old Trafford Reds" } ?? 0
+        newGame(clubIndex: clubIndex, startYear: 2000, managerName: "Morgan Example")
+
+        let seasonCount = longContent ? 14 : (sparse ? 1 : 4)
+        season = seasonCount + 1
+        currentMatchday = 4
+        currentDate = date(forMatchday: currentMatchday)
+        let division = divisionName(userDivisionTier)
+        history = (1...seasonCount).map { number in
+            let start = startYear + number - 1
+            let label = "\(start)/\(String(format: "%02d", (start + 1) % 100))"
+            return SeasonRecord(season: number, label: label, userClub: userClub.name,
+                                userDivision: division, userPosition: number == seasonCount ? 1 : 4,
+                                champion: number == seasonCount ? userClub.name : "Riverton FC",
+                                cupWinner: number == seasonCount ? userClub.name : "—",
+                                euroWinner: "Continental Kings", communityShieldWinner: "—")
+        }
+
+        if !sparse {
+            let lastLabel = history.last?.label ?? "2000/01"
+            careerHonours = ["🏆 \(division) title (\(lastLabel))",
+                             "🏆 National Cup (\(lastLabel))"]
+            if longContent {
+                careerHonours += (1...24).map { number in
+                    "🏆 National Cup \(number) (\(history[(number - 1) % history.count].label))"
+                }
+            }
+            unlock(.wins50)
+            pendingAchievementCelebration = nil
+            unlock(.giantKiller)
+            pendingAchievementCelebration = nil
+        } else {
+            careerHonours = []
+            unlockedAchievements = []
+            achievementUnlocks = [:]
+            careerAchievementPoints = 0
+        }
+
+        if !ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_END_ARCHIVE"),
+           let fixtureSaveID = currentSaveID {
+            Self.deleteSave(id: fixtureSaveID)
+            currentSaveID = nil
+        }
+        endCareer()
+        persist()
+        return self
+    }
+
     /// Fast-forwards a freshly agreed transfer deal through the medical
     /// wait USING THE STORE'S OWN TRANSITION: the clock is advanced past
     /// the deal's `readyDate` and the production daily check

@@ -387,87 +387,243 @@ struct SeasonReviewView: View {
 struct CareerEndView: View {
     let store: GameStore
     @State private var showingOffice = false
+    @State private var isLeavingCareer = false
+
+    private var achievementKinds: [AchievementKind] {
+        AchievementKind.allCases.filter { store.unlockedAchievements.contains($0) }
+    }
 
     var body: some View {
         ZStack {
-            LinearGradient(colors: [Retro.background, Retro.panel, Retro.background],
-                           startPoint: .top, endPoint: .bottom)
-                .ignoresSafeArea()
-            ScrollView {
-                VStack(spacing: 16) {
-                    Text("CAREER COMPLETE")
-                        .font(.system(.largeTitle, design: .monospaced).bold())
-                        .foregroundStyle(Retro.accent)
-                    Text("\(store.history.count) season\(store.history.count == 1 ? "" : "s") managed · \(store.startYear) – \(store.startYear + store.history.count)")
-                        .font(.system(.callout, design: .monospaced))
-                        .foregroundStyle(Retro.text.opacity(0.85))
-                    Text("Finished with \(store.userClub.name) in the \(store.divisionName(store.userDivisionTier))")
-                        .font(.system(.footnote, design: .monospaced))
-                        .foregroundStyle(Retro.highlight)
-
-                    Panel(title: "\(store.managerName.uppercased()) — THE FULL STORY") {
-                        Text(store.generateAutobiography())
-                            .font(.system(.callout, design: .monospaced))
-                            .foregroundStyle(Retro.text)
-                            .lineSpacing(5)
+            CareerPalette.canvas.ignoresSafeArea()
+            VStack(spacing: 0) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 12) {
+                        summaryCard
+                        storyCard
+                        honoursCard
+                        achievementsCard
+                        Color.clear.frame(height: 1)
+                            .accessibilityIdentifier(CareerIdentifiers.careerEndEnd)
                     }
-                    .frame(maxWidth: 560)
+                    .padding(.horizontal, 14)
+                    .padding(.top, 14)
+                    .padding(.bottom, 12)
+                    .frame(maxWidth: 720)
+                    .frame(maxWidth: .infinity)
+                }
+                .accessibilityIdentifier(CareerIdentifiers.careerEndScroll)
+                actionFooter
+            }
+        }
+        .sheet(isPresented: $showingOffice) {
+            ManagerOfficeView(store: store)
+        }
+    }
 
-                    Panel(title: "CAREER HONOURS (\(store.careerHonours.count))") {
-                        if store.careerHonours.isEmpty {
-                            Text("No major honours — but a career to remember.")
-                                .font(.system(.footnote, design: .monospaced))
-                                .foregroundStyle(Retro.text.opacity(0.8))
-                        } else {
-                            VStack(alignment: .leading, spacing: 6) {
-                                ForEach(Array(store.careerHonours.enumerated()), id: \.offset) { _, honour in
-                                    HonourRow(text: honour)
-                                        .font(.system(.callout, design: .monospaced))
+    private var summaryCard: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "person.crop.square.fill")
+                .font(.system(size: 30, weight: .bold))
+                .foregroundStyle(CareerPalette.line)
+                .frame(width: 52, height: 52)
+                .background(CareerPalette.line.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+            VStack(alignment: .leading, spacing: 4) {
+                Text("CAREER COMPLETE")
+                    .font(.system(size: 16, weight: .black, design: .monospaced))
+                    .foregroundStyle(CareerPalette.ink)
+                Text(store.managerName)
+                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    .foregroundStyle(CareerPalette.line)
+                    .lineLimit(1).minimumScaleFactor(0.75)
+                Text("\(store.history.count) season\(store.history.count == 1 ? "" : "s") · \(store.startYear)–\(store.startYear + store.history.count)")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundStyle(CareerPalette.mutedInk)
+            }
+            Spacer(minLength: 4)
+            VStack(alignment: .trailing, spacing: 4) {
+                Text("FINAL CLUB")
+                    .font(.system(size: 8, weight: .black, design: .monospaced))
+                    .foregroundStyle(CareerPalette.mutedInk)
+                Text(store.userClub.name)
+                    .font(.system(size: 11, weight: .black, design: .monospaced))
+                    .foregroundStyle(CareerPalette.ink)
+                    .multilineTextAlignment(.trailing)
+                    .lineLimit(2).minimumScaleFactor(0.75)
+                Text(store.divisionName(store.userDivisionTier))
+                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                    .foregroundStyle(CareerPalette.line)
+                    .multilineTextAlignment(.trailing)
+            }
+        }
+        .padding(13)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(CareerPalette.surface)
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(CareerPalette.line.opacity(0.2)))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .shadow(color: CareerPalette.ink.opacity(0.06), radius: 6, y: 2)
+        .accessibilityElement(children: .ignore)
+        .accessibilityIdentifier(CareerIdentifiers.careerEndSummary)
+        .accessibilityLabel("Career complete. \(store.managerName). \(store.history.count) seasons, \(store.startYear) to \(store.startYear + store.history.count). Final club \(store.userClub.name), \(store.divisionName(store.userDivisionTier)).")
+    }
+
+    private var storyCard: some View {
+        card(title: "THE FULL STORY", icon: "book.closed.fill") {
+            Text(store.generateAutobiography())
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(CareerPalette.ink.opacity(0.88))
+                .lineSpacing(4)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .accessibilityIdentifier(CareerIdentifiers.careerEndStory)
+    }
+
+    private var honoursCard: some View {
+        card(title: "CAREER HONOURS", icon: "trophy.fill", accessory: "\(store.careerHonours.count)") {
+            if store.careerHonours.isEmpty {
+                Text("No major honours — but a career to remember.")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(CareerPalette.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier(CareerIdentifiers.careerEndHonoursEmpty)
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(Array(store.careerHonours.enumerated()), id: \.offset) { index, honour in
+                        HStack(alignment: .top, spacing: 9) {
+                            Image(systemName: "trophy.fill")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(Retro.gold)
+                                .padding(.top, 1)
+                            Text(honour)
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundStyle(CareerPalette.ink)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("Earned honour: \(honour)")
+                        .accessibilityIdentifier("\(CareerIdentifiers.careerEndHonours).\(index)")
+                    }
+                }
+            }
+        }
+        .accessibilityIdentifier(CareerIdentifiers.careerEndHonours)
+        .accessibilityLabel("Career honours. \(store.careerHonours.count) earned. \(store.careerHonours.joined(separator: ". "))")
+    }
+
+    private var achievementsCard: some View {
+        card(title: "ACHIEVEMENTS", icon: "rosette", accessory: "\(achievementKinds.count) earned") {
+            if achievementKinds.isEmpty {
+                Text("No achievements earned in this career.")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(CareerPalette.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("\(CareerIdentifiers.careerEndAchievements).empty")
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(achievementKinds, id: \.self) { kind in
+                        HStack(alignment: .top, spacing: 9) {
+                            Image(systemName: "checkmark.seal.fill")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(CareerPalette.line)
+                                .padding(.top, 1)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(kind.rawValue)
+                                    .font(.system(size: 10, weight: .black, design: .monospaced))
+                                    .foregroundStyle(CareerPalette.ink)
+                                if let unlock = store.achievementUnlocks[kind] {
+                                    Text("Season \(unlock.season) · \(unlock.context)")
+                                        .font(.system(size: 8, design: .monospaced))
+                                        .foregroundStyle(CareerPalette.mutedInk)
+                                        .fixedSize(horizontal: false, vertical: true)
                                 }
                             }
                         }
-                    }
-                    .frame(maxWidth: 560)
-
-                    VStack(spacing: 10) {
-                        Button {
-                            Haptics.tap()
-                            showingOffice = true
-                        } label: {
-                            Text("VIEW MANAGER OFFICE")
-                                .font(.system(.body, design: .monospaced).bold())
-                                .padding(.horizontal, 26).padding(.vertical, 14)
-                                .background(Retro.highlight)
-                                .foregroundStyle(Retro.background)
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
-                        }
-                        .buttonStyle(.plain)
-
-                        Button {
-                            store.returnToMenuAfterCareer()
-                        } label: {
-                            Text("BACK TO MAIN MENU")
-                                .font(.system(.body, design: .monospaced).bold())
-                                .padding(.horizontal, 26).padding(.vertical, 14)
-                                .background(Retro.accent.opacity(0.2))
-                                .foregroundStyle(Retro.accent)
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
-                        }
-                        .buttonStyle(.plain)
-                        Text("This career is archived permanently — find it under Legacy from the main menu.")
-                            .font(.system(.caption2, design: .monospaced))
-                            .foregroundStyle(Retro.text.opacity(0.5))
-                            .multilineTextAlignment(.center)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("Earned achievement: \(kind.rawValue)\(store.achievementUnlocks[kind].map { ", season \($0.season), \($0.context)" } ?? "")")
+                        .accessibilityIdentifier(CareerIdentifiers.careerEndAchievement(kind))
                     }
                 }
-                .padding(24)
-                .frame(maxWidth: .infinity)
             }
         }
-        .font(.system(.body, design: .monospaced))
-        .foregroundStyle(Retro.text)
-        .sheet(isPresented: $showingOffice) {
-            ManagerOfficeView(store: store)
+        .accessibilityIdentifier(CareerIdentifiers.careerEndAchievements)
+        .accessibilityLabel("Achievements. \(achievementKinds.count) earned.")
+    }
+
+    private func card<Content: View>(title: String, icon: String, accessory: String? = nil,
+                                      @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 7) {
+                Image(systemName: icon)
+                    .font(.system(size: 11, weight: .black))
+                    .foregroundStyle(CareerPalette.line)
+                Text(title)
+                    .font(.system(size: 10, weight: .black, design: .monospaced))
+                    .foregroundStyle(CareerPalette.ink)
+                Spacer()
+                if let accessory {
+                    Text(accessory.uppercased())
+                        .font(.system(size: 8, weight: .black, design: .monospaced))
+                        .foregroundStyle(CareerPalette.line)
+                }
+            }
+            content()
+        }
+        .padding(13)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(CareerPalette.surface)
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(CareerPalette.line.opacity(0.18)))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .shadow(color: CareerPalette.ink.opacity(0.06), radius: 6, y: 2)
+        .accessibilityElement(children: .contain)
+    }
+
+    private var actionFooter: some View {
+        HStack(spacing: 10) {
+            Button {
+                Haptics.tap()
+                showingOffice = true
+            } label: {
+                Label("OFFICE", systemImage: "building.2.fill")
+                    .font(.system(size: 9, weight: .black, design: .monospaced))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 11)
+                    .background(CareerPalette.surface)
+                    .foregroundStyle(CareerPalette.line)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(CareerPalette.line.opacity(0.24)))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("View Manager Office")
+            .accessibilityIdentifier(CareerIdentifiers.careerEndOffice)
+
+            Button {
+                guard !isLeavingCareer else { return }
+                isLeavingCareer = true
+                Haptics.tap()
+                store.returnToMenuAfterCareer()
+            } label: {
+                HStack(spacing: 7) {
+                    Text(isLeavingCareer ? "RETURNING…" : "MAIN MENU")
+                    Image(systemName: "arrow.right")
+                }
+                .font(.system(size: 10, weight: .black, design: .monospaced))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(CareerPalette.line)
+                .foregroundStyle(.white)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+            .buttonStyle(.plain)
+            .disabled(isLeavingCareer)
+            .accessibilityLabel(isLeavingCareer ? "Returning to main menu" : "Back to main menu and archive this career")
+            .accessibilityIdentifier(CareerIdentifiers.careerEndMenu)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(CareerPalette.canvas.opacity(0.98))
+        .overlay(alignment: .top) {
+            Rectangle().fill(CareerPalette.line.opacity(0.16)).frame(height: 1)
         }
     }
 }

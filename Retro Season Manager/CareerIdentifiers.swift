@@ -580,6 +580,34 @@ enum CareerIdentifiers {
     /// The detail sheet's career-points reward line (unlocked only).
     static let achievementsDetailPoints = "career.achievements.detail.points"
 
+    // MARK: Career end (light-card retrospective)
+
+    /// The completed-career screen's single vertical scroll container.
+    static let careerEndScroll = "career.end.scroll"
+
+    /// The manager and final club/division identity card.
+    static let careerEndSummary = "career.end.summary"
+
+    /// The generated career autobiography card.
+    static let careerEndStory = "career.end.story"
+
+    /// The earned honours card, including its explicit empty state.
+    static let careerEndHonours = "career.end.honours"
+    static let careerEndHonoursEmpty = "career.end.honours.empty"
+
+    /// The achieved milestones card and each earned achievement row.
+    static let careerEndAchievements = "career.end.achievements"
+    static func careerEndAchievement(_ kind: AchievementKind) -> String {
+        "career.end.achievement.\(slug(kind.rawValue))"
+    }
+
+    /// End-of-content anchor used to prove the long retrospective scrolls.
+    static let careerEndEnd = "career.end.contentEnd"
+
+    /// View Manager Office and pinned primary return-to-menu action.
+    static let careerEndOffice = "career.end.office"
+    static let careerEndMenu = "career.end.menu"
+
     // MARK: Helpers
 
     /// Lowercased, hyphenated slug for identifier components.

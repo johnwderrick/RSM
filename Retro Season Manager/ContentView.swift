@@ -212,6 +212,16 @@ struct ContentView: View {
             _store = State(initialValue: career)
             _experience = State(initialValue: .career)
         }
+
+        if ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_END") {
+            LegacyArchive.configureCareerEndUITestArchiveForDebug()
+            let career = GameStore()
+            career.prepareCareerEndFixtureForDebug(
+                longContent: ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_END_LONG"),
+                sparse: ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_END_SPARSE"))
+            _store = State(initialValue: career)
+            _experience = State(initialValue: .career)
+        }
         #endif
     }
 

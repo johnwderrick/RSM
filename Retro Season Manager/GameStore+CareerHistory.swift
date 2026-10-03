@@ -491,6 +491,7 @@ extension GameStore {
 
     /// Ends the career once `maxSeasons` is reached.
     func endCareer() {
+        guard !careerEnded else { return }
         careerEnded = true
         persist()
     }
@@ -499,6 +500,10 @@ extension GameStore {
     /// `LegacyArchive`), then discards the active save — the career itself
     /// stays browsable from the main menu even though the save is gone.
     func returnToMenuAfterCareer() {
+        // The end-screen action can be delivered more than once before a
+        // view transition settles. Only the live ended-career state owns
+        // this archive/delete transition.
+        guard hasStarted else { return }
         archiveLegacyCareer()
         careerEnded = false
         hasStarted = false

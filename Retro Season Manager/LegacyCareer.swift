@@ -236,7 +236,32 @@ struct LegacyCareer: Codable, Identifiable {
 }
 
 enum LegacyArchive {
+    #if DEBUG
+    private static var careerEndUITestArchiveConfigured = false
+
+    /// Isolates the CareerEnd UI fixture from the user's real archive. It
+    /// clears only a dedicated cache subdirectory for this explicit test
+    /// launch argument; Documents/legacy is never touched. Directory
+    /// selection is derived from the launch argument at each access so the
+    /// app's archive writer and menu reader cannot disagree about the root.
+    static func configureCareerEndUITestArchiveForDebug() {
+        guard ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_END"),
+              !careerEndUITestArchiveConfigured else { return }
+        careerEndUITestArchiveConfigured = true
+        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        let isolated = caches.appendingPathComponent("career-end-ui-test-legacy", isDirectory: true)
+        try? FileManager.default.removeItem(at: isolated)
+        try? FileManager.default.createDirectory(at: isolated, withIntermediateDirectories: true)
+    }
+    #endif
+
     private static var directory: URL {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_END") {
+            return FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("career-end-ui-test-legacy", isDirectory: true)
+        }
+        #endif
         let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("legacy", isDirectory: true)
         if !FileManager.default.fileExists(atPath: dir.path) {

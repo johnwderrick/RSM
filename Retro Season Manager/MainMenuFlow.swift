@@ -291,6 +291,7 @@ struct MainMenuView: View {
                                  enabled: !legacyCareers.isEmpty) {
                             showLegacyCareers = true
                         }
+                        .accessibilityIdentifier("career.menu.museum")
                     }
                     .padding(20)
                 }
