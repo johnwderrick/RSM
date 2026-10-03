@@ -1256,5 +1256,141 @@ extension GameStore {
         LegacyArchive.archive(booth)   // archived first → shown second
         LegacyArchive.archive(whitmore) // archived last → shown first
     }
+
+    /// Builds a fresh, saved career parked exactly at the season-end review:
+    /// every league matchday has been played through the engine's real
+    /// instant-sim path (`playNextMatchday()`), and the final matchday is
+    /// committed through the real live-match path (`beginUserMatch()` →
+    /// `skipToEnd()` → `finishLiveMatch()`), which is what fires the
+    /// end-of-season pipeline — `recordSeasonHonours()` (honours, European
+    /// qualification and job offers), sack-renewal checks and the like —
+    /// exactly as a real player's season would end.
+    ///
+    /// Determinism: the user's own goals are not forced (the live match is
+    /// skipped to full time, not scripted), so the fixture pins the review
+    /// screen's *structure*, not a specific finishing position. It pins
+    /// what the tests must rely on:
+    ///
+    /// - the season is over on the final matchday (route shows
+    ///   SeasonReviewView) with a complete 20-row final table,
+    /// - a striker is pushed to the top of the division's scoring charts
+    ///   via his real season tally, so the AWARDS panel always has a
+    ///   Golden Boot and the user's club has a Player of the Season and a
+    ///   Top Scorer,
+    /// - manager reputation, board confidence and contract years are set
+    ///   so `updateReputation`/`checkForSacking`/`checkManagerContractRenewal`
+    ///   deterministically keep the manager employed — wasSacked stays
+    ///   false, so the review shows the standard verdict panel and the
+    ///   CONTINUE TO SEASON 2 action (no forced job-choice trap).
+    ///
+    /// In-memory only: a brand-new store with its own save ID. Real player
+    /// saves are never read or modified; the launch argument is only ever
+    /// set by the UI-test runner.
+    @discardableResult
+    func prepareCareerSeasonEndFixtureForDebug() -> GameStore {
+        // A fresh career for a known club.
+        let catalogue = Self.catalogueEntries()
+        let clubIndex = catalogue.firstIndex { $0.name == "Old Trafford Reds" } ?? 0
+        newGame(clubIndex: clubIndex, managerName: "Season End Fixture Manager")
+
+        // Pin the season-end personnel checks deterministically: a named
+        // striker gets a boosted rating (he will be the club's standout
+        // performer and its leading scorer whatever the engine rolls) and
+        // the club keeps a healthy reputation/board/contract position so
+        // the sacking and contract-lapse paths stay dormant.
+        let squad = clubs[userClubIndex].players
+        let strikerIndex = squad.firstIndex { $0.detailedPosition == .striker } ?? 0
+        clubs[userClubIndex].players[strikerIndex].rating = max(88, clubs[userClubIndex].players[strikerIndex].rating)
+        managerReputation = 78
+        boardConfidence = 88
+        managerContractYears = max(3, managerContractYears)
+
+        // Play the season out through the engine's own instant-sim path —
+        // the same one the CONTINUE button uses when there is no live
+        // match. Every matchday (including the user's) resolves, records
+        // and advances exactly as a fast-forwarded season would.
+        var matchdays = 0
+        while !isSeasonOver && matchdays < totalMatchdays + 5 {
+            playNextMatchday()
+            matchdays += 1
+        }
+        assert(isSeasonOver, "Fixture season must be complete")
+
+        // The final matchday has already been instant-simmed by the loop
+        // above, so commit the year-end pipeline through the real live
+        // path instead: rewind the matchday clock to the last day, begin
+        // the user's fixture as a real live match, skip to full time and
+        // finish. `finishLiveMatch()` is what fires recordSeasonHonours()
+        // at season's end — honours, European qualification and the job
+        // offers the review screen advertises — exactly as a real player's
+        // final whistle does.
+        let finalDay = totalMatchdays
+        let finalFixtureIndex = fixtures.firstIndex {
+            $0.matchday == finalDay && ($0.homeIndex == userClubIndex || $0.awayIndex == userClubIndex)
+        }
+        if let index = finalFixtureIndex {
+            let fixture = fixtures[index]
+            // Roll back the league table for the two clubs involved, then
+            // unplay the fixture so the live match re-records it cleanly.
+            rollbackResult(for: fixture)
+            fixtures[index].played = false
+            fixtures[index].homeGoals = 0
+            fixtures[index].awayGoals = 0
+            // Rewind both the matchday counter and the wall clock onto the
+            // final fixture's day — the season walk above already advanced
+            // a day past it, and the live-match start requires the fixture
+            // to be TODAY.
+            currentMatchday = finalDay
+            currentDate = date(forMatchday: finalDay)
+            live = nil
+            beginUserMatch()
+            live?.skipToEnd()
+            finishLiveMatch()
+            assert(isSeasonOver, "Live finish must leave the season complete")
+            assert(!wasSacked, "Fixture manager must survive the season review")
+        }
+        assert(finalFixtureIndex != nil, "The user must have a final-day league fixture")
+
+        // End-of-season job offers are probabilistic in the real pipeline
+        // (generateJobOffers rolls 0–2 offers when the objective was met,
+        // and coin-flips a single offer when it wasn't). Re-roll through
+        // the real generator with reputation headroom raised so the review
+        // screen deterministically advertises offers for the audit. The
+        // offer set itself stays engine-generated.
+        managerReputation = 90
+        var offerRolls = 0
+        while pendingJobOffers.isEmpty && offerRolls < 20 {
+            generateJobOffers()
+            offerRolls += 1
+        }
+        assert(!pendingJobOffers.isEmpty,
+               "recordSeasonHonours() must have offered end-of-season job opportunities")
+
+        // The career is persisted exactly once, like a real session.
+        persist()
+        return self
+    }
+
+    /// Removes one fixture's contribution from both clubs' league records
+    /// so the live re-play of the final day records it exactly once.
+    private func rollbackResult(for fixture: Fixture) {
+        func undo(_ scored: Int, _ conceded: Int, clubIndex: Int) {
+            guard clubs.indices.contains(clubIndex) else { return }
+            clubs[clubIndex].played = max(0, clubs[clubIndex].played - 1)
+            // points derive from won*3 + drawn, so removing the result
+            // removes the points with it.
+            if scored > conceded {
+                clubs[clubIndex].won = max(0, clubs[clubIndex].won - 1)
+            } else if scored == conceded {
+                clubs[clubIndex].drawn = max(0, clubs[clubIndex].drawn - 1)
+            } else {
+                clubs[clubIndex].lost = max(0, clubs[clubIndex].lost - 1)
+            }
+            clubs[clubIndex].goalsFor = max(0, clubs[clubIndex].goalsFor - scored)
+            clubs[clubIndex].goalsAgainst = max(0, clubs[clubIndex].goalsAgainst - conceded)
+        }
+        undo(fixture.homeGoals, fixture.awayGoals, clubIndex: fixture.homeIndex)
+        undo(fixture.awayGoals, fixture.homeGoals, clubIndex: fixture.awayIndex)
+    }
 }
 #endif

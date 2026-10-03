@@ -98,6 +98,7 @@ struct HomeView: View {
                             .font(.system(size: 10, weight: .bold, design: .monospaced))
                             .foregroundStyle(.white.opacity(0.72))
                             .lineLimit(1)
+                            .accessibilityIdentifier(CareerIdentifiers.homeSeasonLabel)
                         HStack(spacing: 8) {
                             careerHeroBadge("\(store.divisionName(store.userDivisionTier))", Retro.emerald)
                             careerHeroBadge("\(store.managerReputation) REP", Retro.gold)

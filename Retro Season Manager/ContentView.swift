@@ -168,6 +168,16 @@ struct ContentView: View {
             }
             _experience = State(initialValue: .career)
         }
+        // Deterministic season-end fixture: a complete season parked at the
+        // review screen, with the final matchday committed through the real
+        // live-match path so honours and job offers exist exactly as a real
+        // season's end (see GameStore+UITestFixture.swift).
+        if ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_SEASON_END") {
+            let career = GameStore()
+            career.prepareCareerSeasonEndFixtureForDebug()
+            _store = State(initialValue: career)
+            _experience = State(initialValue: .career)
+        }
         // Deterministic Football Museum fixture: seeds the LegacyArchive
         // store (Documents/legacy) with two hand-built careers and boots
         // into the career main menu with NO active save — the museum's

@@ -28,6 +28,41 @@ enum CareerIdentifiers {
     /// The Career Home dashboard root.
     static let homeScreen = "career.home.screen"
 
+    /// The dashboard top bar's season label (e.g. "… · SEASON 2001/02").
+    static let homeSeasonLabel = "career.home.seasonLabel"
+
+    // MARK: Season-end review
+
+    /// The SeasonReviewView root canvas.
+    static let seasonReviewScreen = "career.seasonReview.screen"
+
+    /// The review's single vertical scroll container.
+    static let seasonReviewScroll = "career.seasonReview.scroll"
+
+    /// The pinned footer CONTINUE action that rolls into the next season.
+    static let seasonReviewContinue = "career.seasonReview.continue"
+
+    /// The verdict card combining champions banner, finish line, verdict
+    /// text and objective outcome.
+    static let seasonReviewVerdict = "career.seasonReview.verdict"
+
+    /// The final-standings card.
+    static let seasonReviewStandings = "career.seasonReview.standings"
+
+    /// One final-table row, keyed by position (1-based).
+    static func seasonReviewStandingRow(_ position: Int) -> String {
+        "career.seasonReview.standingRow.\(position)"
+    }
+
+    /// The awards card.
+    static let seasonReviewAwards = "career.seasonReview.awards"
+
+    /// The job-offers card (absent when no offers were generated).
+    static let seasonReviewJobOffers = "career.seasonReview.jobOffers"
+
+    /// The footer container that keeps the handoff action always reachable.
+    static let seasonReviewFooter = "career.seasonReview.footer"
+
     // MARK: New Career setup
 
     /// The club-and-era picker root and its sole vertical scroll container.
