@@ -302,6 +302,7 @@ struct TeamSetupSheet: View {
                         Button {
                             Haptics.tap()
                             store.trainingFocus = focus
+                            store.persist()
                             message = "Training focus: \(focus.rawValue)."
                         } label: {
                             Text(focus.rawValue)

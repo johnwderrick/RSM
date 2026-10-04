@@ -180,6 +180,44 @@ final class CareerTeamSetupUITests: XCTestCase {
                       "The pinned header close must return to Squad")
     }
 
+    /// Closing the sheet proves in-memory retention only. Resume after
+    /// a launch with no fixture arguments must read the choice from disk.
+    func testTrainingFocusSurvivesRealRelaunchWithoutAnotherSaveAction() throws {
+        // Start through the real new-game path: unlike the Settings
+        // fixture, this launch hook creates no replacement saved career.
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_CAREER_NEW_GAME"]
+        app.launch()
+        waitFor(app, "career.newGame.club.0", timeout: 15).tap()
+        let name = app.textFields["career.newGame.confirm.managerName"]
+        XCTAssertTrue(name.waitForExistence(timeout: 8))
+        name.tap()
+        name.typeText("Journey Training Manager\n")
+        waitFor(app, "career.newGame.manage").tap()
+        _ = waitFor(app, "career.home.screen", timeout: 30)
+        let scroll = openTeamSetup(app)
+        revealTrainingFocus(scroll)
+        let physical = "career.teamSetup.training.physical"
+        waitFor(app, physical).tap()
+        assertSelected(app, physical, expected: true, "Physical focus should be selected")
+        waitFor(app, "career.teamSetup.done").tap()
+        app.terminate()
+
+        app.launchArguments = []
+        app.launch()
+        waitFor(app, "experience.career", timeout: 15).tap()
+        waitFor(app, "career.menu.resume", timeout: 10).tap()
+        _ = waitFor(app, "career.home.screen", timeout: 20)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(
+            format: "label CONTAINS %@", "JOURNEY TRAINING MANAGER"))
+            .firstMatch.waitForExistence(timeout: 8), "Resume must load the exact edited career")
+        let reopenedScroll = openTeamSetup(app)
+        revealTrainingFocus(reopenedScroll)
+        assertSelected(app, physical, expected: true,
+                       "The last training choice must survive a real relaunch without a later save action")
+        shot(app, "training_after_relaunch")
+    }
+
     // MARK: - Landscape scroll stability + pinned actions
 
     func testTeamSetupScrollStableAndPinnedActionsReachableOnLandscape() throws {
