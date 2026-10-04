@@ -155,6 +155,9 @@ extension GameStore {
             cupWinnerName = clubs[winnerIndex].name
             cupWinnerID = clubs[winnerIndex].id
             clubs[winnerIndex].transferBudget += 1_300
+            if winnerIndex == userClubIndex {
+                logLedger("Prize money", amount: 1_300, "Won \(Self.cupName)")
+            }
             addNews(.board, "\(Self.cupName) winners", "\(cupWinnerName!) lift the \(Self.cupName)!")
             // Celebrate the moment the cup is actually lifted, rather than
             // leaving the payoff to a batched season-end achievement —
@@ -257,6 +260,9 @@ extension GameStore {
             leagueCupWinnerName = clubs[winnerIndex].name
             leagueCupWinnerID = clubs[winnerIndex].id
             clubs[winnerIndex].transferBudget += 700
+            if winnerIndex == userClubIndex {
+                logLedger("Prize money", amount: 700, "Won \(Self.leagueCupName)")
+            }
             addNews(.board, "\(Self.leagueCupName) winners", "\(leagueCupWinnerName!) lift the \(Self.leagueCupName)!")
             if winnerIndex == userClubIndex { unlock(.cupWinner) }
         } else {
@@ -388,6 +394,9 @@ extension GameStore {
         communityShieldTie = tie
         communityShieldWinnerName = clubs[tie.winnerIndex].name
         clubs[tie.winnerIndex].transferBudget += 300
+        if tie.winnerIndex == userClubIndex {
+            logLedger("Prize money", amount: 300, "Won \(Self.communityShieldName)")
+        }
         addNews(.result, "\(Self.communityShieldName)",
                 "\(clubs[tie.homeIndex].shortName) \(tie.homeGoals)-\(tie.awayGoals) \(clubs[tie.awayIndex].shortName)\(tie.onPenalties ? " (pens)" : "") — \(communityShieldWinnerName!) win the \(Self.communityShieldName).")
     }
@@ -564,6 +573,9 @@ extension GameStore {
             euroWinnerName = clubs[winners[0]].name
             euroWinnerID = clubs[winners[0]].id
             clubs[winners[0]].transferBudget += 6_500
+            if winners[0] == userClubIndex {
+                logLedger("Prize money", amount: 6_500, "Won \(Self.euroName)")
+            }
             bumpForeignPrestige(clubIndex: winners[0], by: 3)
             addNews(.board, "\(Self.euroName) winners", "\(euroWinnerName!) are champions of Europe!")
             if winners[0] == userClubIndex { unlock(.europeanGlory) }
@@ -706,6 +718,9 @@ extension GameStore {
             uefaCupWinnerName = clubs[winnerIndex].name
             uefaCupWinnerID = clubs[winnerIndex].id
             clubs[winnerIndex].transferBudget += 3_500
+            if winnerIndex == userClubIndex {
+                logLedger("Prize money", amount: 3_500, "Won \(Self.uefaCupName)")
+            }
             bumpForeignPrestige(clubIndex: winnerIndex, by: 2)
             addNews(.board, "\(Self.uefaCupName) winners", "\(uefaCupWinnerName!) win the \(Self.uefaCupName)!")
             if winnerIndex == userClubIndex { unlock(.europeanGlory) }

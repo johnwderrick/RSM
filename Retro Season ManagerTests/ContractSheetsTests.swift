@@ -250,6 +250,7 @@ final class ContractSheetsTests: XCTestCase {
         let demand = store.renewalDemand(draper)
         let fee = 50
         let budgetBefore = store.userClub.transferBudget
+        let ledgerBefore = store.seasonLedger.reduce(0) { $0 + $1.amount }
 
         var outcome = store.proposeRenewal(draper, wage: demand * 2, years: 2, releaseClause: nil, signingOnFee: fee)
         var attempts = 1
@@ -263,6 +264,8 @@ final class ContractSheetsTests: XCTestCase {
         // Rejected attempts never deduct; the single acceptance deducts
         // the signing-on fee exactly once.
         XCTAssertEqual(store.userClub.transferBudget, budgetBefore - fee)
+        XCTAssertEqual(store.seasonLedger.reduce(0) { $0 + $1.amount } - ledgerBefore, -fee,
+                       "The finance ledger must include the entire accepted signing-on fee")
     }
 
     // MARK: - Release: exact-once, validation
@@ -413,5 +416,242 @@ final class ContractSheetsTests: XCTestCase {
                        "The signed player joins the squad exactly once")
         XCTAssertEqual(store.clubs[sellerIndex].players.count, sellerCountBefore - 1,
                        "The selling club loses the player exactly once")
+    }
+
+    // MARK: - Finance audit: ledger reconciliation and rejected spending
+
+    func testFreeAgentSigningFeeReconcilesWithLedger() async {
+        let store = await freshFixture()
+        guard let seller = store.clubs.indices.first(where: { $0 != store.userClubIndex && !store.clubs[$0].players.isEmpty }),
+              let player = store.clubs[seller].players.first else {
+            return XCTFail("Fixture must contain a free-agent candidate")
+        }
+        let budgetBefore = store.userClub.transferBudget
+        let ledgerBefore = store.seasonLedger.reduce(0) { $0 + $1.amount }
+        let fee = 50
+        let wage = store.freeAgentWageDemand(player) * 2
+        for _ in 0..<50 {
+            if case .accepted = store.signFreeAgent(player, fromClubIndex: seller, wage: wage, years: 3, signingOnFee: fee) {
+                XCTAssertEqual(store.userClub.transferBudget, budgetBefore - fee)
+                XCTAssertEqual(store.seasonLedger.reduce(0) { $0 + $1.amount } - ledgerBefore, -fee)
+                XCTAssertEqual(store.seasonLedger.first?.category, "Signing-on fee")
+                XCTAssertTrue(store.seasonLedger.first?.detail.contains(player.name) == true)
+                return
+            }
+            XCTAssertEqual(store.userClub.transferBudget, budgetBefore, "A rejected negotiation must not spend money")
+            XCTAssertEqual(store.seasonLedger.reduce(0) { $0 + $1.amount }, ledgerBefore)
+        }
+        XCTFail("Free-agent signing did not land within 50 attempts")
+    }
+
+    func testPersonalTermsFeesReconcileAndRepeatedSubmissionCannotSpendAgain() async {
+        let store = await freshFixture()
+        store.fastForwardPendingDealReadinessForDebug()
+        guard let deal = store.pendingTransferDeals.first(where: { $0.player.name == "Ivan Ongo" && $0.isReady }) else {
+            return XCTFail("Fixture must contain a ready Ivan Ongo deal")
+        }
+        let budgetBefore = store.userClub.transferBudget
+        let sellerBudgetBefore = store.clubs[deal.sellingClubIndex].transferBudget
+        let ledgerBefore = store.seasonLedger.reduce(0) { $0 + $1.amount }
+        let fee = 50
+        let wage = store.transferWageDemand(deal.player) * 2
+        for _ in 0..<50 {
+            if case .accepted = store.finalizePersonalTerms(deal, wage: wage, years: 3, signingOnFee: fee) {
+                XCTAssertEqual(store.userClub.transferBudget, budgetBefore - deal.agreedFee - fee)
+                XCTAssertEqual(store.clubs[deal.sellingClubIndex].transferBudget, sellerBudgetBefore + deal.agreedFee,
+                               "The player bonus belongs in spending, not in the seller's transfer proceeds")
+                XCTAssertEqual(store.seasonLedger.reduce(0) { $0 + $1.amount } - ledgerBefore, -deal.agreedFee - fee)
+                XCTAssertEqual(store.seasonLedger.filter { $0.category == "Signing-on fee" }.count, 1)
+                let entries = store.seasonLedger.map(\.id)
+                let budget = store.userClub.transferBudget
+                guard case .rejected = store.finalizePersonalTerms(deal, wage: wage, years: 3, signingOnFee: fee) else {
+                    return XCTFail("A completed deal must reject repeated submission")
+                }
+                XCTAssertEqual(store.userClub.transferBudget, budget)
+                XCTAssertEqual(store.seasonLedger.map(\.id), entries)
+                return
+            }
+            XCTAssertEqual(store.userClub.transferBudget, budgetBefore)
+            XCTAssertEqual(store.seasonLedger.reduce(0) { $0 + $1.amount }, ledgerBefore)
+        }
+        XCTFail("Personal terms did not land within 50 attempts")
+    }
+
+    func testLoanInRejectsWageOverBudgetWithoutMovingPlayerOrMoney() async {
+        let store = await freshFixture()
+        guard let target = store.transferMarket.first(where: { target in
+            guard let seller = target.sellingClubIndex else { return false }
+            return target.player.wage > 0 && store.clubs[seller].players.contains { $0.id == target.player.id }
+        }), let seller = target.sellingClubIndex else {
+            return XCTFail("Fixture must contain an available loan target")
+        }
+        store.clubs[store.userClubIndex].wageBudget = store.userClub.wageBill + target.player.wage - 1
+        let budget = store.userClub.transferBudget
+        let wages = store.userClub.wageBill
+        let players = store.userClub.players.map(\.id)
+        let sellerPlayers = store.clubs[seller].players.map(\.id)
+        let market = store.transferMarket.map(\.id)
+        let ledger = store.seasonLedger.map(\.id)
+        let result = store.loanIn(target)
+        XCTAssertTrue(result.contains("Wage budget"), result)
+        XCTAssertEqual(store.userClub.wageBill, wages)
+        XCTAssertEqual(store.userClub.players.map(\.id), players)
+        XCTAssertEqual(store.clubs[seller].players.map(\.id), sellerPlayers)
+        XCTAssertEqual(store.transferMarket.map(\.id), market)
+        XCTAssertEqual(store.userClub.transferBudget, budget)
+        XCTAssertEqual(store.seasonLedger.map(\.id), ledger)
+    }
+
+    func testLoanInAtExactWageHeadroomSucceedsWithoutTransferFee() async {
+        let store = await freshFixture()
+        guard let target = store.transferMarket.first(where: { target in
+            guard let seller = target.sellingClubIndex else { return false }
+            return target.player.wage > 0 && store.clubs[seller].players.contains { $0.id == target.player.id }
+        }) else { return XCTFail("Fixture must contain an available loan target") }
+        store.clubs[store.userClubIndex].wageBudget = store.userClub.wageBill + target.player.wage
+        let budget = store.userClub.transferBudget
+        let ledger = store.seasonLedger.map(\.id)
+        XCTAssertTrue(store.loanIn(target).contains("Loaned"))
+        XCTAssertEqual(store.userClub.wageBill, store.userClub.wageBudget)
+        XCTAssertEqual(store.userClub.players.filter { $0.id == target.player.id }.count, 1)
+        XCTAssertEqual(store.userClub.transferBudget, budget)
+        XCTAssertEqual(store.seasonLedger.map(\.id), ledger)
+        let players = store.userClub.players.map(\.id)
+        XCTAssertTrue(store.loanIn(target).contains("no longer available"))
+        XCTAssertEqual(store.userClub.players.map(\.id), players)
+        XCTAssertEqual(store.userClub.transferBudget, budget)
+    }
+
+    func testLoanFeeReconcilesAndRepeatedSubmissionCannotCollectAgain() async {
+        let store = await freshFixture()
+        guard let player = store.userClub.players.first(where: { !$0.isOnLoan }),
+              let host = store.clubs.indices.first(where: { $0 != store.userClubIndex && store.clubs[$0].players.count < 30 }) else {
+            return XCTFail("Fixture must contain a loan player and destination")
+        }
+        store.clubs[host].wageBudget = store.clubs[host].wageBill + player.wage + 1
+        store.clubs[host].transferBudget = 50
+        let budget = store.userClub.transferBudget
+        let ledger = store.seasonLedger.reduce(0) { $0 + $1.amount }
+        for _ in 0..<200 {
+            if case .accepted = store.proposeLoanOut(player, toClubIndex: host, fee: 50) {
+                XCTAssertEqual(store.userClub.transferBudget, budget + 50)
+                XCTAssertEqual(store.clubs[host].transferBudget, 0)
+                XCTAssertEqual(store.seasonLedger.reduce(0) { $0 + $1.amount } - ledger, 50)
+                let entries = store.seasonLedger.map(\.id)
+                guard case .rejected = store.proposeLoanOut(player, toClubIndex: host, fee: 50) else {
+                    return XCTFail("The same player cannot be loaned out twice")
+                }
+                XCTAssertEqual(store.userClub.transferBudget, budget + 50)
+                XCTAssertEqual(store.seasonLedger.map(\.id), entries)
+                return
+            }
+            XCTAssertEqual(store.userClub.transferBudget, budget)
+            XCTAssertEqual(store.clubs[host].transferBudget, 50)
+            XCTAssertEqual(store.seasonLedger.reduce(0) { $0 + $1.amount }, ledger)
+        }
+        XCTFail("Loan did not land within 200 attempts")
+    }
+
+    func testUnaffordablePersonalTermsAndWithdrawalPreserveFinances() async {
+        let store = await freshFixture()
+        store.fastForwardPendingDealReadinessForDebug()
+        guard let deal = store.pendingTransferDeals.first(where: { $0.player.name == "Ivan Ongo" }) else {
+            return XCTFail("Fixture must contain a pending deal")
+        }
+        let budget = store.userClub.transferBudget
+        let ledger = store.seasonLedger.map(\.id)
+        let sellerBudget = store.clubs[deal.sellingClubIndex].transferBudget
+        guard case .rejected = store.finalizePersonalTerms(deal, wage: store.transferWageDemand(deal.player), years: 3,
+                                                          signingOnFee: budget + 1) else {
+            return XCTFail("Unaffordable terms must be rejected")
+        }
+        XCTAssertEqual(store.userClub.transferBudget, budget)
+        XCTAssertEqual(store.seasonLedger.map(\.id), ledger)
+        store.withdrawPendingDeal(deal)
+        XCTAssertEqual(store.userClub.transferBudget, budget)
+        XCTAssertEqual(store.clubs[deal.sellingClubIndex].transferBudget, sellerBudget)
+        XCTAssertEqual(store.seasonLedger.map(\.id), ledger)
+    }
+
+    func testAcceptedSigningFeeAndLedgerSurviveRealSaveReload() async {
+        let store = await makeTestStore()
+        store.newGame(clubIndex: 0, startYear: 2000, managerName: "Finance Audit Tester")
+        guard let saveID = store.currentSaveID, let player = store.userClub.players.first else {
+            return XCTFail("New career must create a save and squad")
+        }
+        defer { GameStore.deleteSave(id: saveID) }
+        let wage = store.renewalDemand(player) * 2
+        store.clubs[store.userClubIndex].wageBudget = store.userClub.wageBill + wage
+        store.clubs[store.userClubIndex].transferBudget = 100
+        for _ in 0..<50 {
+            if case .accepted = store.proposeRenewal(player, wage: wage, years: 3, signingOnFee: 50) {
+                let reloaded = await makeTestStore()
+                XCTAssertTrue(reloaded.loadSavedGame(id: saveID))
+                XCTAssertEqual(reloaded.userClub.transferBudget, 50)
+                XCTAssertEqual(reloaded.seasonLedger.map(\.id), store.seasonLedger.map(\.id))
+                XCTAssertEqual(reloaded.seasonLedger.first?.category, "Signing-on fee")
+                XCTAssertEqual(reloaded.seasonLedger.first?.amount, -50)
+                return
+            }
+        }
+        XCTFail("Renewal did not land within 50 attempts")
+    }
+
+    func testCompetitionPrizeIncomeIsRecordedOnlyForUserClub() async {
+        let store = await freshFixture()
+        let opponent = store.clubs.indices.first { $0 != store.userClubIndex }!
+        for winner in [store.userClubIndex, opponent] {
+            let tie = CupTie(round: 6, homeIndex: store.userClubIndex, awayIndex: opponent,
+                             played: true, winnerIndex: winner)
+            let finals: [(String, Int, () -> Void)] = [
+                ("Domestic cup", 1_300, { store.cupTies = [tie]; store.concludeCupRound() }),
+                ("League trophy", 700, { store.leagueCupTies = [tie]; store.concludeLeagueCupRound() }),
+                ("Continental cup", 6_500, { store.euroTies = [tie]; store.concludeEuroRound() }),
+                ("UEFA cup", 3_500, { store.uefaCupTies = [tie]; store.concludeUefaCupRound() }),
+                ("Community shield", 300, {
+                    store.communityShieldTie = tie
+                    store.resolveCommunityShield(homeGoals: winner == store.userClubIndex ? 2 : 0,
+                                                 awayGoals: winner == store.userClubIndex ? 0 : 2)
+                })
+            ]
+            for (name, prize, resolve) in finals {
+                let budget = store.userClub.transferBudget
+                let ledger = store.seasonLedger.reduce(0) { $0 + $1.amount }
+                let expected = winner == store.userClubIndex ? prize : 0
+                resolve()
+                XCTAssertEqual(store.userClub.transferBudget - budget, expected, name)
+                XCTAssertEqual(store.seasonLedger.reduce(0) { $0 + $1.amount } - ledger, expected, name)
+            }
+        }
+    }
+
+    func testEveryFacilityChargesQuotedCostAndRefusesUnaffordableOrMaxedUpgrade() async {
+        let store = await freshFixture()
+        for kind in FacilityKind.allCases {
+            // Each purchase gets exactly its quoted budget. A second tap cannot
+            // afford the next level, and must leave both money and ledger intact.
+            for _ in 0..<5 {
+                guard let cost = store.facilityUpgradeCost(kind, forClubIndex: store.userClubIndex) else { break }
+                let level = kind.level(in: store.userClub)
+                store.clubs[store.userClubIndex].transferBudget = cost - 1
+                let entries = store.seasonLedger.map(\.id)
+                store.investInFacility(kind)
+                XCTAssertEqual(kind.level(in: store.userClub), level, kind.rawValue)
+                XCTAssertEqual(store.userClub.transferBudget, cost - 1, kind.rawValue)
+                XCTAssertEqual(store.seasonLedger.map(\.id), entries)
+                store.clubs[store.userClubIndex].transferBudget = cost
+                let ledgerBefore = store.seasonLedger.reduce(0) { $0 + $1.amount }
+                store.investInFacility(kind)
+                XCTAssertEqual(kind.level(in: store.userClub), level + 1, kind.rawValue)
+                XCTAssertEqual(store.userClub.transferBudget, 0, kind.rawValue)
+                XCTAssertEqual(store.seasonLedger.reduce(0) { $0 + $1.amount } - ledgerBefore, -cost, kind.rawValue)
+            }
+            let entries = store.seasonLedger.map(\.id)
+            store.clubs[store.userClubIndex].transferBudget = 1_000_000
+            store.investInFacility(kind)
+            XCTAssertEqual(kind.level(in: store.userClub), 5, kind.rawValue)
+            XCTAssertEqual(store.userClub.transferBudget, 1_000_000, kind.rawValue)
+            XCTAssertEqual(store.seasonLedger.map(\.id), entries)
+        }
     }
 }

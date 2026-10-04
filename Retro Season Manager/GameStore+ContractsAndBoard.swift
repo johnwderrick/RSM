@@ -90,6 +90,7 @@ extension GameStore {
             clubs[userClubIndex].players[index].releaseClause = releaseClause
             if signingOnFee > 0 {
                 clubs[userClubIndex].transferBudget -= signingOnFee
+                logLedger("Signing-on fee", amount: -signingOnFee, "Renewed \(player.name)'s contract")
             }
             var message = "\(player.name) signed a new \(years)-year deal at \(formatMoney(wage))/wk."
             if signingOnFee > 0 {
@@ -239,6 +240,7 @@ extension GameStore {
         clubs[userClubIndex].players.append(signing)
         if signingOnFee > 0 {
             clubs[userClubIndex].transferBudget -= signingOnFee
+            logLedger("Signing-on fee", amount: -signingOnFee, "Signed \(player.name) on a free transfer")
         }
         transferMarket.removeAll { $0.player.id == player.id }
         let otherClub = fromClubIndex.flatMap { clubs.indices.contains($0) ? clubs[$0].name : nil }

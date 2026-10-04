@@ -213,6 +213,9 @@ extension GameStore {
         addNews(.transfer, "Signing complete", message, player: signing, clubName: deal.sellingClubName)
         reactToUserSigning(signing, fee: deal.agreedFee)
         logLedger("Transfer in", amount: -deal.agreedFee, "Signed \(deal.player.name)")
+        if signingOnFee > 0 {
+            logLedger("Signing-on fee", amount: -signingOnFee, "Signed \(deal.player.name)")
+        }
         logTransferHistory(deal.player.name, action: "Signed", otherClub: deal.sellingClubName, fee: deal.agreedFee)
         persist()
         return .accepted(message)
@@ -816,6 +819,10 @@ extension GameStore {
         guard let playerIndex = clubs[sellerIndex].players.firstIndex(where: { $0.id == target.player.id }) else {
             return "That player is no longer available."
         }
+        let incomingWage = clubs[sellerIndex].players[playerIndex].wage
+        guard userClub.wageBill + incomingWage <= userClub.wageBudget else {
+            return "Wage budget won't stretch that far (\(formatMoney(incomingWage))/wk needed, \(formatMoney(max(0, userClub.wageBudget - userClub.wageBill)))/wk free)."
+        }
         var player = clubs[sellerIndex].players.remove(at: playerIndex)
         player.onLoanFromClubIndex = sellerIndex
         player.isTransferListed = false
@@ -898,6 +905,7 @@ extension GameStore {
         if fee > 0 {
             clubs[toClubIndex].transferBudget -= fee
             clubs[userClubIndex].transferBudget += fee
+            logLedger("Loan fee", amount: fee, "Loaned \(player.name) to \(destination.name)")
         }
         userStarterIDs.remove(player.id)
         validateRoles()
