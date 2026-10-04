@@ -156,6 +156,75 @@ final class CareerNewGameUITests: XCTestCase {
         shot(app, "career_started")
     }
 
+    func testFirstMatchGuideFindsTeamSetupAndReachesPreMatchFromRealNewGame() throws {
+        let app = launch()
+        openNewGame(app)
+        waitFor(app, "career.newGame.club.0").tap()
+        waitFor(app, "career.newGame.manage").tap()
+        _ = waitFor(app, "career.home.screen", timeout: 30)
+        let guide = waitFor(app, "career.home.firstMatch.guide")
+        XCTAssertTrue(guide.exists)
+        XCTAssertTrue(app.staticTexts["CONTINUE advances until news or match day."].exists)
+        shot(app, "first_match_guide")
+        waitFor(app, "career.home.firstMatch.squad").tap()
+        waitFor(app, "career.squad.teamSetup").tap()
+        _ = waitFor(app, "career.teamSetup.sheet")
+        waitFor(app, "career.teamSetup.autoPick").tap()
+        waitFor(app, "career.teamSetup.done").tap()
+        waitFor(app, "career.nav.home").tap()
+
+        // Follow both calendar actions through their production paths.
+        waitFor(app, "career.continue").tap()
+        let kickoff = app.buttons["career.match.kickoff"]
+        for _ in 0..<20 {
+            if kickoff.waitForExistence(timeout: 3) { break }
+            let skip = app.buttons["career.home.skipToMatch"]
+            for _ in 0..<8 {
+                if kickoff.exists { break }
+                if skip.exists && skip.frame.midY >= app.frame.minY && skip.frame.midY <= app.frame.maxY { break }
+                app.scrollViews.firstMatch.swipeUp()
+            }
+            if kickoff.exists { break }
+            if !skip.waitForExistence(timeout: 8) {
+                // The heavy calendar advance can replace Home with the
+                // hub between snapshots; re-check the destination first.
+                if kickoff.waitForExistence(timeout: 8) { break }
+                XCTFail("Neither Skip nor the pre-match destination appeared")
+                return
+            }
+            skip.tap()
+        }
+        XCTAssertTrue(kickoff.waitForExistence(timeout: 15), "A fresh career must reach the pre-match hub")
+        XCTAssertTrue(anyElement(app, "career.prematch.screen").exists)
+        shot(app, "first_match_hub")
+        for identifier in ["career.prematch.talk.0", "career.prematch.press.0"] {
+            let option = app.buttons[identifier]
+            if option.exists {
+                for _ in 0..<8 {
+                    if option.frame.midY >= app.frame.minY && option.frame.midY <= app.frame.maxY { break }
+                    app.scrollViews["career.prematch.scroll"].swipeUp()
+                }
+                option.tap()
+            }
+        }
+        XCTAssertTrue(kickoff.isEnabled, "Answering the pre-match prompts must enable kickoff")
+        kickoff.tap()
+        waitFor(app, "career.match.skip", timeout: 15).tap()
+        let postMatch = waitFor(app, "career.postMatch.continue", timeout: 15)
+        let interview = app.buttons.matching(identifier: "career.postMatch.interviewOption").firstMatch
+        if interview.exists && !postMatch.isEnabled {
+            for _ in 0..<8 {
+                if interview.frame.midY >= app.frame.minY && interview.frame.midY <= app.frame.maxY { break }
+                app.scrollViews.firstMatch.swipeUp()
+            }
+            interview.tap()
+        }
+        XCTAssertTrue(postMatch.isEnabled)
+        postMatch.tap()
+        _ = waitFor(app, "career.home.screen", timeout: 15)
+        shot(app, "first_match_complete")
+    }
+
     func testConfirmationManageButtonRemainsReachableOnLandscape() throws {
         let app = launch()
         openNewGame(app)

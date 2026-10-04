@@ -51,6 +51,9 @@ struct HomeView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: isCompact ? 10 : 14) {
+                if store.season == 1 && store.history.isEmpty && store.userClub.played == 0 {
+                    firstMatchGuide
+                }
                 careerHero
                 commandStrip
                 seasonObjectivesStrip
@@ -68,6 +71,34 @@ struct HomeView: View {
                 .accessibilityElement()
                 .accessibilityIdentifier(CareerIdentifiers.homeScreen)
         }
+    }
+
+    private var firstMatchGuide: some View {
+        CareerPanel(title: "GET MATCH READY") {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Choose your XI in Squad → Team Setup.")
+                Text("CONTINUE advances until news or match day.")
+                Text("SKIP TO MATCH advances to your next match, stopping early for new transfer offers. Tap it again when you're ready to move on.")
+                Text("On match day, review your lineup and answer any team-talk or press questions before KICK OFF.")
+                Button {
+                    Haptics.tap()
+                    section = .squad
+                } label: {
+                    Text("OPEN SQUAD")
+                        .font(.system(.caption, design: .monospaced).bold())
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .foregroundStyle(.white)
+                        .background(CareerPalette.line)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+                .buttonStyle(PressableButtonStyle())
+                .accessibilityIdentifier("career.home.firstMatch.squad")
+            }
+            .font(.system(size: 11, design: .monospaced))
+            .foregroundStyle(CareerPalette.ink)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("career.home.firstMatch.guide")
     }
 
     private var careerHero: some View {
