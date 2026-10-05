@@ -369,9 +369,11 @@ final class ContractSheetsTests: XCTestCase {
     func testFreeAgentWageAboveBudgetRejectedDeterministically() async {
         let store = await freshFixture()
         guard let sellerIndex = store.clubs.indices.first(where: { $0 != store.userClubIndex && !store.clubs[$0].players.isEmpty }),
-              let candidate = store.clubs[sellerIndex].players.first else {
+              var candidate = store.clubs[sellerIndex].players.first else {
             return XCTFail("The fixture must contain another club with players")
         }
+        candidate.contractYears = 0
+        store.clubs[sellerIndex].players[0].contractYears = 0
         let squadBefore = store.userClub.players.count
 
         // A wage equal to the whole wage budget must break it.
@@ -392,6 +394,8 @@ final class ContractSheetsTests: XCTestCase {
               var candidate = store.clubs[sellerIndex].players.first else {
             return XCTFail("The fixture must contain another club with players")
         }
+        candidate.contractYears = 0
+        store.clubs[sellerIndex].players[0].contractYears = 0
         // Make acceptance near-certain: double the demand.
         let demand = store.freeAgentWageDemand(candidate)
         let squadBefore = store.userClub.players.count
@@ -423,9 +427,11 @@ final class ContractSheetsTests: XCTestCase {
     func testFreeAgentSigningFeeReconcilesWithLedger() async {
         let store = await freshFixture()
         guard let seller = store.clubs.indices.first(where: { $0 != store.userClubIndex && !store.clubs[$0].players.isEmpty }),
-              let player = store.clubs[seller].players.first else {
+              var player = store.clubs[seller].players.first else {
             return XCTFail("Fixture must contain a free-agent candidate")
         }
+        player.contractYears = 0
+        store.clubs[seller].players[0].contractYears = 0
         let budgetBefore = store.userClub.transferBudget
         let ledgerBefore = store.seasonLedger.reduce(0) { $0 + $1.amount }
         let fee = 50

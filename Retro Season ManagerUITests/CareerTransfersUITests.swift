@@ -319,6 +319,44 @@ final class CareerTransfersUITests: XCTestCase {
         app.terminate()
     }
 
+    func testFreeAgentSignsThroughRealContractSheetAndLeavesMarket() throws {
+        let app = launch()
+        openTransfers(app)
+        let search = anyElement(app, "career.transfers.filter.search")
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        search.tap()
+        search.typeText("Bjorn Freehold\n")
+        let card = elementMatching(app, NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@",
+                                                    "career.transfers.card.", "Free agent"))
+        XCTAssertTrue(card.waitForExistence(timeout: 6))
+        let playerID = card.identifier.replacingOccurrences(of: "career.transfers.card.", with: "")
+        app.buttons["career.transfers.profile.\(playerID)"].tap()
+        XCTAssertTrue(anyElement(app, "career.playerProfile.screen").waitForExistence(timeout: 8))
+        let sign = app.buttons["SIGN (FREE)"]
+        XCTAssertTrue(sign.waitForExistence(timeout: 6))
+        sign.tap()
+        XCTAssertTrue(anyElement(app, "career.contract.freeAgent.sheet").waitForExistence(timeout: 6))
+        // A normal offer can be declined by the negotiation roll. Retry only
+        // while the live sheet still offers MAKE OFFER; acceptance replaces
+        // it with DONE, so this cannot submit a second accepted signing.
+        let done = app.buttons["career.contract.done"]
+        for _ in 0..<15 {
+            if done.exists { break }
+            let offer = app.buttons["career.contract.makeOffer"]
+            XCTAssertTrue(offer.waitForExistence(timeout: 5))
+            offer.tap()
+            XCTAssertTrue(anyElement(app, "career.contract.result").waitForExistence(timeout: 6))
+            if done.waitForExistence(timeout: 1) { break }
+        }
+        XCTAssertTrue(done.exists, "The genuine free agent should accept an affordable offer")
+        XCTAssertFalse(app.buttons["career.contract.makeOffer"].exists, "Accepted deals cannot be submitted again")
+        done.tap()
+        XCTAssertTrue(anyElement(app, "career.transfers.summary").waitForExistence(timeout: 8))
+        XCTAssertTrue(NSPredicate(format: "exists == false").evaluate(with: card),
+                      "The signed free agent must leave the market")
+        app.terminate()
+    }
+
     // MARK: - Player profile round trip from a market card
 
     func testTransfersProfileOpensAndReturns() throws {

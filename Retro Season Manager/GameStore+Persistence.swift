@@ -363,7 +363,7 @@ extension GameStore {
         resolveForeignDomesticCups() // Copa del Rey / Coppa Italia / DFB-Pokal / Coupe de France
         applyPromotionRelegation() // shuffle clubs between divisions
         returnLoans()              // loanees go back to their parent clubs
-        processContracts()         // run down deals; release the expired
+        processContracts()         // run down deals; auto-renew the expired
         progressSquads()           // age, develop, retire, youth intake
         simulateWorldEvents()      // takeovers, crises, wonderkids — the wider world keeps moving
         validateRoles()            // reassign captain/penalty/free-kick if the holder retired or left

@@ -207,11 +207,34 @@ extension GameStore {
     /// `proposeRenewal`'s negotiation math since it's fundamentally the
     /// same kind of conversation, just landing the player at a new club.
     @discardableResult
-    func signFreeAgent(_ player: Player, fromClubIndex: Int?, wage: Int, years: Int, signingOnFee: Int = 0) -> ContractOutcome {
-        let sourcePlayer = fromClubIndex.flatMap { index in
-            clubs.indices.contains(index) ? clubs[index].players.first { $0.id == player.id } : nil
+    func signFreeAgent(_ requestedPlayer: Player, fromClubIndex: Int?, wage: Int, years: Int, signingOnFee: Int = 0) -> ContractOutcome {
+        // Profiles can outlive a market refresh, renewal or transfer. Resolve
+        // availability and terms from the current record before spending.
+        let player: Player
+        if let owner = clubs.indices.first(where: { index in
+            clubs[index].players.contains { $0.id == requestedPlayer.id }
+        }), let current = clubs[owner].players.first(where: { $0.id == requestedPlayer.id }) {
+            guard !current.isOnLoan else {
+                return .rejected(reason: "That player is on loan — he isn't available as a free agent.", counterWage: nil)
+            }
+            guard owner != userClubIndex else {
+                return .rejected(reason: "That player is already in your squad.", counterWage: nil)
+            }
+            guard owner == fromClubIndex else {
+                return .rejected(reason: "That player is no longer available from that club.", counterWage: nil)
+            }
+            guard current.contractYears <= 0 else {
+                return .rejected(reason: "That player is still under contract — negotiate a transfer fee with his club.", counterWage: nil)
+            }
+            player = current
+        } else {
+            guard fromClubIndex == nil,
+                  let target = transferMarket.first(where: { $0.sellingClubIndex == nil && $0.player.id == requestedPlayer.id }) else {
+                return .rejected(reason: "That free agent is no longer available.", counterWage: nil)
+            }
+            player = target.player
         }
-        guard !(sourcePlayer ?? player).isOnLoan else {
+        guard !player.isOnLoan else {
             return .rejected(reason: "That player is on loan — he isn't available as a free agent.", counterWage: nil)
         }
         guard transferWindowOpen else { return .rejected(reason: "The transfer window is closed.", counterWage: nil) }
@@ -249,6 +272,7 @@ extension GameStore {
         signing.contractYears = years
         signing.morale = 78
         signing.isTransferListed = false
+        signing.wantsToLeave = false
         clubs[userClubIndex].players.append(signing)
         if signingOnFee > 0 {
             clubs[userClubIndex].transferBudget -= signingOnFee
@@ -289,8 +313,6 @@ extension GameStore {
         }
     }
 
-    /// At season's end, decrements contracts; user players who run down their
-    /// deal leave on a free, while rivals quietly re-sign their own.
     /// At season's end, decrements every contract. A club never loses a
     /// player just because a deal quietly ran down in the background — an
     /// expiring contract auto-renews for another 2-4 years, the same as
