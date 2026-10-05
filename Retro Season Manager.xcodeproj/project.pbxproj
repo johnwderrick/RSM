@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		1676624D235FCD63EE4EA8DA /* CareerContractSheetsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DED8E8CEA24F798E8869840C /* CareerContractSheetsUITests.swift */; };
 		60496B963AC27230D2FF6197 /* ContractSheetsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0582AC3CBBD90FAD6863EEFE /* ContractSheetsTests.swift */; };
+		A041105CCAF14EC79E2D43F1 /* CareerLoanLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2506E195DEE4E98995C4AE0 /* CareerLoanLifecycleTests.swift */; };
 		80F0326560C5524968B742F8 /* PlayerNationalityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 592028D0E26D67E235944278 /* PlayerNationalityTests.swift */; };
 		9D0000000000000000000001 /* LegendsPlayerDetailStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D0000000000000000000002 /* LegendsPlayerDetailStateTests.swift */; };
 		00662B6C39544AA6851F522C /* LegendsPackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E30D7225752E3B1942D844E5 /* LegendsPackTests.swift */; };
@@ -118,6 +119,7 @@
 /* Begin PBXFileReference section */
 		DED8E8CEA24F798E8869840C /* CareerContractSheetsUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CareerContractSheetsUITests.swift; sourceTree = "<group>"; };
 		0582AC3CBBD90FAD6863EEFE /* ContractSheetsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContractSheetsTests.swift; sourceTree = "<group>"; };
+		D2506E195DEE4E98995C4AE0 /* CareerLoanLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CareerLoanLifecycleTests.swift; sourceTree = "<group>"; };
 		592028D0E26D67E235944278 /* PlayerNationalityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerNationalityTests.swift; sourceTree = "<group>"; };
 		9D0000000000000000000002 /* LegendsPlayerDetailStateTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendsPlayerDetailStateTests.swift; sourceTree = "<group>"; };
 		074F4A573ADF8B410DA73689 /* LegendsManagersAndStadiumsTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendsManagersAndStadiumsTests.swift; sourceTree = "<group>"; };
@@ -263,6 +265,7 @@
 				9C000000000000000000A00A /* PostMatchVerdictTests.swift */,
 				A1B2C3D4E5F6071829384F02 /* CareerSettingsTests.swift */,
 				0582AC3CBBD90FAD6863EEFE /* ContractSheetsTests.swift */,
+				D2506E195DEE4E98995C4AE0 /* CareerLoanLifecycleTests.swift */,
 				592028D0E26D67E235944278 /* PlayerNationalityTests.swift */,
 				B660BAC2FA7DF71D3BADD886 /* LegendsCardDatabaseTests.swift */,
 				E30D7225752E3B1942D844E5 /* LegendsPackTests.swift */,
@@ -571,6 +574,7 @@
 				2A0E7116C0DE00B1B2C3D4E5 /* LegendsMatchSelectors2DTests.swift in Sources */,
 				2A0E7115C0DE00B1B2C3D4E6 /* LegendsPoint2SeasonAwardsTests.swift in Sources */,
 				60496B963AC27230D2FF6197 /* ContractSheetsTests.swift in Sources */,
+				A041105CCAF14EC79E2D43F1 /* CareerLoanLifecycleTests.swift in Sources */,
 				80F0326560C5524968B742F8 /* PlayerNationalityTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

@@ -16,7 +16,7 @@ extension GameStore {
     func generateTransferMarket() {
         var targets: [TransferTarget] = []
         for index in clubs.indices where index != userClubIndex && clubs[index].divisionTier < 4 {
-            let surplus = clubs[index].players.sorted { $0.rating < $1.rating }.prefix(3)
+            let surplus = clubs[index].players.filter { !$0.isOnLoan }.sorted { $0.rating < $1.rating }.prefix(3)
             for player in surplus {
                 targets.append(TransferTarget(player: player, sellingClubIndex: index,
                                               askingPrice: Int(Double(player.value) * Double.random(in: 1.1...1.5))))
@@ -90,9 +90,12 @@ extension GameStore {
     /// yours until personal terms are actually settled days later, same as
     /// a real transfer. No money changes hands yet.
     func beginPersonalTermsWait(_ target: TransferTarget, price: Int, sellOnPercentage: Int, buyBackFee: Int, includedPlayer: Player?) -> String {
-        guard let sellerIndex = target.sellingClubIndex,
+        guard let sellerIndex = target.sellingClubIndex, clubs.indices.contains(sellerIndex),
               let playerIndex = clubs[sellerIndex].players.firstIndex(where: { $0.id == target.player.id }) else {
             return "That deal has fallen through."
+        }
+        guard !clubs[sellerIndex].players[playerIndex].isOnLoan else {
+            return "That player is on loan — only his parent club can sell him."
         }
         let player = clubs[sellerIndex].players.remove(at: playerIndex)
         transferMarket.removeAll { $0.id == target.id }
@@ -138,6 +141,9 @@ extension GameStore {
     func finalizePersonalTerms(_ deal: PendingTransferDeal, wage: Int, years: Int, signingOnFee: Int = 0) -> ContractOutcome {
         guard let dealIndex = pendingTransferDeals.firstIndex(where: { $0.id == deal.id }) else {
             return .rejected(reason: "That deal is no longer on the table.", counterWage: nil)
+        }
+        guard !pendingTransferDeals[dealIndex].player.isOnLoan else {
+            return .rejected(reason: "That player is on loan — only his parent club can sell him.", counterWage: nil)
         }
         guard pendingTransferDeals[dealIndex].isReady else {
             return .rejected(reason: "\(deal.player.name) isn't ready to talk terms yet.", counterWage: nil)
@@ -263,8 +269,11 @@ extension GameStore {
             return .rejected(reason: "Not enough transfer budget to make that offer.", counterPrice: nil)
         }
         if let includedPlayer {
-            guard userClub.players.contains(where: { $0.id == includedPlayer.id }) else {
+            guard let makeweight = userClub.players.first(where: { $0.id == includedPlayer.id }) else {
                 return .rejected(reason: "\(includedPlayer.name) is no longer available to include in the deal.", counterPrice: nil)
+            }
+            guard !makeweight.isOnLoan else {
+                return .rejected(reason: "That player is on loan — he can't be included in a permanent transfer.", counterPrice: nil)
             }
         }
 
@@ -274,6 +283,13 @@ extension GameStore {
             return .rejected(reason: "\(target.player.name) is a free agent — sort a contract with him instead of a fee.", counterPrice: nil)
         }
 
+        guard clubs.indices.contains(sellerIndex),
+              let candidate = clubs[sellerIndex].players.first(where: { $0.id == target.player.id }) else {
+            return .rejected(reason: "That player is no longer available.", counterPrice: nil)
+        }
+        guard !candidate.isOnLoan else {
+            return .rejected(reason: "That player is on loan — only his parent club can sell him.", counterPrice: nil)
+        }
         let seller = clubs[sellerIndex]
         // A club whose transfer budget is thin next to its wage bill has
         // real financial pressure and less leverage to hold out for full price.
@@ -340,6 +356,9 @@ extension GameStore {
         guard let index = clubs[userClubIndex].players.firstIndex(where: { $0.id == player.id }) else {
             return "That player is not in your squad."
         }
+        guard !clubs[userClubIndex].players[index].isOnLoan else {
+            return "That player is on loan — only his parent club can sell him."
+        }
         let marketFee = Int(Double(player.value) * 0.9)
         var fee = marketFee
         var extras = ""
@@ -374,7 +393,8 @@ extension GameStore {
 
     /// Toggles whether one of the user's players is listed for sale.
     func toggleTransferList(_ player: Player) {
-        guard let index = clubs[userClubIndex].players.firstIndex(where: { $0.id == player.id }) else { return }
+        guard let index = clubs[userClubIndex].players.firstIndex(where: { $0.id == player.id }),
+              !clubs[userClubIndex].players[index].isOnLoan else { return }
         clubs[userClubIndex].players[index].isTransferListed.toggle()
     }
 
@@ -454,7 +474,7 @@ extension GameStore {
         // modest one is limited to squad depth — a money-saver always
         // shops that bargain end, whatever its actual budget.
         let skip = buyerPersonality == .moneySaver ? 9 : (clubs[buyer].transferBudget > 20_000 ? 3 : 9)
-        var pool = Array(ranked.dropFirst(skip)).filter { !Self.marqueeProtectedNames.contains($0.name) }
+        var pool = Array(ranked.dropFirst(skip)).filter { !$0.isOnLoan && !Self.marqueeProtectedNames.contains($0.name) }
         switch buyerPersonality {
         case .youthDeveloper:
             let young = pool.filter { $0.age <= 23 }
@@ -504,11 +524,12 @@ extension GameStore {
 
     /// A rival club bids for one of the user's players.
     func generateOfferForUser() {
-        let listed = userClub.players.filter { $0.isTransferListed }
+        let owned = userClub.players.filter { !$0.isOnLoan }
+        let listed = owned.filter { $0.isTransferListed }
         // One live bid per player: a player already carrying an offer is
         // off the market for further bids until that one resolves.
         let alreadyBid = Set(pendingOffers.map(\.playerID))
-        let pool = (listed.isEmpty ? userClub.players.filter { $0.rating >= 72 } : listed)
+        let pool = (listed.isEmpty ? owned.filter { $0.rating >= 72 } : listed)
             .filter { !alreadyBid.contains($0.id) }
         guard let target = pool.randomElement() else { return }
         // A release clause is a contractual floor — any bid meets it or beats it.
@@ -547,6 +568,9 @@ extension GameStore {
             return "That player has already left."
         }
         let player = clubs[userClubIndex].players[playerIndex]
+        guard !player.isOnLoan else {
+            return "That player is on loan — only his parent club can sell him."
+        }
         let cover = userClub.players.filter { $0.position == player.position }.count
         let minimumCover = player.position == .goalkeeper ? 2 : 3
         guard userClub.players.count > 15, cover > minimumCover else {
@@ -586,6 +610,9 @@ extension GameStore {
         guard let player = userClub.players.first(where: { $0.id == offer.playerID }) else {
             pendingOffers.remove(at: index)
             return .rejected(reason: "That player is no longer available.", counterPrice: nil)
+        }
+        guard !player.isOnLoan else {
+            return .rejected(reason: "That player is on loan — only his parent club can sell him.", counterPrice: nil)
         }
         guard clubs.indices.contains(offer.fromClubIndex) else {
             pendingOffers.remove(at: index)
@@ -767,7 +794,7 @@ extension GameStore {
         let alreadyListedIDs = Set(transferMarket.map { $0.player.id })
         var candidates: [(clubIndex: Int, player: Player)] = []
         for (index, club) in clubs.enumerated() where index != userClubIndex {
-            for player in club.players where !alreadyListedIDs.contains(player.id) {
+            for player in club.players where !player.isOnLoan && !alreadyListedIDs.contains(player.id) {
                 if youthOnly && player.age > 20 { continue }
                 candidates.append((index, player))
             }
@@ -819,6 +846,9 @@ extension GameStore {
         guard let playerIndex = clubs[sellerIndex].players.firstIndex(where: { $0.id == target.player.id }) else {
             return "That player is no longer available."
         }
+        guard !clubs[sellerIndex].players[playerIndex].isOnLoan else {
+            return "That player is already on loan — recall him through his parent club instead."
+        }
         let incomingWage = clubs[sellerIndex].players[playerIndex].wage
         guard userClub.wageBill + incomingWage <= userClub.wageBudget else {
             return "Wage budget won't stretch that far (\(formatMoney(incomingWage))/wk needed, \(formatMoney(max(0, userClub.wageBudget - userClub.wageBill)))/wk free)."
@@ -866,10 +896,12 @@ extension GameStore {
     @discardableResult
     func proposeLoanOut(_ player: Player, toClubIndex: Int, fee: Int = 0) -> LoanOutcome {
         guard transferWindowOpen else { return .rejected(reason: "The transfer window is closed.") }
-        guard !player.isOnLoan else { return .rejected(reason: "You can't loan out a loanee.") }
         guard userClub.players.count > 15 else { return .rejected(reason: "You must keep at least 16 players.") }
         guard let playerIndex = clubs[userClubIndex].players.firstIndex(where: { $0.id == player.id }) else {
             return .rejected(reason: "That player is not in your squad.")
+        }
+        guard !clubs[userClubIndex].players[playerIndex].isOnLoan else {
+            return .rejected(reason: "That player is already on loan — only his parent club can loan him out.")
         }
         guard clubs.indices.contains(toClubIndex), toClubIndex != userClubIndex else {
             return .rejected(reason: "That club isn't a valid destination.")
@@ -950,7 +982,7 @@ extension GameStore {
     /// don't just give away a happy, effective squad member for nothing,
     /// so this only applies to the unsettled or the ageing.
     func canTerminateContract(_ player: Player) -> Bool {
-        player.wantsToLeave || player.age >= 33
+        !player.isOnLoan && (player.wantsToLeave || player.age >= 33)
     }
 
     /// Responds to a player's transfer request: either agree to list him
@@ -995,12 +1027,15 @@ extension GameStore {
     /// the wage budget immediately rather than waiting out the contract.
     @discardableResult
     func terminateContract(_ player: Player) -> String {
+        guard let index = clubs[userClubIndex].players.firstIndex(where: { $0.id == player.id }) else {
+            return "That player is not in your squad."
+        }
+        guard !clubs[userClubIndex].players[index].isOnLoan else {
+            return "That player is on loan — only his parent club can terminate his contract."
+        }
         guard userClub.players.count > 15 else { return "You must keep at least 16 players." }
         guard canTerminateContract(player) else {
             return "\(player.name) has no interest in leaving — this only works for unsettled or veteran players."
-        }
-        guard let index = clubs[userClubIndex].players.firstIndex(where: { $0.id == player.id }) else {
-            return "That player is not in your squad."
         }
         let severance = max(50, player.wage * 4)
         guard userClub.transferBudget >= severance else {

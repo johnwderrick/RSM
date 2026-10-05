@@ -63,6 +63,9 @@ extension GameStore {
         guard let index = clubs[userClubIndex].players.firstIndex(where: { $0.id == player.id }) else {
             return .rejected(reason: "That player is not in your squad.", counterWage: nil)
         }
+        guard !clubs[userClubIndex].players[index].isOnLoan else {
+            return .rejected(reason: "That player is on loan — only his parent club can renew his contract.", counterWage: nil)
+        }
         let projectedBill = userClub.wageBill - player.wage + wage
         guard projectedBill <= userClub.wageBudget else {
             return .rejected(reason: "The board won't sanction that wage — it would break the club's wage budget.", counterWage: nil)
@@ -163,6 +166,9 @@ extension GameStore {
             return "That player is no longer available."
         }
         let player = clubs[clubIndex].players[playerIndex]
+        guard !player.isOnLoan else {
+            return "That player is on loan — only his parent club can sell him."
+        }
         let fee = negotiatedFee(for: player)
         guard userClub.transferBudget >= fee else {
             return "Not enough transfer budget (need \(formatMoney(fee)))."
@@ -202,6 +208,12 @@ extension GameStore {
     /// same kind of conversation, just landing the player at a new club.
     @discardableResult
     func signFreeAgent(_ player: Player, fromClubIndex: Int?, wage: Int, years: Int, signingOnFee: Int = 0) -> ContractOutcome {
+        let sourcePlayer = fromClubIndex.flatMap { index in
+            clubs.indices.contains(index) ? clubs[index].players.first { $0.id == player.id } : nil
+        }
+        guard !(sourcePlayer ?? player).isOnLoan else {
+            return .rejected(reason: "That player is on loan — he isn't available as a free agent.", counterWage: nil)
+        }
         guard transferWindowOpen else { return .rejected(reason: "The transfer window is closed.", counterWage: nil) }
         guard userClub.players.count < 30 else { return .rejected(reason: "Your squad is full (30 players).", counterWage: nil) }
         let projectedBill = userClub.wageBill + wage
