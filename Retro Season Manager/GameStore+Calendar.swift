@@ -379,6 +379,11 @@ extension GameStore {
     /// Simulates every fixture in the current matchday (including the
     /// user's) and advances the matchday counter, mirroring what
     /// `finishLiveMatch()` does for the rest of the round after a live game.
+    /// The week pass runs here too, exactly as the live league commit and
+    /// `playNextMatchday()` run it: without it, force-simmed matchdays
+    /// never healed injuries and never served suspensions, so a red-card
+    /// ban picked up in a live match became permanent the moment the
+    /// manager force-simmed to a later date.
     func forceResolveLeagueDay() {
         let day = currentMatchday
         for index in fixtures.indices where fixtures[index].matchday == day && !fixtures[index].played {
@@ -392,6 +397,10 @@ extension GameStore {
             }
         }
         currentMatchday += 1
+        // Heal existing knocks/bans one round, the same pass the live
+        // league path (finishLiveMatch) and the instant-sim path
+        // (playNextMatchday) already run after a matchday.
+        advanceWeek()
     }
 
     /// Applies the same squad-morale and board-confidence swing a live

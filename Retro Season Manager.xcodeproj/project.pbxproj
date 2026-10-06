@@ -60,6 +60,7 @@
 		D0FACE0000FACE00000000H01 /* CareerSeasonEndAuditUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0FACE0000FACE00000000H02 /* CareerSeasonEndAuditUITests.swift */; };
 		D0FACE0000FACE00000000J01 /* CareerSeasonEndPolishUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0FACE0000FACE00000000J02 /* CareerSeasonEndPolishUITests.swift */; };
 		D0FACE0000FACE00000000K01 /* CareerSeasonFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0FACE0000FACE00000000K02 /* CareerSeasonFlowTests.swift */; };
+		F00DCAFE0FAFE00000000B01 /* InjurySuspensionAuditTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00DCAFE0FAFE00000000B02 /* InjurySuspensionAuditTests.swift */; };
 		A1B2C3D4E5F6071829384E01 /* InboxFixtureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6071829384E02 /* InboxFixtureTests.swift */; };
 		9C000000000000000000A007 /* CareerFixtureCalendarTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C000000000000000000A008 /* CareerFixtureCalendarTests.swift */; };
 		9C000000000000000000A009 /* PostMatchVerdictTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C000000000000000000A00A /* PostMatchVerdictTests.swift */; };
@@ -167,6 +168,7 @@
 		D0FACE0000FACE00000000H02 /* CareerSeasonEndAuditUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CareerSeasonEndAuditUITests.swift; sourceTree = "<group>"; };
 		D0FACE0000FACE00000000J02 /* CareerSeasonEndPolishUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CareerSeasonEndPolishUITests.swift; sourceTree = "<group>"; };
 		D0FACE0000FACE00000000K02 /* CareerSeasonFlowTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CareerSeasonFlowTests.swift; sourceTree = "<group>"; };
+		F00DCAFE0FAFE00000000B02 /* InjurySuspensionAuditTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InjurySuspensionAuditTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6071829384E02 /* InboxFixtureTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InboxFixtureTests.swift; sourceTree = "<group>"; };
 		9C000000000000000000A008 /* CareerFixtureCalendarTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CareerFixtureCalendarTests.swift; sourceTree = "<group>"; };
 		9C000000000000000000A00A /* PostMatchVerdictTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PostMatchVerdictTests.swift; sourceTree = "<group>"; };
@@ -294,6 +296,7 @@
 				D5EBC684871666B50828C720 /* LegendsMatchSimulationTests.swift */,
 				86D3D33B9AC8783B537A219E /* CareerSeasonSoakTests.swift */,
 				D0FACE0000FACE00000000K02 /* CareerSeasonFlowTests.swift */,
+				F00DCAFE0FAFE00000000B02 /* InjurySuspensionAuditTests.swift */,
 				45ACA05FF088A4032616F4B2 /* LiveMatchTests.swift */,
 				CD4B67FD28B14DE5914B0356 /* SeasonObjectiveTests.swift */,
 				0B37E780E1B741DC8BAB0597 /* LivingWorldTests.swift */,
@@ -556,6 +559,7 @@
 				14DC54ED4A6C4CAA11BEA01E /* LegendsMatchSimulationTests.swift in Sources */,
 				07803EFF6F1D3ECD04BCF825 /* CareerSeasonSoakTests.swift in Sources */,
 				D0FACE0000FACE00000000K01 /* CareerSeasonFlowTests.swift in Sources */,
+				F00DCAFE0FAFE00000000B01 /* InjurySuspensionAuditTests.swift in Sources */,
 				B73D938118DE57E0525CC11A /* LiveMatchTests.swift in Sources */,
 				E4DA2058A0394CEB8EE33C6D /* SeasonObjectiveTests.swift in Sources */,
 				68E67E7456134856A431237C /* LivingWorldTests.swift in Sources */,

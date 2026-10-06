@@ -263,6 +263,23 @@ final class LiveMatch {
         tick()
     }
 
+    #if DEBUG
+    /// Audit hook (unit tests): sends one of the USER side's on-pitch
+    /// players off through the real card path — same event feed, same
+    /// momentum swing — without depending on random rolls to arrange it.
+    func testSendOffUser(playerID: UUID) {
+        if let index = pitch(userSide).firstIndex(where: { $0.id == playerID && $0.onPitch }) {
+            sendOff(userSide, playerIndex: index, note: "Straight red")
+        }
+    }
+
+    /// Audit hook (unit tests): resolves the USER side's penalty taker
+    /// through the same selection path `scoreGoal(penalty: true)` uses.
+    func resolvedPenaltyTakerForAudits() -> Player? {
+        penaltyTaker(userSide)
+    }
+    #endif
+
     private func loop() async {
         while !isFinished {
             if isPaused || isHalfTime {
