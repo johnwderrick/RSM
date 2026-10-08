@@ -113,7 +113,10 @@ extension GameStore {
 
     /// Simulates any remaining ties in the current round, reports the user's
     /// outcome, and draws the next round (or crowns a winner).
+    /// A crowned cup is finished: re-running the pass must be a strict
+    /// no-op so prize money and news can never repeat.
     func concludeCupRound() {
+        guard cupWinnerName == nil else { return }
         for index in cupTies.indices where !cupTies[index].played {
             let result = simCupTie(cupTies[index].homeIndex, cupTies[index].awayIndex, magic: 0.28)
             cupTies[index].homeGoals = result.hg
@@ -230,7 +233,10 @@ extension GameStore {
         concludeLeagueCupRound()
     }
 
+    /// A crowned competition is finished: re-running the pass must be a
+    /// strict no-op so prize money and news can never repeat.
     func concludeLeagueCupRound() {
+        guard leagueCupWinnerName == nil else { return }
         for index in leagueCupTies.indices where !leagueCupTies[index].played {
             let result = simCupTie(leagueCupTies[index].homeIndex, leagueCupTies[index].awayIndex, magic: 0.32)
             leagueCupTies[index].homeGoals = result.hg
@@ -374,8 +380,10 @@ extension GameStore {
     }
 
     /// Resolves the Community Trophy — from a live result if given, else simulated.
+    /// An already-played tie is finished: re-running the resolve must be a
+    /// strict no-op so prize money and news can never repeat.
     func resolveCommunityShield(homeGoals: Int?, awayGoals: Int?) {
-        guard var tie = communityShieldTie else { return }
+        guard var tie = communityShieldTie, !tie.played else { return }
         if let hg = homeGoals, let ag = awayGoals {
             tie.homeGoals = hg; tie.awayGoals = ag
             if hg != ag { tie.winnerIndex = hg > ag ? tie.homeIndex : tie.awayIndex }
@@ -550,7 +558,10 @@ extension GameStore {
         concludeEuroRound()
     }
 
+    /// A crowned competition is finished: re-running the pass must be a
+    /// strict no-op so prize money and news can never repeat.
     func concludeEuroRound() {
+        guard euroWinnerName == nil else { return }
         for index in euroTies.indices where !euroTies[index].played {
             let result = simCupTie(euroTies[index].homeIndex, euroTies[index].awayIndex)
             euroTies[index].homeGoals = result.hg
@@ -688,7 +699,10 @@ extension GameStore {
         concludeUefaCupRound()
     }
 
+    /// A crowned competition is finished: re-running the pass must be a
+    /// strict no-op so prize money and news can never repeat.
     func concludeUefaCupRound() {
+        guard uefaCupWinnerName == nil else { return }
         for index in uefaCupTies.indices where !uefaCupTies[index].played {
             let result = simCupTie(uefaCupTies[index].homeIndex, uefaCupTies[index].awayIndex)
             uefaCupTies[index].homeGoals = result.hg
@@ -798,8 +812,10 @@ extension GameStore {
         resolveUefaSuperCup(homeGoals: nil, awayGoals: nil)
     }
 
+    /// An already-played tie is finished: re-running the resolve must be
+    /// a strict no-op so the result and news can never repeat.
     func resolveUefaSuperCup(homeGoals: Int?, awayGoals: Int?) {
-        guard var tie = uefaSuperCupTie else { return }
+        guard var tie = uefaSuperCupTie, !tie.played else { return }
         let result: (hg: Int, ag: Int, winner: Int, pens: Bool)
         if let homeGoals, let awayGoals {
             if homeGoals != awayGoals {

@@ -278,6 +278,23 @@ final class LiveMatch {
     func resolvedPenaltyTakerForAudits() -> Player? {
         penaltyTaker(userSide)
     }
+
+    /// Audit hook (unit tests): scores a goal for the given side through
+    /// the real `scoreGoal` path — same scorer weighting, event feed and
+    /// momentum swing as a live goal — so tests can script exact
+    /// scorelines (e.g. a drawn tie to exercise the penalty-shootout
+    /// commit) without depending on random chance generation.
+    func testScoreGoal(_ side: Side) {
+        scoreGoal(side, penalty: false)
+    }
+
+    /// Audit hook (unit tests): ends the match at its CURRENT scoreline
+    /// through the real `finishMatch()` path (ratings, events, full-time
+    /// state), so a test can freeze a scripted scoreline instead of
+    /// playing out the remaining minutes and hoping the score holds.
+    func testFinishNow() {
+        finishMatch()
+    }
     #endif
 
     private func loop() async {

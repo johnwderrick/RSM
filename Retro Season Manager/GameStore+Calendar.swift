@@ -401,6 +401,13 @@ extension GameStore {
         // league path (finishLiveMatch) and the instant-sim path
         // (playNextMatchday) already run after a matchday.
         advanceWeek()
+        // Mirror the live league commit (finishLiveMatch): a season that
+        // ends on an abstractly-resolved final matchday must still run the
+        // end-of-season pipeline — career history, next season's European
+        // and Midweek Cup qualifiers, the Community Trophy pairing and the
+        // sacking/job-offer review are all captured by
+        // recordSeasonHonours(). Idempotent via lastHonourSeason.
+        if isSeasonOver { recordSeasonHonours() }
     }
 
     /// Applies the same squad-morale and board-confidence swing a live

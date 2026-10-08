@@ -615,7 +615,10 @@ final class ContractSheetsTests: XCTestCase {
                 ("Continental cup", 6_500, { store.euroTies = [tie]; store.concludeEuroRound() }),
                 ("UEFA cup", 3_500, { store.uefaCupTies = [tie]; store.concludeUefaCupRound() }),
                 ("Community shield", 300, {
-                    store.communityShieldTie = tie
+                    // A real one-off tie is unplayed when it resolves; handing
+                    // the resolve an already-played tie is now (correctly) a
+                    // no-op so a paid one-off can never pay twice.
+                    store.communityShieldTie = CupTie(round: 0, homeIndex: store.userClubIndex, awayIndex: opponent)
                     store.resolveCommunityShield(homeGoals: winner == store.userClubIndex ? 2 : 0,
                                                  awayGoals: winner == store.userClubIndex ? 0 : 2)
                 })
