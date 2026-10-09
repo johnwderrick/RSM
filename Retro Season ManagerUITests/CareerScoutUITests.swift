@@ -69,13 +69,30 @@ final class CareerScoutUITests: XCTestCase {
             .matching(NSPredicate(format: "identifier BEGINSWITH %@", "career.scout.card."))
         XCTAssertGreaterThan(cards.count, 2, "Discovered targets should render as player cards")
 
-        let labels = (0..<cards.count).map { cards.element(boundBy: $0).label }.joined(separator: " ")
-        XCTAssertTrue(labels.contains("Full report available"), "A fully scouted state should be visible")
-        XCTAssertTrue(labels.contains("Scouting in progress"), "An in-progress state should be visible")
-        XCTAssertTrue(labels.contains("Not scouted"), "An unknown scouting state should be visible")
+        // Query each state directly instead of fetching all 80 card labels
+        // individually from the accessibility tree.
+        for state in ["Full report available", "Scouting in progress", "Not scouted"] {
+            XCTAssertTrue(cards.matching(NSPredicate(format: "label CONTAINS %@", state))
+                .firstMatch.exists, "Scout cards should expose the \(state) state")
+        }
 
-        let profileButton = first(app, prefix: "career.scout.profile.")
+        // The fixture has exactly one shortlisted, fully reported player.
+        // Use that scope so scrolling cannot overshoot the first of 80 results.
+        app.buttons["career.scout.scope.shortlist"].tap()
+        let profileButton = app.buttons
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "career.scout.profile.")).firstMatch
         XCTAssertTrue(profileButton.waitForExistence(timeout: 6), "Profile action missing")
+        // Results begin below the summary and filters. Reveal the action
+        // explicitly: XCTest's implicit scroll-to-tap can miss in landscape.
+        let scroll = app.scrollViews["career.scout.scroll"]
+        XCTAssertTrue(scroll.waitForExistence(timeout: 4), "Scout results scroll missing")
+        var reveals = 0
+        while !profileButton.isHittable && reveals < 8 {
+            scroll.swipeUp()
+            reveals += 1
+            Thread.sleep(forTimeInterval: 0.4)
+        }
+        XCTAssertTrue(profileButton.isHittable, "Profile action should be visible before tapping")
         profileButton.tap()
         XCTAssertTrue(anyElement(app, "career.playerProfile.screen").waitForExistence(timeout: 8),
                       "Scout result should open the accepted premium player profile")
