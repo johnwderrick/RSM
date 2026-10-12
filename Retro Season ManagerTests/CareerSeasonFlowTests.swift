@@ -83,6 +83,88 @@ final class CareerSeasonFlowTests: XCTestCase {
         XCTAssertFalse(store.careerEnded, "One rollover must not end the career")
     }
 
+    /// Replays the real season-end transition twice. Only the completed
+    /// season may age the roster; the second queued request after rollover
+    /// must be rejected before it ages or advances anyone again.
+    func testRepeatedSeasonRolloverDoesNotAgeOrAdvanceTwice() async throws {
+        let store = await makeTestStore()
+        store.prepareCareerSeasonEndFixtureForDebug()
+        let saveID = try XCTUnwrap(store.currentSaveID)
+        defer { GameStore.deleteSave(id: saveID) }
+        let userClubID = store.userClub.id
+
+        let player = try XCTUnwrap(store.userClub.players.first)
+        let playerIndex = try XCTUnwrap(store.userClub.players.firstIndex { $0.id == player.id })
+        store.clubs[store.userClubIndex].players[playerIndex].age = 20
+        let startingSeason = store.season
+
+        store.startNextSeason()
+
+        XCTAssertEqual(store.season, startingSeason + 1)
+        XCTAssertEqual(store.currentPlayer(player.id)?.age, 21)
+        let committedPlayers = store.userClub.players
+
+        let relaunched = await makeTestStore()
+        XCTAssertTrue(relaunched.loadSavedGame(id: saveID))
+        XCTAssertEqual(relaunched.season, startingSeason + 1)
+        XCTAssertEqual(relaunched.currentPlayer(player.id)?.age, 21,
+                       "The committed age must survive a real save/reload")
+        XCTAssertEqual(relaunched.userClub.id, userClubID)
+        XCTAssertEqual(relaunched.clubs.first(where: { $0.id == userClubID })?.players.map(\.id),
+                       committedPlayers.map(\.id),
+                       "Save/reload must preserve the authoritative developed roster")
+
+        // The first transition has reset the completed-season flag. Calling
+        // the store API again must be a no-op rather than another season roll.
+        store.startNextSeason()
+        XCTAssertEqual(store.season, startingSeason + 1,
+                       "A second request without a completed season must not advance")
+        XCTAssertEqual(store.currentPlayer(player.id)?.age, 21,
+                       "The same career season must not age a player twice")
+    }
+
+    /// Age 37 always retires at the next rollover (the code retires every
+    /// player at 38), independent of the early-retirement probability band.
+    /// The removed player must no longer be selected, hold a squad role, or
+    /// reappear in the next transfer market or after loading the save.
+    func testMandatoryRetirementRemovesPlayerAndReferencesOnRollover() async throws {
+        let store = await makeTestStore()
+        store.prepareCareerSeasonEndFixtureForDebug()
+        let saveID = try XCTUnwrap(store.currentSaveID)
+        defer { GameStore.deleteSave(id: saveID) }
+        let userClubID = store.userClub.id
+
+        let retiree = try XCTUnwrap(store.userClub.players.first)
+        let index = try XCTUnwrap(store.userClub.players.firstIndex { $0.id == retiree.id })
+        store.clubs[store.userClubIndex].players[index].age = 37
+        store.userStarterIDs.insert(retiree.id)
+        store.captainID = retiree.id
+        store.penaltyTakerID = retiree.id
+        store.freeKickTakerID = retiree.id
+        store.cornerTakerID = retiree.id
+
+        store.startNextSeason()
+
+        XCTAssertFalse(store.clubs.contains { $0.players.contains { $0.id == retiree.id } },
+                       "A player reaching age 38 is removed from all active squads")
+        XCTAssertNotEqual(store.captainID, retiree.id)
+        XCTAssertNotEqual(store.penaltyTakerID, retiree.id)
+        XCTAssertNotEqual(store.freeKickTakerID, retiree.id)
+        XCTAssertNotEqual(store.cornerTakerID, retiree.id)
+        XCTAssertFalse(store.transferMarket.contains { $0.player.id == retiree.id },
+                       "Retirees must not be regenerated as available transfer targets")
+
+        let relaunched = await makeTestStore()
+        XCTAssertTrue(relaunched.loadSavedGame(id: saveID))
+        XCTAssertFalse(relaunched.clubs.contains { $0.players.contains { $0.id == retiree.id } },
+                       "A retired player must stay out of the roster after a real reload")
+        XCTAssertNil(relaunched.currentPlayer(retiree.id))
+        XCTAssertNotNil(relaunched.clubs.first(where: { $0.id == userClubID }),
+                        "Reload must preserve the club's identity even if league realignment moved it")
+        XCTAssertFalse(relaunched.userStarterIDs.contains(retiree.id))
+        XCTAssertFalse(relaunched.transferMarket.contains { $0.player.id == retiree.id })
+    }
+
     /// The standings card's data source must stay the authoritative league
     /// table: strictly ordered by points, with goal difference as the
     /// tie-break, so position-keyed rows always mean what they say.

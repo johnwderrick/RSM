@@ -357,6 +357,11 @@ extension GameStore {
     /// Starts the next season: ages and develops squads, resets transfer
     /// budgets, re-opens the transfer market and resets the board.
     func startNextSeason() {
+        // A duplicate Continue action can arrive before SwiftUI presents the
+        // busy overlay. Only a completed season is allowed to run progression;
+        // otherwise a queued call would age, retire, and regenerate the world
+        // a second time immediately after the first rollover.
+        guard isSeasonOver else { return }
         guard season < maxSeasons else { endCareer(); return }
         resetTransferBudgets()     // fresh budget for the new season, from several factors
         awardSeasonHonours()       // Team of the Season / Golden Boot flavour news
