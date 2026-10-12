@@ -160,12 +160,19 @@ extension GameStore {
         let day = currentMatchday
         var reports: [MatchReport] = []
         for index in fixtures.indices where fixtures[index].matchday == day && !fixtures[index].played {
+            let fixture = fixtures[index]
             reports.append(simulate(fixtureIndex: index))
+            if fixture.homeIndex == userClubIndex || fixture.awayIndex == userClubIndex {
+                let result = fixtures[index]
+                applyUserAbstractMatchOutcome(homeIndex: result.homeIndex, awayIndex: result.awayIndex,
+                                              homeGoals: result.homeGoals, awayGoals: result.awayGoals)
+            }
         }
         // Show the user's match first.
         lastReports = reports.sorted { $0.involvesUser && !$1.involvesUser }
         currentMatchday += 1
         advanceWeek()
+        if isSeasonOver { recordSeasonHonours() }
     }
 
     // MARK: - Live match orchestration

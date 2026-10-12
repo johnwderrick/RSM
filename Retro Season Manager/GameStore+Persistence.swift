@@ -374,17 +374,26 @@ extension GameStore {
         validateRoles()            // reassign captain/penalty/free-kick if the holder retired or left
         season += 1
         startNewSeason(resetRecords: true)
+        // Job offers identify a club by its season-one array position. Its
+        // promotion/relegation can change that club's future tier, not its
+        // stable identity or array slot, so apply the saved choice via UUID.
+        let acceptedDestinationID = pendingClubSwitch.flatMap { index in
+            clubs.indices.contains(index) ? clubs[index].id : nil
+        }
+        if let acceptedDestinationID,
+           let destination = clubs.firstIndex(where: { $0.id == acceptedDestinationID }) {
+            userClubIndex = destination
+            managerContractYears = Int.random(in: 2...4)
+            addNews(.board, "New chapter", "You are the new manager of \(clubs[destination].name).")
+            // startNewSeason schedules friendlies for the outgoing club; the
+            // newly appointed manager's pre-season must follow the destination.
+            scheduleFriendlies()
+        }
         logLedger("Season budget", amount: userClub.transferBudget, "Fresh budget for the new season")
         let commercial = Self.commercialRevenue(forPrestige: userClub.prestige, startYear: startYear, clubShopLevel: userClub.clubShopLevel)
         logLedger("Commercial", amount: commercial, "Kit sponsorship deal")
         addNews(.board, "Sponsorship deal",
                 "\(userClub.name) agree a new kit sponsorship deal worth \(formatMoney(commercial)) for the season.")
-        // Apply an accepted move (or forced move after a sacking).
-        if let newClub = pendingClubSwitch, clubs.indices.contains(newClub) {
-            userClubIndex = newClub
-            managerContractYears = Int.random(in: 2...4)
-            addNews(.board, "New chapter", "You are the new manager of \(clubs[newClub].name).")
-        }
         pendingClubSwitch = nil
         pendingJobOffers = []
         wasSacked = false

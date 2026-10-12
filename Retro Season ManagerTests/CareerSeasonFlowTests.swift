@@ -16,6 +16,14 @@ import XCTest
 @MainActor
 final class CareerSeasonFlowTests: XCTestCase {
 
+    private func offer(forClubIndex index: Int, in store: GameStore) -> JobOffer {
+        JobOffer(clubIndex: index, clubName: store.clubs[index].name,
+                 divisionName: store.divisionName(store.clubs[index].divisionTier),
+                 prestige: store.clubs[index].prestige,
+                 transferBudget: store.clubs[index].transferBudget,
+                 expectedObjective: store.previewObjective(forClubIndex: index))
+    }
+
     /// The season-end fixture must leave a coherent review state: season
     /// over, a crowned champion, a complete final table, awards data and
     /// end-of-season job offers — all from the real pipeline.
@@ -163,6 +171,212 @@ final class CareerSeasonFlowTests: XCTestCase {
                         "Reload must preserve the club's identity even if league realignment moved it")
         XCTAssertFalse(relaunched.userStarterIDs.contains(retiree.id))
         XCTAssertFalse(relaunched.transferMarket.contains { $0.player.id == retiree.id })
+    }
+
+    func testFourthDivisionMidTableObjectiveEndsAtMidTableBoundary() async throws {
+        let store = await makeTestStore()
+        store.newGame(clubIndex: 0, startYear: 2000, managerName: "Board Boundary Audit")
+        let saveID = try XCTUnwrap(store.currentSaveID)
+        defer { GameStore.deleteSave(id: saveID) }
+
+        let fourthDivision = store.clubs.indices.filter { store.clubs[$0].divisionTier == 3 }
+        let userIndex = try XCTUnwrap(fourthDivision.first)
+        store.userClubIndex = userIndex
+        store.boardObjective = "Avoid relegation"
+
+        func setUserRank(_ rank: Int) {
+            let others = fourthDivision.filter { $0 != userIndex }
+            for index in fourthDivision {
+                store.clubs[index].won = 0
+                store.clubs[index].drawn = 0
+            }
+            for (offset, index) in others.prefix(rank - 1).enumerated() {
+                store.clubs[index].won = 40 - offset
+            }
+            store.clubs[userIndex].won = 20
+            for (offset, index) in others.dropFirst(rank - 1).enumerated() {
+                store.clubs[index].won = 19 - offset
+            }
+        }
+
+        setUserRank(17)
+        XCTAssertEqual(store.userPosition, 17)
+        XCTAssertTrue(store.objectiveMet(),
+                      "The last position outside relegation satisfies the fourth division's safe-finish objective")
+
+        setUserRank(18)
+        XCTAssertEqual(store.userPosition, 18)
+        XCTAssertFalse(store.objectiveMet(), "The bottom three must miss the safe-finish objective")
+    }
+
+    func testQuickSimFinalMatchdayRecordsHonoursExactlyOnce() async throws {
+        let store = await makeTestStore()
+        store.newGame(clubIndex: 0, startYear: 2000, managerName: "Quick Sim Audit")
+        let saveID = try XCTUnwrap(store.currentSaveID)
+        defer { GameStore.deleteSave(id: saveID) }
+        let finishedSeason = store.season
+
+        while !store.isSeasonOver { store.playNextMatchday() }
+
+        XCTAssertEqual(store.history.filter { $0.season == finishedSeason }.count, 1,
+                       "Quick-sim completion must record one SeasonRecord")
+        XCTAssertEqual(store.lastHonourSeason, finishedSeason,
+                       "Quick-sim completion must run the season-end board/honours pipeline")
+        let honourCount = store.careerHonours.count
+        let completedIDs = store.completedSeasonObjectiveIDs
+        store.recordSeasonHonours()
+        XCTAssertEqual(store.completedSeasonObjectiveIDs, completedIDs,
+                       "Repeating the season-end commit must not grant board rewards a second time")
+        XCTAssertEqual(store.history.filter { $0.season == finishedSeason }.count, 1,
+                       "The live/calendar/rollover re-check must not duplicate the review")
+        XCTAssertEqual(store.careerHonours.count, honourCount,
+                       "Honours must remain idempotent across result paths")
+    }
+
+    func testJobOfferAcceptanceIsSingleChoiceValidatedAndSaved() async throws {
+        let store = await makeTestStore()
+        store.newGame(clubIndex: 0, startYear: 2000, managerName: "Job Offer Audit")
+        let saveID = try XCTUnwrap(store.currentSaveID)
+        defer { GameStore.deleteSave(id: saveID) }
+        store.currentMatchday = store.totalMatchdays + 1
+        store.wasSacked = true
+
+        let destinations = store.clubs.indices.filter {
+            $0 != store.userClubIndex && store.clubs[$0].divisionTier < 4
+        }
+        let first = offer(forClubIndex: destinations[0], in: store)
+        let second = offer(forClubIndex: destinations[1], in: store)
+        store.pendingJobOffers = [first, second]
+        XCTAssertTrue(store.persist(), "The pending review fixture must be saved before acceptance")
+
+        store.acceptJobOffer(first)
+        XCTAssertEqual(store.pendingClubSwitch, first.clubIndex)
+
+        let reloaded = await makeTestStore()
+        XCTAssertTrue(reloaded.loadSavedGame(id: saveID))
+        XCTAssertTrue(reloaded.wasSacked, "Sacking state must survive a review relaunch")
+        XCTAssertEqual(reloaded.pendingJobOffers.map(\.id), [first.id, second.id],
+                       "The pending choices must survive a review relaunch")
+        XCTAssertEqual(reloaded.pendingClubSwitch, first.clubIndex,
+                       "Accepting a job must checkpoint the move before leaving the review")
+
+        reloaded.acceptJobOffer(second)
+        XCTAssertEqual(reloaded.pendingClubSwitch, first.clubIndex,
+                       "A second acceptance must not replace the manager's chosen destination")
+        let forged = JobOffer(clubIndex: first.clubIndex, clubName: second.clubName,
+                              divisionName: second.divisionName, prestige: second.prestige,
+                              transferBudget: second.transferBudget,
+                              expectedObjective: second.expectedObjective)
+        reloaded.acceptJobOffer(forged)
+        XCTAssertEqual(reloaded.pendingClubSwitch, first.clubIndex,
+                       "A stale/mismatched club identity must not redirect an accepted move")
+    }
+
+    func testAcceptedJobHandoffUsesPromotedClubForNewSeasonState() async throws {
+        let store = await makeTestStore()
+        store.newGame(clubIndex: 0, startYear: 2000, managerName: "Club Handoff Audit")
+        let saveID = try XCTUnwrap(store.currentSaveID)
+        defer { GameStore.deleteSave(id: saveID) }
+        store.currentMatchday = store.totalMatchdays + 1
+        let previousClubIndex = store.userClubIndex
+        let previousClubName = store.userClub.name
+
+        let destinationIndex = try XCTUnwrap(store.clubs.indices.first {
+            $0 != previousClubIndex && store.clubs[$0].divisionTier == 1
+        })
+        let destinationID = store.clubs[destinationIndex].id
+        let destinationName = store.clubs[destinationIndex].name
+        let offer = offer(forClubIndex: destinationIndex, in: store)
+        store.pendingJobOffers = [offer]
+
+        // Make the destination the unambiguous automatic-promotion winner.
+        for index in store.clubs.indices where store.clubs[index].divisionTier == 1 {
+            store.clubs[index].played = store.totalMatchdays
+            store.clubs[index].won = 0
+            store.clubs[index].drawn = 0
+            store.clubs[index].lost = store.totalMatchdays
+            store.clubs[index].goalsFor = 0
+            store.clubs[index].goalsAgainst = 0
+        }
+        store.clubs[destinationIndex].won = store.totalMatchdays
+        store.clubs[destinationIndex].lost = 0
+        store.clubs[destinationIndex].goalsFor = 100
+
+        // Exercise the same ownership return performed before the handoff.
+        var returningLoanee = try XCTUnwrap(store.clubs[destinationIndex].players.first)
+        store.clubs[destinationIndex].players.removeFirst()
+        returningLoanee.onLoanFromClubIndex = destinationIndex
+        store.clubs[previousClubIndex].players.append(returningLoanee)
+        let returningLoaneeID = returningLoanee.id
+
+        store.boardConfidence = 80
+        store.managerContractYears = 3
+        store.careerRecordByClub[previousClubName] = ClubCareerRecord(wins: 3, losses: 2)
+        store.recordSeasonHonours()
+        XCTAssertEqual(store.history.last?.userClub, previousClubName)
+        store.pendingJobOffers = [offer]
+        store.captainID = try XCTUnwrap(store.userClub.players.first?.id)
+        store.acceptJobOffer(offer)
+        store.startNextSeason()
+
+        XCTAssertEqual(store.userClub.id, destinationID,
+                       "The accepted offer must follow the destination club through promotion")
+        XCTAssertEqual(store.userClub.divisionTier, 0,
+                       "The destination's promotion must be applied before the manager takes over")
+        XCTAssertEqual(store.userClub.name, destinationName)
+        XCTAssertEqual(store.news.first(where: { $0.title == "New chapter" })?.body,
+                       "You are the new manager of \(destinationName).",
+                       "The handoff news must name the destination rather than expose interpolation text")
+        XCTAssertFalse(store.careerRecordByClub.keys.contains(destinationName),
+                       "The new manager's record must not appear until the destination plays a match")
+        XCTAssertEqual(store.careerRecordByClub[previousClubName]?.wins, 3,
+                       "Completed obligations and results stay attached to the previous club")
+        XCTAssertEqual(store.careerRecordByClub[previousClubName]?.losses, 2)
+        XCTAssertTrue(store.userStarterIDs.isSubset(of: Set(store.userClub.players.map(\.id))),
+                      "The starting XI must be rebuilt from the destination squad")
+        XCTAssertTrue([store.captainID, store.penaltyTakerID, store.freeKickTakerID, store.cornerTakerID]
+            .compactMap { $0 }.allSatisfy { id in store.userClub.players.contains { $0.id == id } },
+                      "Every squad role must refer to a destination player")
+        XCTAssertEqual(store.clubs[store.userClubIndex].transferBudget, store.userClub.transferBudget)
+        XCTAssertTrue((2...4).contains(store.managerContractYears),
+                      "The new club must receive a fresh manager contract")
+        XCTAssertNil(store.pendingClubSwitch)
+        XCTAssertTrue(store.pendingJobOffers.isEmpty)
+        XCTAssertFalse(store.wasSacked)
+        XCTAssertEqual(store.clubs[destinationIndex].players.filter { $0.id == returningLoaneeID }.count, 1)
+        XCTAssertFalse(store.clubs[destinationIndex].players.first { $0.id == returningLoaneeID }?.isOnLoan ?? true,
+                       "The previous club's loan must return to its actual parent before handoff")
+        XCTAssertFalse(store.clubs[previousClubIndex].players.contains { $0.id == returningLoaneeID })
+        XCTAssertTrue(store.friendlyFixtures.allSatisfy {
+            $0.homeIndex == store.userClubIndex || $0.awayIndex == store.userClubIndex
+        }, "The new season's friendlies must belong to the destination club")
+
+        let reloaded = await makeTestStore()
+        XCTAssertTrue(reloaded.loadSavedGame(id: saveID))
+        XCTAssertEqual(reloaded.userClub.id, destinationID,
+                       "The completed club change must survive a fresh-store reload")
+        XCTAssertEqual(reloaded.managerContractYears, store.managerContractYears)
+        XCTAssertEqual(reloaded.userClub.players.map(\.id), store.userClub.players.map(\.id))
+    }
+
+    func testFinalSeasonSackingDoesNotDemandAnImpossibleNewJob() async throws {
+        let store = await makeTestStore()
+        store.newGame(clubIndex: 0, startYear: GameStore.careerEndYear - 1,
+                      managerName: "Final Season Board Audit")
+        let saveID = try XCTUnwrap(store.currentSaveID)
+        defer { GameStore.deleteSave(id: saveID) }
+        store.currentMatchday = store.totalMatchdays + 1
+        store.boardConfidence = 0
+
+        store.recordSeasonHonours()
+
+        XCTAssertTrue(store.isFinalSeason)
+        XCTAssertTrue(store.wasSacked, "The board verdict still records final-season sacking")
+        XCTAssertTrue(store.pendingJobOffers.isEmpty,
+                      "A career ending after this review must not offer an unusable next-club move")
+        store.endCareer()
+        XCTAssertTrue(store.careerEnded,
+                      "A sacked manager must be able to finish the final season without an impossible job choice")
     }
 
     /// The standings card's data source must stay the authoritative league

@@ -457,6 +457,7 @@ extension GameStore {
     /// Offers the manager jobs from rival clubs, scaled to reputation.
     func generateJobOffers() {
         pendingJobOffers = []
+        guard !isFinalSeason else { return }
         let domestic = clubs.indices.filter { $0 != userClubIndex && clubs[$0].divisionTier < 4 }
         var candidates: [Int]
         if wasSacked {
@@ -485,8 +486,15 @@ extension GameStore {
 
     /// Accepts a job offer; the move takes effect next season.
     func acceptJobOffer(_ offer: JobOffer) {
+        guard pendingClubSwitch == nil,
+              pendingJobOffers.contains(where: { $0.id == offer.id }),
+              clubs.indices.contains(offer.clubIndex),
+              offer.clubIndex != userClubIndex,
+              clubs[offer.clubIndex].name == offer.clubName,
+              clubs[offer.clubIndex].divisionTier < 4 else { return }
         pendingClubSwitch = offer.clubIndex
         addNews(.board, "New job agreed", "You will take over at \(offer.clubName) next season.")
+        persist()
     }
 
     /// Ends the career once `maxSeasons` is reached.

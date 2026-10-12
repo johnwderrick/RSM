@@ -1367,6 +1367,9 @@ extension GameStore {
         // and advances exactly as a fast-forwarded season would.
         var matchdays = 0
         while !isSeasonOver && matchdays < totalMatchdays + 5 {
+            // Keep this UI fixture focused on the review/handoff flow rather
+            // than letting random quick-sim form trigger an unrelated sacking.
+            boardConfidence = 100
             playNextMatchday()
             matchdays += 1
         }

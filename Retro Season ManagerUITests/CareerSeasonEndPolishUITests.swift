@@ -41,6 +41,16 @@ final class CareerSeasonEndPolishUITests: XCTestCase {
         add(attachment)
     }
 
+    private func assertDashboardReady(_ app: XCUIApplication) {
+        let skipToMatch = app.buttons["career.home.skipToMatch"]
+        XCTAssertTrue(skipToMatch.waitForExistence(timeout: 10))
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            skipToMatch.isHittable
+        }, object: skipToMatch)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 10), .completed,
+                       "The dashboard must be usable after the loading overlay clears")
+    }
+
     /// The handoff action must sit in the pinned footer: visible at the
     /// bottom of the screen without scrolling, whatever the content depth.
     private func assertFooterVisible(_ app: XCUIApplication, _ continueButton: XCUIElement) {
@@ -94,6 +104,39 @@ final class CareerSeasonEndPolishUITests: XCTestCase {
         shot(app, "03_review_after_scroll_footer_pinned")
     }
 
+    func testAcceptedJobOfferHandoffShowsDestinationClub() {
+        let app = launch()
+        XCTAssertTrue(anyElement(app, "career.seasonReview.screen").waitForExistence(timeout: 30))
+
+        let offerButton = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Accept job offer from ")).firstMatch
+        XCTAssertTrue(offerButton.waitForExistence(timeout: 10), "The fixture should offer a job")
+        let destination = String(offerButton.label.dropFirst("Accept job offer from ".count))
+        XCTAssertFalse(destination.isEmpty)
+        var reveals = 0
+        while !offerButton.isHittable && reveals < 12 {
+            // The root identifier can mask the ScrollView identifier in
+            // SwiftUI's accessibility tree. Swipe the review as a user does.
+            app.swipeUp()
+            reveals += 1
+        }
+        XCTAssertTrue(offerButton.isHittable, "Job acceptance must be reachable in landscape")
+        offerButton.tap()
+        XCTAssertEqual(offerButton.value as? String, "Accepted")
+
+        app.buttons["career.seasonReview.continue"].tap()
+        XCTAssertTrue(anyElement(app, "career.home.screen").waitForExistence(timeout: 40),
+                      "The accepted job must roll into the destination's dashboard")
+        XCTAssertTrue(app.staticTexts[destination.uppercased()].firstMatch.exists,
+                      "The dashboard must name the accepted destination")
+        let seasonLabel = anyElement(app, "career.home.seasonLabel")
+        XCTAssertTrue(seasonLabel.label.contains("SEASON 2001/02"))
+        XCTAssertFalse(anyElement(app, "career.seasonReview.screen").exists)
+        assertDashboardReady(app)
+        shot(app, "05_accepted_job_dashboard")
+        app.terminate()
+    }
+
     func testSeasonHandoffAdvancesSeasonOnceToDashboard() {
         let app = launch()
 
@@ -129,6 +172,7 @@ final class CareerSeasonEndPolishUITests: XCTestCase {
         }
         XCTAssertTrue(dashboard.waitForExistence(timeout: 40),
                       "Starting the next season should land on the Career dashboard")
+        assertDashboardReady(app)
         shot(app, "04_next_season_dashboard")
 
         // The dashboard top bar carries a stable season-label identifier;

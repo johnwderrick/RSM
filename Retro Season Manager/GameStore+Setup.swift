@@ -357,8 +357,8 @@ extension GameStore {
         startCommunityShield()
         startUefaSuperCup()
         generateYouthIntake()
-        scheduleFriendlies()
         shuffleForeignDivisions()
+        scheduleFriendlies()
     }
 
     /// A light touch of promotion/relegation for the four non-playable

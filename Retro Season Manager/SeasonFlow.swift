@@ -316,13 +316,16 @@ struct SeasonReviewView: View {
             }
             .buttonStyle(PressableButtonStyle())
             .accessibilityLabel("Accept job offer from \(offer.clubName)")
+            .accessibilityValue(store.pendingClubSwitch == offer.clubIndex ? "Accepted" : "Available")
         }
         .padding(8)
         .background(CareerPalette.line.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
-    private var mustChooseJob: Bool { store.wasSacked && store.pendingClubSwitch == nil }
+    private var mustChooseJob: Bool {
+        store.wasSacked && store.pendingClubSwitch == nil && !store.isFinalSeason
+    }
 
     @ViewBuilder
     private var continueButton: some View {
