@@ -405,16 +405,15 @@ enum LegacyArchive {
                     case GameStore.cupName: return record.cupWinner == club
                     case GameStore.euroName: return record.euroWinner == club
                     case GameStore.communityShieldName: return record.communityShieldWinner == club
-                    case GameStore.uefaCupName, GameStore.leagueCupName, GameStore.uefaSuperCupName:
-                        // These competitions have no separate winner field
-                        // in older SeasonRecords. Use the earned honour and
-                        // managed season; euroWinner belongs only to the
-                        // Continental Cup and cannot validate a Midweek win.
-                        return record.userClub == club
+                    // Each competition is checked against its own winner
+                    // field. A nil field is an older record that never stored
+                    // that winner, so the conservative managed-season fallback
+                    // applies. No other competition's winner can validate it.
+                    case GameStore.uefaCupName: return record.uefaCupWinner.map { $0 == club } ?? true
+                    case GameStore.leagueCupName: return record.leagueCupWinner.map { $0 == club } ?? true
+                    case GameStore.uefaSuperCupName: return record.uefaSuperCupWinner.map { $0 == club } ?? true
                     default:
-                        // SeasonRecord doesn't retain the winner of every
-                        // competition (e.g. League Trophy), but its label
-                        // and managed club still identify those honours.
+                        // Unknown prize labels keep the managed-season fallback.
                         return true
                     }
                 }

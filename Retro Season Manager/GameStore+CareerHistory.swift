@@ -317,7 +317,10 @@ extension GameStore {
             champion: plTable.first?.name ?? "—",
             cupWinner: cupWinnerName ?? "—",
             euroWinner: euroWinnerName ?? "—",
-            communityShieldWinner: communityShieldWinnerName ?? "—"))
+            communityShieldWinner: communityShieldWinnerName ?? "—",
+            leagueCupWinner: leagueCupWinnerName ?? "—",
+            uefaCupWinner: uefaCupWinnerName ?? "—",
+            uefaSuperCupWinner: uefaSuperCupWinnerName ?? "—"))
 
         // Career achievement milestones tied to this season's outcome.
         let wonLeague = userPosition == 1

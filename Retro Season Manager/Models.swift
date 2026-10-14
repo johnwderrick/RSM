@@ -721,6 +721,14 @@ struct SeasonRecord: Identifiable, Codable {
     let cupWinner: String
     let euroWinner: String
     let communityShieldWinner: String
+    /// Winners of the competitions that were not stored in the original
+    /// record shape. `nil` means an older save never recorded the winner
+    /// (unknown); `"—"` means a season recorded with this field where the
+    /// competition produced no winner. Each is independent: a winner for one
+    /// competition never validates another.
+    var leagueCupWinner: String? = nil
+    var uefaCupWinner: String? = nil
+    var uefaSuperCupWinner: String? = nil
 }
 
 /// A manager's cumulative match record at one club, across every stint —
