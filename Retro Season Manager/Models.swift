@@ -725,10 +725,12 @@ struct SeasonRecord: Identifiable, Codable {
 
 /// A manager's cumulative match record at one club, across every stint —
 /// the raw material for the manager CV screen's win percentage.
-struct ClubCareerRecord: Codable {
+struct ClubCareerRecord: Codable, Equatable {
     var wins = 0
     var draws = 0
     var losses = 0
+    var goalsFor = 0
+    var goalsAgainst = 0
     var homeWins = 0
     var homeDraws = 0
     var homeLosses = 0
@@ -745,7 +747,8 @@ struct ClubCareerRecord: Codable {
 /// fine, defaulting the new counters to zero instead of hard-failing.
 extension ClubCareerRecord {
     private enum CodingKeys: String, CodingKey {
-        case wins, draws, losses, homeWins, homeDraws, homeLosses, awayWins, awayDraws, awayLosses
+        case wins, draws, losses, goalsFor, goalsAgainst
+        case homeWins, homeDraws, homeLosses, awayWins, awayDraws, awayLosses
     }
 
     init(from decoder: Decoder) throws {
@@ -753,6 +756,8 @@ extension ClubCareerRecord {
         wins = try c.decodeIfPresent(Int.self, forKey: .wins) ?? 0
         draws = try c.decodeIfPresent(Int.self, forKey: .draws) ?? 0
         losses = try c.decodeIfPresent(Int.self, forKey: .losses) ?? 0
+        goalsFor = try c.decodeIfPresent(Int.self, forKey: .goalsFor) ?? 0
+        goalsAgainst = try c.decodeIfPresent(Int.self, forKey: .goalsAgainst) ?? 0
         homeWins = try c.decodeIfPresent(Int.self, forKey: .homeWins) ?? 0
         homeDraws = try c.decodeIfPresent(Int.self, forKey: .homeDraws) ?? 0
         homeLosses = try c.decodeIfPresent(Int.self, forKey: .homeLosses) ?? 0

@@ -723,6 +723,13 @@ enum CareerIdentifiers {
         "career.museum.detail.legend.\(group).\(index)"
     }
 
+    /// One archived club record row in the career detail sheet.
+    static func museumClubRecord(_ index: Int) -> String {
+        "career.museum.clubRecord.\(index)"
+    }
+
+    static let museumClubRecordTotal = "career.museum.clubRecord.total"
+
     static func slug(_ text: String) -> String {
         text.lowercased()
             .replacingOccurrences(of: " ", with: "-")

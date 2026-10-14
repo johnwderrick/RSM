@@ -332,6 +332,9 @@ final class CareerSeasonFlowTests: XCTestCase {
         XCTAssertEqual(store.careerRecordByClub[previousClubName]?.wins, 3,
                        "Completed obligations and results stay attached to the previous club")
         XCTAssertEqual(store.careerRecordByClub[previousClubName]?.losses, 2)
+        let outgoingRecord = try XCTUnwrap(store.careerRecordByClub[previousClubName])
+        XCTAssertEqual(outgoingRecord.goalsFor, 0)
+        XCTAssertEqual(outgoingRecord.goalsAgainst, 0)
         XCTAssertTrue(store.userStarterIDs.isSubset(of: Set(store.userClub.players.map(\.id))),
                       "The starting XI must be rebuilt from the destination squad")
         XCTAssertTrue([store.captainID, store.penaltyTakerID, store.freeKickTakerID, store.cornerTakerID]
@@ -351,12 +354,41 @@ final class CareerSeasonFlowTests: XCTestCase {
             $0.homeIndex == store.userClubIndex || $0.awayIndex == store.userClubIndex
         }, "The new season's friendlies must belong to the destination club")
 
+        let destinationMatchIndex = try XCTUnwrap(store.fixtures.firstIndex {
+            !$0.played && ($0.homeIndex == store.userClubIndex || $0.awayIndex == store.userClubIndex)
+        })
+        let beforeDestinationRecord = store.careerRecordByClub[destinationName] ?? ClubCareerRecord()
+        let destinationMatchday = store.fixtures[destinationMatchIndex].matchday
+        store.currentMatchday = destinationMatchday
+        store.currentDate = store.date(forMatchday: destinationMatchday)
+        store.beginUserMatch()
+        let destinationLive = try XCTUnwrap(store.live)
+        destinationLive.skipToEnd()
+        let userGoals = destinationLive.userSide == .home ? destinationLive.homeGoals : destinationLive.awayGoals
+        let opponentGoals = destinationLive.userSide == .home ? destinationLive.awayGoals : destinationLive.homeGoals
+        store.finishLiveMatch()
+        XCTAssertTrue(store.persist(), "Persist after the post-handoff result before loading a fresh store")
+        XCTAssertEqual(store.careerRecordByClub[previousClubName]?.wins, 3,
+                       "New-club match attribution must not mutate the outgoing club record")
+        XCTAssertEqual(store.careerRecordByClub[destinationName]?.matches, beforeDestinationRecord.matches + 1,
+                       "The destination must receive the manager's first record at that club")
+        XCTAssertEqual(store.careerRecordByClub[destinationName]?.wins, beforeDestinationRecord.wins +
+                       (userGoals > opponentGoals ? 1 : 0))
+        XCTAssertEqual(store.careerRecordByClub[destinationName]?.goalsFor, beforeDestinationRecord.goalsFor + userGoals)
+        XCTAssertEqual(store.careerRecordByClub[destinationName]?.goalsAgainst, beforeDestinationRecord.goalsAgainst + opponentGoals)
+
         let reloaded = await makeTestStore()
         XCTAssertTrue(reloaded.loadSavedGame(id: saveID))
         XCTAssertEqual(reloaded.userClub.id, destinationID,
                        "The completed club change must survive a fresh-store reload")
         XCTAssertEqual(reloaded.managerContractYears, store.managerContractYears)
         XCTAssertEqual(reloaded.userClub.players.map(\.id), store.userClub.players.map(\.id))
+        XCTAssertEqual(reloaded.careerRecordByClub, store.careerRecordByClub,
+                       "Active multi-club match records must survive a real save/reload")
+        XCTAssertEqual(reloaded.history.map { ($0.season, $0.userClub, $0.userDivision, $0.userPosition) }.map { "\($0.0)|\($0.1)|\($0.2)|\($0.3)" },
+                       store.history.map { "\($0.season)|\($0.userClub)|\($0.userDivision)|\($0.userPosition)" },
+                       "Season identity, division and finish must survive a real save/reload")
+        XCTAssertEqual(reloaded.careerHonours, store.careerHonours)
     }
 
     func testFinalSeasonSackingDoesNotDemandAnImpossibleNewJob() async throws {

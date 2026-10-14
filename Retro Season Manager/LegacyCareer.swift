@@ -77,6 +77,7 @@ struct LegacyCareerInfo: Codable, Identifiable, Equatable {
     let startYear: Int
     let endYear: Int
     let seasonsManaged: Int
+    /// Count of earned silverware, excluding promotion which is a separate honour.
     let trophyCount: Int
     let finalDivisionName: String
     let legacyScore: Int
@@ -236,8 +237,16 @@ struct LegacyCareer: Codable, Identifiable {
 }
 
 enum LegacyArchive {
-    #if DEBUG
     private static var careerEndUITestArchiveConfigured = false
+    private static var isolatedCareerArchiveRoot: URL?
+
+    /// Routes archive reads and writes into a disposable test-only root.
+    /// Production documents and the Museum UI fixture are unchanged.
+    static func useIsolatedRootForTesting(_ root: URL?) {
+        isolatedCareerArchiveRoot = root
+    }
+
+    private static var configuredTestRoot: URL? { isolatedCareerArchiveRoot }
 
     /// Isolates the CareerEnd UI fixture from the user's real archive. It
     /// clears only a dedicated cache subdirectory for this explicit test
@@ -253,10 +262,17 @@ enum LegacyArchive {
         try? FileManager.default.removeItem(at: isolated)
         try? FileManager.default.createDirectory(at: isolated, withIntermediateDirectories: true)
     }
-    #endif
+
+    static var directoryForTesting: URL {
+        directory
+    }
 
     private static var directory: URL {
         #if DEBUG
+        if let isolated = configuredTestRoot {
+            try? FileManager.default.createDirectory(at: isolated, withIntermediateDirectories: true)
+            return isolated
+        }
         if ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_END") {
             return FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
                 .appendingPathComponent("career-end-ui-test-legacy", isDirectory: true)
@@ -283,21 +299,137 @@ enum LegacyArchive {
         return list.sorted { $0.archivedDate > $1.archivedDate }
     }
 
-    private static func writeIndex(_ list: [LegacyCareerInfo]) {
-        if let data = try? JSONEncoder().encode(list) { try? data.write(to: indexURL) }
+    @discardableResult
+    private static func writeIndex(_ list: [LegacyCareerInfo]) -> Bool {
+        guard let data = try? JSONEncoder().encode(list) else { return false }
+        do {
+            try data.write(to: indexURL, options: .atomic)
+            return true
+        } catch {
+            return false
+        }
     }
 
     /// Permanently archives a finished career.
     static func archive(_ career: LegacyCareer) {
         guard let data = try? JSONEncoder().encode(career) else { return }
-        try? data.write(to: fileURL(for: career.id))
         var list = all()
-        list.append(LegacyCareerInfo(id: career.id, managerName: career.managerName, clubName: career.clubName,
-                                     startYear: career.startYear, endYear: career.endYear,
-                                     seasonsManaged: career.seasonsManaged, trophyCount: career.careerHonours.count,
-                                     finalDivisionName: career.finalDivisionName, legacyScore: career.legacyScore,
-                                     legacyTier: career.legacyTier, archivedDate: career.archivedDate))
-        writeIndex(list)
+        let info = LegacyCareerInfo(id: career.id, managerName: career.managerName, clubName: career.clubName,
+                                    startYear: career.startYear, endYear: career.endYear,
+                                    seasonsManaged: career.seasonsManaged, trophyCount: LegacyArchive.trophyCount(career),
+                                    finalDivisionName: career.finalDivisionName, legacyScore: career.legacyScore,
+                                    legacyTier: career.legacyTier, archivedDate: career.archivedDate)
+        guard !list.contains(where: { $0.id == career.id }) else {
+            // Archiving is a one-time snapshot operation. Duplicate delivery
+            // must not replace the career that was already preserved.
+            return
+        }
+        guard (try? data.write(to: fileURL(for: career.id), options: .atomic)) != nil else { return }
+        list.append(info)
+        guard writeIndex(list) else {
+            try? FileManager.default.removeItem(at: fileURL(for: career.id))
+            return
+        }
+    }
+
+    /// Aggregates match records for the archived career without inventing
+    /// totals when older archives have no club records.
+    static func careerRecord(_ career: LegacyCareer) -> ClubCareerRecord {
+        career.careerRecordByClub.values.reduce(into: ClubCareerRecord()) { total, record in
+            total.wins += record.wins
+            total.draws += record.draws
+            total.losses += record.losses
+            total.goalsFor += record.goalsFor
+            total.goalsAgainst += record.goalsAgainst
+            total.homeWins += record.homeWins
+            total.homeDraws += record.homeDraws
+            total.homeLosses += record.homeLosses
+            total.awayWins += record.awayWins
+            total.awayDraws += record.awayDraws
+            total.awayLosses += record.awayLosses
+        }
+    }
+
+    /// Per-club match records, sorted by managed seasons then name for
+    /// stable Museum output, including records from repeat stints.
+    static func clubRecords(_ career: LegacyCareer) -> [(club: String, record: ClubCareerRecord)] {
+        let managedSeasons = Dictionary(grouping: career.history, by: \.userClub)
+        return career.careerRecordByClub.map { (club: $0.key, record: $0.value) }
+            .sorted {
+                let a = managedSeasons[$0.club]?.count ?? 0
+                let b = managedSeasons[$1.club]?.count ?? 0
+                if a != b { return a > b }
+                return $0.club < $1.club
+            }
+    }
+
+    /// Honours associated with each managed club and season are decoded
+    /// from the existing "(season label)" suffix used by careerHonours.
+    /// Promotion follows the manager's club from that season, just like
+    /// league and cup honours.
+    static func clubHonours(_ career: LegacyCareer, club: String) -> [String] {
+        clubHonours(history: career.history, honours: career.careerHonours, club: club)
+    }
+
+    static func clubHonours(history: [SeasonRecord], honours: [String], club: String) -> [String] {
+        honours.filter { honour in
+            guard let open = honour.lastIndex(of: "("), let close = honour.lastIndex(of: ")"), open < close else { return false }
+            let label = String(honour[honour.index(after: open)..<close])
+            let matchingSeasons = history.filter { $0.label == label }
+            // Duplicate labels can occur in old or hand-built history. A
+            // title identifies the club from the champion field; cup honours
+            // carry their winner's name. Prefer those concrete IDs/names over
+            // assigning every matching honour to the first club for that label.
+            if honour.localizedCaseInsensitiveContains("title") {
+                let honourText = honour.hasPrefix("🏆") ? String(honour.dropFirst()) : honour
+                let titleName = String(honourText.split(separator: "(", maxSplits: 1).first ?? "")
+                    .trimmingCharacters(in: .whitespaces)
+                let divisionTitle = titleName.range(of: " title", options: .caseInsensitive) != nil
+                return matchingSeasons.contains { record in
+                    guard record.userClub == club, record.userPosition == 1,
+                          record.champion == club else { return false }
+                    guard divisionTitle else { return true }
+                    let division = String(titleName[..<(titleName.range(of: " title", options: .caseInsensitive)?.lowerBound ?? titleName.endIndex)])
+                    return record.userDivision.caseInsensitiveCompare(division) == .orderedSame
+                }
+            }
+            if honour.contains("Promoted") {
+                return matchingSeasons.contains { $0.userClub == club }
+            }
+            if honour.contains("🏆") {
+                let prize = String(honour.dropFirst().split(separator: "(", maxSplits: 1).first ?? "")
+                    .trimmingCharacters(in: .whitespaces)
+                return matchingSeasons.contains { record in
+                    guard record.userClub == club else { return false }
+                    switch prize {
+                    case GameStore.cupName: return record.cupWinner == club
+                    case GameStore.euroName: return record.euroWinner == club
+                    case GameStore.communityShieldName: return record.communityShieldWinner == club
+                    case GameStore.uefaCupName, GameStore.leagueCupName, GameStore.uefaSuperCupName:
+                        // These competitions have no separate winner field
+                        // in older SeasonRecords. Use the earned honour and
+                        // managed season; euroWinner belongs only to the
+                        // Continental Cup and cannot validate a Midweek win.
+                        return record.userClub == club
+                    default:
+                        // SeasonRecord doesn't retain the winner of every
+                        // competition (e.g. League Trophy), but its label
+                        // and managed club still identify those honours.
+                        return true
+                    }
+                }
+            }
+            return matchingSeasons.contains { $0.userClub == club }
+        }
+    }
+
+    /// Totals available from the archived match records. Older archives
+    /// without per-club records yield zero rather than inferred totals.
+    static func matchSummary(_ career: LegacyCareer) -> (matches: Int, wins: Int, draws: Int, losses: Int,
+                                                        goalsFor: Int, goalsAgainst: Int) {
+        let record = careerRecord(career)
+        return (record.matches, record.wins, record.draws, record.losses,
+                record.goalsFor, record.goalsAgainst)
     }
 
     static func load(id: UUID) -> LegacyCareer? {
@@ -320,9 +452,27 @@ enum LegacyArchive {
 /// inline in a View so they're independently testable.
 extension LegacyArchive {
 
+    static func trophyCount(_ career: LegacyCareer) -> Int {
+        career.careerHonours.filter { $0.contains("🏆") || !$0.contains("Promoted") }.count
+    }
+
+    /// Corrects metadata totals written by older versions that counted
+    /// promotion honours as trophies; undecodable career files remain omitted.
+    static func refreshedIndex() -> [LegacyCareerInfo] {
+        all().map { info in
+            guard let career = load(id: info.id) else { return info }
+            return LegacyCareerInfo(id: info.id, managerName: info.managerName, clubName: info.clubName,
+                                   startYear: info.startYear, endYear: info.endYear,
+                                   seasonsManaged: info.seasonsManaged, trophyCount: trophyCount(career),
+                                   finalDivisionName: info.finalDivisionName, legacyScore: info.legacyScore,
+                                   legacyTier: info.legacyTier, archivedDate: info.archivedDate)
+        }
+    }
+
     static func trophyTally(from careers: [LegacyCareer]) -> [(honour: String, career: String)] {
         careers.flatMap { career in
-            career.careerHonours.map { (honour: $0, career: "\(career.managerName) at \(career.clubName)") }
+            career.careerHonours.filter { $0.contains("🏆") || !$0.contains("Promoted") }
+                .map { (honour: $0, career: "\(career.managerName) at \(career.clubName)") }
         }
     }
 

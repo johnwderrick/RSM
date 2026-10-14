@@ -431,7 +431,8 @@ extension GameStore {
         boardConfidence = 60
     }
 
-    func updateBoard(userWon: Bool, draw: Bool, isHome: Bool, opponentIndex: Int? = nil) {
+    func updateBoard(userWon: Bool, draw: Bool, isHome: Bool, opponentIndex: Int? = nil,
+                     userGoals: Int = 0, opponentGoals: Int = 0) {
         // A good assistant manager softens how badly a defeat lands with
         // both the board and the fans, without blunting the credit for a win.
         let assistantCushion = 1.0 - Double(staffLevel(.assistantManager)) * 0.12
@@ -453,6 +454,8 @@ extension GameStore {
 
         var record = careerRecordByClub[userClub.name] ?? ClubCareerRecord()
         if userWon { record.wins += 1 } else if draw { record.draws += 1 } else { record.losses += 1 }
+        record.goalsFor += userGoals
+        record.goalsAgainst += opponentGoals
         if isHome {
             if userWon { record.homeWins += 1 } else if draw { record.homeDraws += 1 } else { record.homeLosses += 1 }
         } else {

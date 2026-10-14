@@ -207,10 +207,11 @@ extension GameStore {
     /// since it should always reflect where the career stands right now.
     func legendaryManagerProfile() -> LegendaryManagerProfile {
         let totalSeasons = history.count
-        let totalTrophies = careerHonours.filter { $0.contains("🏆") }.count
+        let totalTrophies = careerHonours.filter { $0.contains("🏆") || !$0.contains("Promoted") }.count
         let promotions = careerHonours.filter { $0.contains("Promoted") }.count
         let record = careerRecordByClub.values.reduce(into: ClubCareerRecord()) { total, next in
             total.wins += next.wins; total.draws += next.draws; total.losses += next.losses
+            total.goalsFor += next.goalsFor; total.goalsAgainst += next.goalsAgainst
         }
         let totalMatches = record.wins + record.draws + record.losses
         let winPercentage = totalMatches > 0 ? Int((Double(record.wins) / Double(totalMatches) * 100).rounded()) : 0
@@ -252,6 +253,7 @@ extension GameStore {
     func checkWinMilestones() {
         let totalWins = careerRecordByClub.values.reduce(0) { $0 + $1.wins }
         if totalWins >= 50 { unlock(.wins50) }
+
         if totalWins >= 100 { unlock(.wins100) }
         if totalWins >= 200 { unlock(.wins200) }
         let totalMatches = careerRecordByClub.values.reduce(0) { $0 + $1.wins + $1.draws + $1.losses }
@@ -528,7 +530,7 @@ extension GameStore {
             LegacyCareerMoment(season: moment.season, year: moment.year, icon: moment.icon,
                                headline: moment.headline, detail: moment.detail)
         }
-        let score = LegacyScoring.score(trophyCount: careerHonours.count, seasonsManaged: history.count,
+        let score = LegacyScoring.score(trophyCount: careerHonours.filter { $0.contains("🏆") || !$0.contains("Promoted") }.count, seasonsManaged: history.count,
                                         achievementPoints: careerAchievementPoints, legendCount: clubLegends.count)
         let topScorer = allTimeScorers.max { $0.value < $1.value }
             .map { LegacyRecordHolder(name: $0.key, value: $0.value, detail: "goals") }
@@ -536,22 +538,27 @@ extension GameStore {
             .map { LegacyRecordHolder(name: $0.key, value: $0.value, detail: "appearances") }
         let topMOTM = motmTally.max { $0.value < $1.value }
             .map { LegacyRecordHolder(name: $0.key, value: $0.value, detail: "MOTM awards") }
-        let recordWin = userClub.recordWinMargin > 0
-            ? LegacyRecordHolder(name: userClub.name, value: userClub.recordWinMargin, detail: userClub.recordWinDescription)
-            : nil
+        let recordWin = clubs
+            .filter { careerRecordByClub[$0.name] != nil && $0.recordWinMargin > 0 }
+            .max { $0.recordWinMargin < $1.recordWinMargin }
+            .map { LegacyRecordHolder(name: $0.name, value: $0.recordWinMargin, detail: $0.recordWinDescription) }
+        let lastManagedSeason = history.max { $0.season < $1.season }
         let bestSeason = history.min { $0.userPosition < $1.userPosition }
             .map { LegacyRecordHolder(name: $0.userClub, value: $0.userPosition, detail: "\($0.userDivision) · \($0.label)") }
+        // Match records and season history both use a club's displayed name
+        // as their key, allowing the archived Museum to join them directly.
+        let careerRecords = careerRecordByClub
         let topSales = transferHistory.filter { $0.action == "Sold" && ($0.fee ?? 0) > 0 }
             .sorted { ($0.fee ?? 0) > ($1.fee ?? 0) }.prefix(3)
         let topSignings = transferHistory.filter { $0.action == "Signed" && $0.otherClub != nil && ($0.fee ?? 0) > 0 }
             .sorted { ($0.fee ?? 0) > ($1.fee ?? 0) }.prefix(3)
         let career = LegacyCareer(id: UUID(), managerName: managerName, clubName: userClub.name,
-                                  startYear: startYear, endYear: startYear + history.count,
-                                  seasonsManaged: history.count, finalDivisionName: divisionName(userDivisionTier),
+                                  startYear: startYear, endYear: lastManagedSeason.map { startYear + $0.season } ?? startYear,
+                                  seasonsManaged: history.count, finalDivisionName: lastManagedSeason?.userDivision ?? divisionName(userDivisionTier),
                                   careerHonours: careerHonours, autobiography: generateAutobiography(),
                                   timeline: timeline, achievementUnlocks: Array(achievementUnlocks.values),
                                   careerAchievementPoints: careerAchievementPoints, clubLegends: clubLegends,
-                                  history: history, careerRecordByClub: careerRecordByClub,
+                                  history: history, careerRecordByClub: careerRecords,
                                   legacyScore: score, legacyTier: .forScore(score),
                                   recordBook: careerRecordBookLines(), archivedDate: Date(),
                                   topScorer: topScorer, topAppearances: topAppearances, topMOTM: topMOTM,
@@ -641,19 +648,22 @@ extension GameStore {
     /// The manager's full career history — every club managed, in order.
     func managerCV() -> [ManagerCVEntry] {
         guard !history.isEmpty else { return [] }
-        var groups: [(club: String, startLabel: String, seasons: Int)] = []
-        for record in history {
+        let historyInOrder = history.sorted { $0.season < $1.season }
+        var groups: [(club: String, startLabel: String, startSeason: Int, endSeason: Int, seasons: Int)] = []
+        for record in historyInOrder {
             if let last = groups.last, last.club == record.userClub {
+                groups[groups.count - 1].endSeason = record.season
                 groups[groups.count - 1].seasons += 1
             } else {
-                groups.append((club: record.userClub, startLabel: record.label, seasons: 1))
+                groups.append((club: record.userClub, startLabel: record.label,
+                               startSeason: record.season, endSeason: record.season, seasons: 1))
             }
         }
-        let clubForLabel = Dictionary(uniqueKeysWithValues: history.map { ($0.label, $0.userClub) })
         return groups.map { group in
-            let trophies = careerHonours.filter { honour in
-                clubForLabel.contains { label, club in club == group.club && honour.contains("(\(label))") }
+            let spellHistory = historyInOrder.filter {
+                $0.season >= group.startSeason && $0.season <= group.endSeason
             }
+            let trophies = LegacyArchive.clubHonours(history: spellHistory, honours: careerHonours, club: group.club)
             let record = careerRecordByClub[group.club] ?? ClubCareerRecord()
             return ManagerCVEntry(club: group.club, startLabel: group.startLabel, seasons: group.seasons,
                                    record: record, trophies: trophies)
@@ -674,10 +684,10 @@ extension GameStore {
     func honourTally() -> (titles: Int, cups: Int, euros: Int, promotions: Int) {
         var t = 0, c = 0, e = 0, p = 0
         for h in careerHonours {
-            if h.contains("title") { t += 1 }
-            else if h.contains(Self.cupName) { c += 1 }
-            else if h.contains(Self.euroName) { e += 1 }
-            else if h.contains("Promoted") { p += 1 }
+            if h.contains("Promoted") { p += 1 }
+            else if h.localizedCaseInsensitiveContains("title") { t += 1 }
+            else if h.contains(Self.cupName) || h.contains(Self.leagueCupName) || h.contains(Self.communityShieldName) { c += 1 }
+            else if h.contains(Self.euroName) || h.contains(Self.uefaCupName) || h.contains(Self.uefaSuperCupName) { e += 1 }
         }
         return (t, c, e, p)
     }

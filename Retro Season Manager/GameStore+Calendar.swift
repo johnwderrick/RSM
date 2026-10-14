@@ -438,7 +438,8 @@ extension GameStore {
             }
         }
         updateSquadMorale(appearedIDs: userStarterIDs)
-        updateBoard(userWon: won, draw: draw, isHome: userIsHome, opponentIndex: userIsHome ? awayIndex : homeIndex)
+        updateBoard(userWon: won, draw: draw, isHome: userIsHome, opponentIndex: userIsHome ? awayIndex : homeIndex,
+                    userGoals: userScored, opponentGoals: userConceded)
         if won { checkGiantKilling(opponentIndex: userIsHome ? awayIndex : homeIndex) }
     }
 

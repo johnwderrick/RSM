@@ -1211,8 +1211,13 @@ extension GameStore {
     /// values, both a filled and an empty sub-section, and a delete
     /// target whose removal provably empties the museum.
     static func seedLegacyMuseumFixtureForDebug() {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let legacyDir = docs.appendingPathComponent("legacy", isDirectory: true)
+        // The fixture is rebuilt on each launch, but must never clear a
+        // player's real Documents/legacy archive. Keep its destructive reset
+        // scoped to this dedicated cache directory instead.
+        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        LegacyArchive.useIsolatedRootForTesting(
+            caches.appendingPathComponent("legacy-museum-ui-test", isDirectory: true))
+        let legacyDir = LegacyArchive.directoryForTesting
         try? FileManager.default.removeItem(at: legacyDir)
 
         let seasonRecord: (Int, String, String, String) -> SeasonRecord = { season, label, club, division in
@@ -1256,7 +1261,9 @@ extension GameStore {
                            biography: "The safe pair of hands behind the title years."),
             ],
             history: (1...8).map { seasonRecord($0, "Season \($0)", "Harbour City", "Premier Division") },
-            careerRecordByClub: [:],
+            careerRecordByClub: ["Harbour City": ClubCareerRecord(
+                wins: 142, draws: 39, losses: 11, goalsFor: 381, goalsAgainst: 96,
+                homeWins: 76, homeDraws: 18, homeLosses: 5, awayWins: 66, awayDraws: 21, awayLosses: 6)],
             legacyScore: 500, legacyTier: .legend,
             recordBook: [
                 "Mara Voss scored 188 goals across eight seasons.",
@@ -1302,7 +1309,9 @@ extension GameStore {
             careerAchievementPoints: 10,
             clubLegends: [],
             history: (1...2).map { seasonRecord($0, "Season \($0)", "Midfield Rovers", "Regional League") },
-            careerRecordByClub: [:],
+            careerRecordByClub: ["Midfield Rovers": ClubCareerRecord(
+                wins: 15, draws: 10, losses: 13, goalsFor: 45, goalsAgainst: 42,
+                homeWins: 9, homeDraws: 5, homeLosses: 5, awayWins: 6, awayDraws: 5, awayLosses: 8)],
             legacyScore: 74, legacyTier: .journeyman,
             recordBook: [],
             archivedDate: Date(timeIntervalSince1970: 1_700_000_000),
@@ -1311,6 +1320,9 @@ extension GameStore {
 
         LegacyArchive.archive(booth)   // archived first → shown second
         LegacyArchive.archive(whitmore) // archived last → shown first
+        // The deterministic fixture archives a single-club season summary
+        // for each career so the expanded detail view exercises both club
+        // record rows and the cross-club total through the real Museum route.
     }
 
     /// Builds a fresh, saved career parked exactly at the season-end review:

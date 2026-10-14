@@ -25,13 +25,27 @@ struct SaveSlotInfo: Codable, Identifiable, Equatable {
 
 enum SaveSlots {
 #if DEBUG
+    private static var isolatedTestingRoot: URL?
+
+    /// Keeps regression-test saves out of a user's Documents directory.
+    static func useIsolatedRootForTesting(_ root: URL?) {
+        isolatedTestingRoot = root?.appendingPathComponent("saves", isDirectory: true)
+    }
+
     enum DebugWriteFailure { case saveFile, index }
     /// Consumed by the next matching write; used to exercise disk failures
     /// without changing a real save or depending on filesystem permissions.
     static var debugFailNextWrite: DebugWriteFailure?
+    static var isolatedRootForTesting: URL? { isolatedTestingRoot?.deletingLastPathComponent() }
 #endif
 
     private static var directory: URL {
+        #if DEBUG
+        if let isolatedTestingRoot {
+            try? FileManager.default.createDirectory(at: isolatedTestingRoot, withIntermediateDirectories: true)
+            return isolatedTestingRoot
+        }
+        #endif
         let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("saves", isDirectory: true)
         if !FileManager.default.fileExists(atPath: dir.path) {

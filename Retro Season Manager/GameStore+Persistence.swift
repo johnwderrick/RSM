@@ -12,6 +12,11 @@ extension GameStore {
     // MARK: - Persistence
 
     static var legacySaveURL: URL {
+        #if DEBUG
+        if let isolated = SaveSlots.isolatedRootForTesting {
+            return isolated.appendingPathComponent("fm_save.json")
+        }
+        #endif
         let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         return directory.appendingPathComponent("fm_save.json")
     }

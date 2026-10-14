@@ -82,7 +82,7 @@ enum MuseumWing: String, CaseIterable, Identifiable {
 /// builds additional wings on top of it.
 struct LegacyCareersListView: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var careers: [LegacyCareerInfo] = LegacyArchive.all()
+    @State private var careers: [LegacyCareerInfo] = LegacyArchive.refreshedIndex()
     @State private var fullCareers: [LegacyCareer] = []
     @State private var selected: LegacyCareer?
     @State private var pendingDelete: LegacyCareerInfo?
@@ -133,7 +133,8 @@ struct LegacyCareersListView: View {
         }
         .font(.system(.body, design: .monospaced))
         .foregroundStyle(CareerPalette.ink)
-        .onAppear {
+        .task {
+            careers = LegacyArchive.refreshedIndex()
             fullCareers = careers.compactMap { LegacyArchive.load(id: $0.id) }
         }
         .sheet(item: $selected) { career in
@@ -148,7 +149,7 @@ struct LegacyCareersListView: View {
             Button("Delete", role: .destructive) {
                 if let info = pendingDelete {
                     LegacyArchive.remove(id: info.id)
-                    careers = LegacyArchive.all()
+                    careers = LegacyArchive.refreshedIndex()
                     fullCareers = careers.compactMap { LegacyArchive.load(id: $0.id) }
                     wing = .careers
                 }
@@ -176,7 +177,7 @@ struct LegacyCareersListView: View {
                     .foregroundStyle(CareerPalette.ink)
                 Text(careers.isEmpty
                      ? "No archived careers yet"
-                     : "\(careers.count) archived career\(careers.count == 1 ? "" : "s") · \(fullCareers.reduce(0) { $0 + $1.careerHonours.count }) trophies")
+                     : "\(careers.count) archived career\(careers.count == 1 ? "" : "s") · \(fullCareers.reduce(0) { $0 + LegacyArchive.trophyCount($1) }) trophies")
                     .font(.system(size: 8, weight: .bold, design: .monospaced))
                     .foregroundStyle(CareerPalette.mutedInk)
                     .lineLimit(1)
@@ -195,7 +196,7 @@ struct LegacyCareersListView: View {
     /// The "save-to-save museum overview" — a summary strip visible above
     /// every wing, not just one screen.
     private var overviewStrip: some View {
-        let totalTrophies = fullCareers.reduce(0) { $0 + $1.careerHonours.count }
+        let totalTrophies = fullCareers.reduce(0) { $0 + LegacyArchive.trophyCount($1) }
         let totalLegends = fullCareers.reduce(0) { $0 + $1.clubLegends.count }
         let bestTier = fullCareers.map { $0.legacyScore }.max().map { LegacyTier.forScore($0) }
         return HStack(spacing: 8) {
@@ -494,8 +495,8 @@ struct MuseumGreatestManagersView: View {
                     if let best = careers.max(by: { $0.legacyScore < $1.legacyScore }) {
                         museumLine("👑 Highest Legacy Score", "\(best.managerName) at \(best.clubName) (\(best.legacyScore))")
                     }
-                    if let mostTrophies = careers.max(by: { $0.careerHonours.count < $1.careerHonours.count }) {
-                        museumLine("🏆 Most trophies in one career", "\(mostTrophies.managerName) — \(mostTrophies.careerHonours.count)")
+                    if let mostTrophies = careers.max(by: { LegacyArchive.trophyCount($0) < LegacyArchive.trophyCount($1) }) {
+                        museumLine("🏆 Most trophies in one career", "\(mostTrophies.managerName) — \(LegacyArchive.trophyCount(mostTrophies))")
                     }
                     if let longest = careers.max(by: { $0.seasonsManaged < $1.seasonsManaged }) {
                         museumLine("📅 Longest career", "\(longest.managerName) — \(longest.seasonsManaged) seasons")
@@ -573,7 +574,7 @@ struct MuseumGreatestManagersView: View {
         VStack(spacing: 4) {
             compareRow("Club", a.clubName, b.clubName)
             compareRow("Seasons", "\(a.seasonsManaged)", "\(b.seasonsManaged)")
-            compareRow("Trophies", "\(a.careerHonours.count)", "\(b.careerHonours.count)")
+            compareRow("Trophies", "\(LegacyArchive.trophyCount(a))", "\(LegacyArchive.trophyCount(b))")
             compareRow("Club legends", "\(a.clubLegends.count)", "\(b.clubLegends.count)")
             compareRow("Legacy score", "\(a.legacyScore)", "\(b.legacyScore)")
             compareRow("Tier", a.legacyTier.rawValue, b.legacyTier.rawValue)
@@ -912,6 +913,58 @@ struct LegacyCareerDetailView: View {
                                         }
                                     }
                                 }
+                            }
+                        }
+                        .frame(maxWidth: 560)
+                    }
+
+                    if !career.achievementUnlocks.isEmpty {
+                        MuseumCard(title: "ACHIEVEMENTS (\(career.achievementUnlocks.count))") {
+                            VStack(alignment: .leading, spacing: 5) {
+                                ForEach(career.achievementUnlocks.sorted {
+                                    if $0.season != $1.season { return $0.season < $1.season }
+                                    return $0.kind.rawValue < $1.kind.rawValue
+                                }, id: \.kind) { unlock in
+                                    Text("\(unlock.kind.flavorTitle) · Season \(unlock.season) · \(unlock.context)")
+                                        .font(.system(size: 10, design: .monospaced))
+                                        .foregroundStyle(CareerPalette.ink)
+                                }
+                            }
+                        }
+                        .frame(maxWidth: 560)
+                    }
+
+                    let clubRecords = LegacyArchive.clubRecords(career)
+                    if !clubRecords.isEmpty {
+                        MuseumCard(title: "CLUB RECORDS (\(clubRecords.count))") {
+                            VStack(alignment: .leading, spacing: 9) {
+                                ForEach(Array(clubRecords.enumerated()), id: \.offset) { index, entry in
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(entry.club.uppercased())
+                                            .font(.system(size: 10, weight: .black, design: .monospaced))
+                                            .foregroundStyle(CareerPalette.line)
+                                        Text("\(entry.record.wins)W \(entry.record.draws)D \(entry.record.losses)L · \(entry.record.goalsFor) GF · \(entry.record.goalsAgainst) GA · \(entry.record.winPercentage)% win rate")
+                                            .font(.system(size: 9, design: .monospaced))
+                                            .foregroundStyle(CareerPalette.mutedInk)
+                                        Text("Home \(entry.record.homeWins)W \(entry.record.homeDraws)D \(entry.record.homeLosses)L · Away \(entry.record.awayWins)W \(entry.record.awayDraws)D \(entry.record.awayLosses)L")
+                                            .font(.system(size: 9, design: .monospaced))
+                                            .foregroundStyle(CareerPalette.mutedInk)
+                                        ForEach(LegacyArchive.clubHonours(career, club: entry.club), id: \.self) { honour in
+                                            HonourRow(text: honour, size: 14)
+                                                .font(.system(size: 9, design: .monospaced))
+                                                .foregroundStyle(CareerPalette.line)
+                                        }
+                                    }
+                                    .accessibilityElement(children: .ignore)
+                                    .accessibilityIdentifier(CareerIdentifiers.museumClubRecord(index))
+                                    .accessibilityLabel("\(entry.club): \(entry.record.wins) wins, \(entry.record.draws) draws, \(entry.record.losses) losses, \(entry.record.goalsFor) goals for, \(entry.record.goalsAgainst) against. Home \(entry.record.homeWins) wins, \(entry.record.homeDraws) draws, \(entry.record.homeLosses) losses. Away \(entry.record.awayWins) wins, \(entry.record.awayDraws) draws, \(entry.record.awayLosses) losses. \(LegacyArchive.clubHonours(career, club: entry.club).joined(separator: ". "))")
+                                }
+                                let totals = LegacyArchive.matchSummary(career)
+                                Text("CAREER TOTAL · \(totals.matches) MATCHES · \(totals.wins)W \(totals.draws)D \(totals.losses)L · \(totals.goalsFor) GF · \(totals.goalsAgainst) GA")
+                                    .font(.system(size: 9, weight: .black, design: .monospaced))
+                                    .foregroundStyle(CareerPalette.line)
+                                    .accessibilityIdentifier(CareerIdentifiers.museumClubRecordTotal)
+                                    .accessibilityLabel("Career total: \(totals.matches) matches, \(totals.wins) wins, \(totals.draws) draws, \(totals.losses) losses, \(totals.goalsFor) goals for, \(totals.goalsAgainst) against")
                             }
                         }
                         .frame(maxWidth: 560)

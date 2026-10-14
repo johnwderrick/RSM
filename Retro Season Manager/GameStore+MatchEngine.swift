@@ -473,7 +473,8 @@ extension GameStore {
         }
         updateSquadMorale(appearedIDs: Set(match.userAppearedIDs))
         updateBoard(userWon: won, draw: draw, isHome: match.userSide == .home,
-                    opponentIndex: match.userSide == .home ? match.awayIndex : match.homeIndex)
+                    opponentIndex: match.userSide == .home ? match.awayIndex : match.homeIndex,
+                    userGoals: userScored, opponentGoals: userConceded)
         if won { boostFanExcitement(margin: userScored - userConceded, topPerformerName: match.motmName) }
         checkWinMilestones()
         if won { checkGiantKilling(opponentIndex: match.userSide == .home ? match.awayIndex : match.homeIndex) }
