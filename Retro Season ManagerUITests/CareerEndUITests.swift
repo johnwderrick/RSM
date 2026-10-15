@@ -61,6 +61,23 @@ final class CareerEndUITests: XCTestCase {
         return app.descendants(matching: .any)[id].firstMatch
     }
 
+    func testArchiveFailureKeepsCareerOpenAndRetryReturnsToMenu() {
+        let app = launch(["UITEST_RECOVERY_ERRORS", "UITEST_RECOVERY_ARCHIVE"])
+        let menu = waitFor(app, "career.end.menu")
+        menu.tap()
+        let error = app.alerts["Career not archived"]
+        XCTAssertTrue(error.waitForExistence(timeout: 8))
+        XCTAssertTrue(error.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "kept")).firstMatch.exists)
+        shot(app, "archive_failure")
+        error.buttons["OK"].tap()
+        XCTAssertTrue(menu.isHittable, "Failure must leave the ended career open for retry")
+        menu.tap()
+        XCTAssertTrue(app.buttons["career.menu.museum"].waitForExistence(timeout: 12),
+                      "A successful retry must archive and return to the menu")
+        XCTAssertFalse(app.descendants(matching: .any)["career.end.screen"].firstMatch.exists)
+        app.terminate()
+    }
+
     func testSummaryAndEarnedHonoursAndAchievements() throws {
         let app = launch()
         let summary = waitFor(app, "career.end.summary")

@@ -391,6 +391,7 @@ struct CareerEndView: View {
     let store: GameStore
     @State private var showingOffice = false
     @State private var isLeavingCareer = false
+    @State private var leaveFailed = false
 
     private var achievementKinds: [AchievementKind] {
         AchievementKind.allCases.filter { store.unlockedAchievements.contains($0) }
@@ -421,6 +422,11 @@ struct CareerEndView: View {
         }
         .sheet(isPresented: $showingOffice) {
             ManagerOfficeView(store: store)
+        }
+        .alert("Career not archived", isPresented: $leaveFailed) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("This career could not be finished cleanly, so it has been kept. Nothing has been lost. Please try again.")
         }
     }
 
@@ -604,7 +610,10 @@ struct CareerEndView: View {
                 guard !isLeavingCareer else { return }
                 isLeavingCareer = true
                 Haptics.tap()
-                store.returnToMenuAfterCareer()
+                if !store.returnToMenuAfterCareer() {
+                    isLeavingCareer = false
+                    leaveFailed = true
+                }
             } label: {
                 HStack(spacing: 7) {
                     Text(isLeavingCareer ? "RETURNING…" : "MAIN MENU")

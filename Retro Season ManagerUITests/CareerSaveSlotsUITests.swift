@@ -38,6 +38,29 @@ final class CareerSaveSlotsUITests: XCTestCase {
         add(attachment)
     }
 
+    func testDeleteFailureKeepsSlotAndRetrySucceeds() {
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_CAREER_SAVE_SLOTS", "UITEST_RECOVERY_ERRORS", "UITEST_RECOVERY_SAVE_DELETE"]
+        app.launch()
+        openSaves(app)
+        let delete = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "career.saves.delete.")).firstMatch
+        XCTAssertTrue(delete.waitForExistence(timeout: 5))
+        let id = delete.identifier.replacingOccurrences(of: "career.saves.delete.", with: "")
+        let load = app.buttons["career.saves.load.\(id)"]
+        delete.tap()
+        app.alerts["Delete this save?"].buttons["Delete"].tap()
+        let error = app.alerts["Unable to delete save"]
+        XCTAssertTrue(error.waitForExistence(timeout: 8))
+        shot(app, "delete_failure")
+        error.buttons["OK"].tap()
+        XCTAssertTrue(load.exists, "A failed deletion must leave its career available")
+        app.buttons["career.saves.delete.\(id)"].tap()
+        app.alerts["Delete this save?"].buttons["Delete"].tap()
+        XCTAssertFalse(load.exists)
+        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "career.saves.load.")).count, 1)
+        app.terminate()
+    }
+
     func testRenameCancelDeleteAndLoadAreSeparateActions() {
         let app = launch()
         openSaves(app)

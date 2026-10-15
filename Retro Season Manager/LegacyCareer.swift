@@ -240,6 +240,16 @@ enum LegacyArchive {
     private static var careerEndUITestArchiveConfigured = false
     private static var isolatedCareerArchiveRoot: URL?
 
+#if DEBUG
+    enum DebugWriteFailure { case careerFile, index }
+    /// Consumed by the next matching write; exercises archive failures
+    /// deterministically inside an isolated test root.
+    static var debugFailNextWrite: DebugWriteFailure?
+    static var debugFailNextRemoval = false
+#endif
+
+    private static let damagedIndexPrefix = "index.damaged-"
+
     /// Routes archive reads and writes into a disposable test-only root.
     /// Production documents and the Museum UI fixture are unchanged.
     static func useIsolatedRootForTesting(_ root: URL?) {
@@ -292,15 +302,77 @@ enum LegacyArchive {
         directory.appendingPathComponent("\(id.uuidString).json")
     }
 
-    /// Every archived career, most recently archived first.
+    /// Every archived career, most recently archived first. Reads never
+    /// write: entries whose file is gone are dropped, and complete career
+    /// files the index does not list (an archive interrupted before its index
+    /// write) are adopted, so a finished career is never hidden by that gap.
     static func all() -> [LegacyCareerInfo] {
-        guard let data = try? Data(contentsOf: indexURL),
-              let list = try? JSONDecoder().decode([LegacyCareerInfo].self, from: data) else { return [] }
-        return list.sorted { $0.archivedDate > $1.archivedDate }
+        reconciled(recordedIndex() ?? []).sorted { $0.archivedDate > $1.archivedDate }
+    }
+
+    /// The index as recorded on disk, or nil when it is missing, unreadable or damaged.
+    private static func recordedIndex() -> [LegacyCareerInfo]? {
+        guard let data = try? Data(contentsOf: indexURL) else { return nil }
+        return try? JSONDecoder().decode([LegacyCareerInfo].self, from: data)
+    }
+
+    /// The list a write must start from. A damaged index is copied aside
+    /// first, so the bytes that failed to decode are never overwritten.
+    private static func writableList() -> [LegacyCareerInfo]? {
+        guard FileManager.default.fileExists(atPath: indexURL.path) else { return reconciled([]) }
+        guard let data = try? Data(contentsOf: indexURL) else { return nil }
+        if let recorded = try? JSONDecoder().decode([LegacyCareerInfo].self, from: data) {
+            return reconciled(recorded)
+        }
+        guard keepDamagedIndex(data) else { return nil }
+        return reconciled([])
+    }
+
+    /// Copies damaged index bytes beside the careers. Identical bytes are kept
+    /// once, so repeated failed attempts do not pile up copies.
+    private static func keepDamagedIndex(_ data: Data) -> Bool {
+        let siblings = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
+        let alreadyKept = siblings
+            .filter { $0.lastPathComponent.hasPrefix(damagedIndexPrefix) }
+            .contains { (try? Data(contentsOf: $0)) == data }
+        if alreadyKept { return true }
+        let backup = directory.appendingPathComponent("\(damagedIndexPrefix)\(UUID().uuidString).json")
+        return (try? data.write(to: backup, options: .atomic)) != nil
+    }
+
+    private static func reconciled(_ recorded: [LegacyCareerInfo]) -> [LegacyCareerInfo] {
+        let fm = FileManager.default
+        var list = recorded.filter { fm.fileExists(atPath: fileURL(for: $0.id).path) }
+        let known = Set(list.map(\.id))
+        let files = (try? fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
+        for url in files where url.pathExtension == "json" {
+            guard let id = UUID(uuidString: url.deletingPathExtension().lastPathComponent),
+                  !known.contains(id),
+                  let data = try? Data(contentsOf: url),
+                  let career = try? JSONDecoder().decode(LegacyCareer.self, from: data),
+                  career.id == id else { continue }
+            list.append(info(for: career))
+        }
+        return list
+    }
+
+    /// The index entry for a career, derived entirely from the snapshot itself.
+    private static func info(for career: LegacyCareer) -> LegacyCareerInfo {
+        LegacyCareerInfo(id: career.id, managerName: career.managerName, clubName: career.clubName,
+                         startYear: career.startYear, endYear: career.endYear,
+                         seasonsManaged: career.seasonsManaged, trophyCount: trophyCount(career),
+                         finalDivisionName: career.finalDivisionName, legacyScore: career.legacyScore,
+                         legacyTier: career.legacyTier, archivedDate: career.archivedDate)
     }
 
     @discardableResult
     private static func writeIndex(_ list: [LegacyCareerInfo]) -> Bool {
+#if DEBUG
+        if debugFailNextWrite == .index {
+            debugFailNextWrite = nil
+            return false
+        }
+#endif
         guard let data = try? JSONEncoder().encode(list) else { return false }
         do {
             try data.write(to: indexURL, options: .atomic)
@@ -310,26 +382,41 @@ enum LegacyArchive {
         }
     }
 
-    /// Permanently archives a finished career.
-    static func archive(_ career: LegacyCareer) {
-        guard let data = try? JSONEncoder().encode(career) else { return }
-        var list = all()
-        let info = LegacyCareerInfo(id: career.id, managerName: career.managerName, clubName: career.clubName,
-                                    startYear: career.startYear, endYear: career.endYear,
-                                    seasonsManaged: career.seasonsManaged, trophyCount: LegacyArchive.trophyCount(career),
-                                    finalDivisionName: career.finalDivisionName, legacyScore: career.legacyScore,
-                                    legacyTier: career.legacyTier, archivedDate: career.archivedDate)
-        guard !list.contains(where: { $0.id == career.id }) else {
-            // Archiving is a one-time snapshot operation. Duplicate delivery
-            // must not replace the career that was already preserved.
-            return
+    private static func writeCareerFile(_ data: Data, id: UUID) -> Bool {
+#if DEBUG
+        if debugFailNextWrite == .careerFile {
+            debugFailNextWrite = nil
+            return false
         }
-        guard (try? data.write(to: fileURL(for: career.id), options: .atomic)) != nil else { return }
-        list.append(info)
+#endif
+        return (try? data.write(to: fileURL(for: id), options: .atomic)) != nil
+    }
+
+    /// Permanently archives a finished career. Returns true once the career
+    /// is preserved. The id is the career's stable identity: a repeated
+    /// archive, including a retry after a failure, never lists it twice and
+    /// never replaces the snapshot that was already kept.
+    @discardableResult
+    static func archive(_ career: LegacyCareer) -> Bool {
+        guard let data = try? JSONEncoder().encode(career),
+              var list = writableList() else { return false }
+        // Covers both a listed career and an orphaned snapshot, which
+        // `writableList` adopts. Either way the career is already preserved.
+        if list.contains(where: { $0.id == career.id }) {
+            // An index entry and an existing file do not prove the frozen
+            // snapshot is readable. Never discard the active save on that
+            // basis, or silently overwrite damaged archive bytes.
+            return load(id: career.id)?.id == career.id
+        }
+        // The snapshot is written first. An interruption before the index write
+        // leaves a complete orphan file, which reads adopt.
+        guard writeCareerFile(data, id: career.id) else { return false }
+        list.append(info(for: career))
         guard writeIndex(list) else {
             try? FileManager.default.removeItem(at: fileURL(for: career.id))
-            return
+            return false
         }
+        return true
     }
 
     /// Aggregates match records for the archived career without inventing
@@ -436,9 +523,25 @@ enum LegacyArchive {
         return try? JSONDecoder().decode(LegacyCareer.self, from: data)
     }
 
-    static func remove(id: UUID) {
-        writeIndex(all().filter { $0.id != id })
-        try? FileManager.default.removeItem(at: fileURL(for: id))
+    /// Deletes an archived career. The file goes first: if that fails, the
+    /// career stays listed and unchanged. The index entry is then dropped
+    /// best-effort, since reads ignore entries whose file is gone.
+    @discardableResult
+    static func remove(id: UUID) -> Bool {
+        #if DEBUG
+        if debugFailNextRemoval {
+            debugFailNextRemoval = false
+            return false
+        }
+        #endif
+        let url = fileURL(for: id)
+        if FileManager.default.fileExists(atPath: url.path) {
+            guard (try? FileManager.default.removeItem(at: url)) != nil else { return false }
+        }
+        if let list = writableList() {
+            writeIndex(list.filter { $0.id != id })
+        }
+        return true
     }
 }
 

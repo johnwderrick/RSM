@@ -36,6 +36,114 @@ final class LegacyMuseumTests: XCTestCase {
         super.tearDown()
     }
 
+    // MARK: - Failure-safe archiving
+
+    private func makeRetryCareer(id: UUID = UUID()) -> LegacyCareer {
+        LegacyCareer(id: id, managerName: "Retry Test", clubName: "A",
+                     startYear: 2000, endYear: 2001, seasonsManaged: 1,
+                     finalDivisionName: "First Division", careerHonours: [],
+                     autobiography: "Retry.", timeline: [], achievementUnlocks: [],
+                     careerAchievementPoints: 0, clubLegends: [], history: [],
+                     careerRecordByClub: [:], legacyScore: 10, legacyTier: .journeyman,
+                     recordBook: [], archivedDate: Date())
+    }
+
+    /// Files under the isolated archive root whose name matches `name`.
+    private func archiveFiles(named name: String) -> [URL] {
+        guard let enumerator = FileManager.default.enumerator(at: archiveRoot, includingPropertiesForKeys: nil) else { return [] }
+        return enumerator.compactMap { $0 as? URL }.filter { $0.lastPathComponent == name }
+    }
+
+    func testFailedCareerFileWriteLeavesNoMuseumEntryAndRetrySucceeds() {
+        let career = makeRetryCareer()
+        LegacyArchive.debugFailNextWrite = .careerFile
+        defer { LegacyArchive.debugFailNextWrite = nil }
+
+        XCTAssertFalse(LegacyArchive.archive(career), "A snapshot that could not be written is not preserved")
+        XCTAssertTrue(LegacyArchive.all().isEmpty, "A career that failed to save must not be listed")
+        XCTAssertTrue(LegacyArchive.archive(career), "A retry succeeds once storage is available")
+        XCTAssertEqual(LegacyArchive.all().map(\.id), [career.id])
+    }
+
+    func testFailedIndexWriteRemovesSnapshotAndRetrySucceeds() {
+        let career = makeRetryCareer()
+        LegacyArchive.debugFailNextWrite = .index
+        defer { LegacyArchive.debugFailNextWrite = nil }
+
+        XCTAssertFalse(LegacyArchive.archive(career))
+        XCTAssertTrue(LegacyArchive.all().isEmpty)
+        XCTAssertNil(LegacyArchive.load(id: career.id), "The snapshot is removed when its index entry cannot be written")
+        XCTAssertTrue(LegacyArchive.archive(career))
+        XCTAssertEqual(LegacyArchive.all().map(\.id), [career.id])
+    }
+
+    func testCompleteSnapshotMissingFromIndexIsAdoptedAndNotDuplicated() throws {
+        let career = makeRetryCareer()
+        XCTAssertTrue(LegacyArchive.archive(career))
+        // Simulate an archive interrupted after its snapshot was written: the index is gone.
+        for url in archiveFiles(named: "index.json") { try FileManager.default.removeItem(at: url) }
+
+        XCTAssertEqual(LegacyArchive.all().map(\.id), [career.id],
+                       "A complete snapshot the index missed must still be listed")
+        XCTAssertTrue(LegacyArchive.archive(career), "Re-archiving an adopted career is a success, not a duplicate")
+        XCTAssertEqual(LegacyArchive.all().count, 1)
+        XCTAssertTrue(LegacyArchive.remove(id: career.id))
+        XCTAssertTrue(LegacyArchive.all().isEmpty)
+    }
+
+    func testFailedMuseumArchiveKeepsEndedCareerOpenUntilRetrySucceeds() async {
+        let store = await makeTestStore()
+        store.newGame(clubIndex: 0, startYear: 2000, managerName: "Retry Manager")
+        store.history = [SeasonRecord(season: 1, label: "2000/01", userClub: store.userClub.name,
+                                      userDivision: "First Division", userPosition: 1,
+                                      champion: store.userClub.name, cupWinner: "—",
+                                      euroWinner: "—", communityShieldWinner: "—")]
+        store.endCareer()
+        let activeSaveID = store.currentSaveID
+        LegacyArchive.debugFailNextWrite = .careerFile
+        defer { LegacyArchive.debugFailNextWrite = nil }
+
+        XCTAssertFalse(store.returnToMenuAfterCareer())
+        XCTAssertTrue(store.hasStarted, "A career that could not be preserved stays open")
+        XCTAssertTrue(store.careerEnded)
+        XCTAssertEqual(store.currentSaveID, activeSaveID)
+        XCTAssertTrue(LegacyArchive.all().isEmpty)
+
+        XCTAssertTrue(store.returnToMenuAfterCareer(), "Retrying after the failure completes the transition")
+        XCTAssertFalse(store.hasStarted)
+        XCTAssertEqual(LegacyArchive.all().count, 1)
+    }
+
+    func testCorruptIndexedArchiveCannotDiscardValidActiveSave() async throws {
+        let store = await makeTestStore()
+        store.newGame(clubIndex: 0, startYear: 2000, managerName: "Corrupt Archive Retry")
+        store.history = [SeasonRecord(season: 1, label: "2000/01", userClub: store.userClub.name,
+                                      userDivision: "First Division", userPosition: 1,
+                                      champion: store.userClub.name, cupWinner: "—",
+                                      euroWinner: "—", communityShieldWinner: "—")]
+        store.endCareer()
+        let id = try XCTUnwrap(store.currentSaveID)
+        let activeData = try Data(contentsOf: SaveSlots.fileURL(for: id))
+        XCTAssertTrue(LegacyArchive.archive(makeRetryCareer(id: id)))
+        let archiveURL = archiveRoot.appendingPathComponent("\(id.uuidString).json")
+        let damaged = Data("{truncated".utf8)
+        try damaged.write(to: archiveURL, options: .atomic)
+
+        for _ in 0..<2 {
+            XCTAssertFalse(store.returnToMenuAfterCareer(), "An existing file is not proof that the career was preserved")
+            XCTAssertTrue(store.hasStarted)
+            XCTAssertTrue(store.careerEnded)
+            XCTAssertEqual(store.currentSaveID, id)
+            XCTAssertEqual(try Data(contentsOf: SaveSlots.fileURL(for: id)), activeData)
+            XCTAssertEqual(try Data(contentsOf: archiveURL), damaged,
+                           "Do not overwrite a damaged frozen archive silently")
+        }
+        XCTAssertTrue(LegacyArchive.remove(id: id))
+        XCTAssertTrue(store.returnToMenuAfterCareer(), "Retry succeeds once the damaged archive is explicitly removed")
+        XCTAssertEqual(LegacyArchive.load(id: id)?.managerName, "Corrupt Archive Retry")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: SaveSlots.fileURL(for: id).path))
+    }
+
     // MARK: - archiveLegacyCareer() populates the new fields
 
     func testArchiveLegacyCareerPopulatesNewMuseumFields() async throws {

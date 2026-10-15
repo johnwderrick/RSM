@@ -260,6 +260,26 @@ final class CareerLegacyMuseumUITests: XCTestCase {
 
     // MARK: - C. Delete confirmation cancel
 
+    func testDeleteFailureKeepsCareerAndRetrySucceeds() {
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_LEGACY_MUSEUM", "UITEST_RECOVERY_ERRORS", "UITEST_RECOVERY_MUSEUM_DELETE"]
+        app.launch()
+        openMuseum(app)
+        waitFor(app, "career.museum.career.delete.ruth-whitmore").tap()
+        waitFor(app, "career.museum.delete.confirm").tap()
+        let error = app.alerts["Couldn't delete this career"]
+        XCTAssertTrue(error.waitForExistence(timeout: 8))
+        shot(app, "delete_failure")
+        error.buttons["OK"].tap()
+        XCTAssertTrue(exists(app, "career.museum.career.ruth-whitmore"))
+        XCTAssertTrue(label(of: "career.museum.header", in: app).contains("2 archived careers"))
+        waitFor(app, "career.museum.career.delete.ruth-whitmore").tap()
+        waitFor(app, "career.museum.delete.confirm").tap()
+        waitGone(app, "career.museum.career.ruth-whitmore")
+        XCTAssertTrue(label(of: "career.museum.header", in: app).contains("1 archived career"))
+        app.terminate()
+    }
+
     func testDeleteConfirmationWarnsIrreversibilityAndCancelCommitsNothing() throws {
         let app = openMuseum(launch())
         waitFor(app, "career.museum.career.delete.ruth-whitmore").tap()

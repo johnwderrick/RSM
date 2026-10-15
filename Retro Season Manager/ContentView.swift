@@ -15,6 +15,16 @@ struct ContentView: View {
     @State private var startsAtNewGame = false
 
     #if DEBUG
+    /// Only explicit recovery UI tests opt into disposable save/archive roots.
+    private static let recoveryUITestRoot: URL = {
+        let root = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("recovery-ui-\(UUID().uuidString)", isDirectory: true)
+        SaveSlots.useIsolatedRootForTesting(root)
+        LegacyArchive.useIsolatedRootForTesting(root.appendingPathComponent("legacy", isDirectory: true))
+        return root
+    }()
+    private static var recoveryFailureArmed = false
+
     // SwiftUI can reconstruct ContentView while retaining its @State.
     // Seed once per process so discarded initializers cannot create a
     // newer, unrelated save that the normal Resume tile would select.
@@ -24,6 +34,11 @@ struct ContentView: View {
     #endif
 
     init() {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("UITEST_RECOVERY_ERRORS") {
+            _ = Self.recoveryUITestRoot
+        }
+        #endif
         let legends = LegendsStore()
         #if DEBUG
         // Lets the manager-onboarding UI test re-run against an already
@@ -221,6 +236,19 @@ struct ContentView: View {
                 sparse: ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_END_SPARSE"))
             _store = State(initialValue: career)
             _experience = State(initialValue: .career)
+        }
+        // Arm only after fixture writes, once per process; retry uses the
+        // real persistence path after the one-shot failure is consumed.
+        if ProcessInfo.processInfo.arguments.contains("UITEST_RECOVERY_ERRORS"),
+           !Self.recoveryFailureArmed {
+            Self.recoveryFailureArmed = true
+            if ProcessInfo.processInfo.arguments.contains("UITEST_RECOVERY_MUSEUM_DELETE") {
+                LegacyArchive.debugFailNextRemoval = true
+            } else if ProcessInfo.processInfo.arguments.contains("UITEST_RECOVERY_SAVE_DELETE") {
+                SaveSlots.debugFailNextRemoval = true
+            } else if ProcessInfo.processInfo.arguments.contains("UITEST_RECOVERY_ARCHIVE") {
+                LegacyArchive.debugFailNextWrite = .careerFile
+            }
         }
         #endif
     }

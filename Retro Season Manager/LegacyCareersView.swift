@@ -86,6 +86,7 @@ struct LegacyCareersListView: View {
     @State private var fullCareers: [LegacyCareer] = []
     @State private var selected: LegacyCareer?
     @State private var pendingDelete: LegacyCareerInfo?
+    @State private var deleteFailed = false
     @State private var wing: MuseumWing = .careers
 
     var body: some View {
@@ -148,16 +149,24 @@ struct LegacyCareersListView: View {
 
             Button("Delete", role: .destructive) {
                 if let info = pendingDelete {
-                    LegacyArchive.remove(id: info.id)
-                    careers = LegacyArchive.refreshedIndex()
-                    fullCareers = careers.compactMap { LegacyArchive.load(id: $0.id) }
-                    wing = .careers
+                    if LegacyArchive.remove(id: info.id) {
+                        careers = LegacyArchive.refreshedIndex()
+                        fullCareers = careers.compactMap { LegacyArchive.load(id: $0.id) }
+                        wing = .careers
+                    } else {
+                        deleteFailed = true
+                    }
                 }
                 pendingDelete = nil
             }
             .accessibilityIdentifier(CareerIdentifiers.museumDeleteConfirm)
         } message: {
             Text("This can't be undone.")
+        }
+        .alert("Couldn't delete this career", isPresented: $deleteFailed) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("The career was kept in the museum. Try again later.")
         }
     }
 

@@ -43,16 +43,19 @@ extension GameStore {
         let id = UUID()
         guard SaveSlots.writeSaveData(data, for: id) else { return }
         let clubName = state.clubs.indices.contains(state.userClubIndex) ? state.clubs[state.userClubIndex].name : "Unknown"
-        guard SaveSlots.upsert(SaveSlotInfo(id: id, clubName: clubName, managerName: "Manager",
-                                            season: state.season, divisionName: "", lastPlayed: state.currentDate)) else {
+        let divisionName = state.clubs.indices.contains(state.userClubIndex)
+            ? GameStore.divisionLabel(state.clubs[state.userClubIndex].divisionTier) : ""
+        guard SaveSlots.upsert(SaveSlotInfo(id: id, clubName: clubName, managerName: state.managerName ?? "",
+                                            season: state.season, divisionName: divisionName, lastPlayed: state.currentDate)) else {
             try? FileManager.default.removeItem(at: SaveSlots.fileURL(for: id))
             return
         }
         try? FileManager.default.removeItem(at: legacySaveURL)
     }
 
-    /// Removes a save slot from disk.
-    static func deleteSave(id: UUID) {
+    /// Removes a save slot from disk. Returns false, leaving the slot listed, if the save file could not be deleted.
+    @discardableResult
+    static func deleteSave(id: UUID) -> Bool {
         SaveSlots.remove(id)
     }
 
@@ -182,7 +185,7 @@ extension GameStore {
                               scoutingDue: scoutingDue)
         guard let id = currentSaveID, let data = try? JSONEncoder().encode(state),
               SaveSlots.writeSaveData(data, for: id) else { return false }
-        return SaveSlots.upsert(SaveSlotInfo(id: id, clubName: userClub.name, managerName: "Manager",
+        return SaveSlots.upsert(SaveSlotInfo(id: id, clubName: userClub.name, managerName: managerName,
                                              season: season, divisionName: divisionName(userDivisionTier),
                                              lastPlayed: Date(), customName: SaveSlots.all().first { $0.id == id }?.customName))
     }

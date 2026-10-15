@@ -752,7 +752,12 @@ final class GameStore {
     static let divisionNames = ["First Division", "Second Division", "Third Division", "Fourth Division"]
 
     func divisionName(_ tier: Int) -> String {
-        Self.divisionNames.indices.contains(tier) ? Self.divisionNames[tier] : "Division \(tier + 1)"
+        Self.divisionLabel(tier)
+    }
+
+    /// Usable without a live store, e.g. when the save picker rebuilds a slot from its save file.
+    static func divisionLabel(_ tier: Int) -> String {
+        divisionNames.indices.contains(tier) ? divisionNames[tier] : "Division \(tier + 1)"
     }
 
     /// Total number of matchdays — a double round-robin within one division.

@@ -13,7 +13,8 @@ extension GameStore {
     /// app's saves. Both entries are created through the real new-game and
     /// persistence path, so loading either exercises a valid career file.
     static func seedCareerSaveSlotsFixtureForDebug(corruptNewest: Bool = false) {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let docs = SaveSlots.isolatedRootForTesting
+            ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         try? FileManager.default.removeItem(at: docs.appendingPathComponent("saves", isDirectory: true))
         try? FileManager.default.removeItem(at: legacySaveURL)
 

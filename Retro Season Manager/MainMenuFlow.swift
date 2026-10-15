@@ -22,6 +22,7 @@ struct SaveSlotListSheet: View {
     @State private var pendingDelete: SaveSlotInfo?
     @State private var loadFailed = false
     @State private var renameFailed = false
+    @State private var deleteFailed = false
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -79,13 +80,18 @@ struct SaveSlotListSheet: View {
             Button("Cancel", role: .cancel) { pendingDelete = nil }
             Button("Delete", role: .destructive) {
                 if let slot = pendingDelete {
-                    GameStore.deleteSave(id: slot.id)
+                    deleteFailed = !GameStore.deleteSave(id: slot.id)
                     saves = GameStore.savedGames()
                 }
                 pendingDelete = nil
             }
         } message: {
             Text("This can't be undone.")
+        }
+        .alert("Unable to delete save", isPresented: $deleteFailed) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("The save could not be deleted. It has not been changed. Please try again.")
         }
         .alert("Unable to load career", isPresented: $loadFailed) {
             Button("OK", role: .cancel) {}

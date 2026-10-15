@@ -512,23 +512,29 @@ extension GameStore {
     /// Leaves a finished career: archives it permanently (see
     /// `LegacyArchive`), then discards the active save — the career itself
     /// stays browsable from the main menu even though the save is gone.
-    func returnToMenuAfterCareer() {
+    ///
+    /// Returns false, leaving the ended career in place, when it could not be
+    /// preserved or its active save could not be removed. Retrying is safe:
+    /// the archive keeps one copy per career id.
+    @discardableResult
+    func returnToMenuAfterCareer() -> Bool {
         // The end-screen action can be delivered more than once before a
         // view transition settles. Only the live ended-career state owns
         // this archive/delete transition.
-        guard hasStarted else { return }
-        archiveLegacyCareer()
+        guard hasStarted else { return true }
+        guard archiveLegacyCareer() else { return false }
+        if let id = currentSaveID, !Self.deleteSave(id: id) { return false }
         careerEnded = false
         hasStarted = false
-        if let id = currentSaveID { Self.deleteSave(id: id) }
         currentSaveID = nil
+        return true
     }
 
     /// Builds and permanently saves a `LegacyCareer` snapshot of the
     /// just-finished career — everything `CareerEndView` shows, frozen at
     /// the moment the manager walks away.
-    private func archiveLegacyCareer() {
-        guard !history.isEmpty else { return }
+    private func archiveLegacyCareer() -> Bool {
+        guard !history.isEmpty else { return true }
         let timeline = careerTimeline().map { moment in
             LegacyCareerMoment(season: moment.season, year: moment.year, icon: moment.icon,
                                headline: moment.headline, detail: moment.detail)
@@ -555,7 +561,9 @@ extension GameStore {
             .sorted { ($0.fee ?? 0) > ($1.fee ?? 0) }.prefix(3)
         let topSignings = transferHistory.filter { $0.action == "Signed" && $0.otherClub != nil && ($0.fee ?? 0) > 0 }
             .sorted { ($0.fee ?? 0) > ($1.fee ?? 0) }.prefix(3)
-        let career = LegacyCareer(id: UUID(), managerName: managerName, clubName: userClub.name,
+        // The save's id identifies this career across retries, so a repeated
+        // archive of the same career is recognised instead of duplicated.
+        let career = LegacyCareer(id: currentSaveID ?? UUID(), managerName: managerName, clubName: userClub.name,
                                   startYear: startYear, endYear: lastManagedSeason.map { startYear + $0.season } ?? startYear,
                                   seasonsManaged: history.count, finalDivisionName: lastManagedSeason?.userDivision ?? divisionName(userDivisionTier),
                                   careerHonours: careerHonours, autobiography: generateAutobiography(),
@@ -568,7 +576,7 @@ extension GameStore {
                                   recordWin: recordWin, bestSeason: bestSeason,
                                   topTransfers: Array(topSales) + Array(topSignings),
                                   frontPages: newspapers.filter { $0.importance >= .major })
-        LegacyArchive.archive(career)
+        return LegacyArchive.archive(career)
     }
 
     /// Formats the standout individual records of this career into
