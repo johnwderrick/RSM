@@ -519,9 +519,51 @@ extension GameStore {
         //    session AND re-asserted on every launch below, because the
         //    persisted IDs cannot survive a relaunch (see the doc comment).
         ensureTransfersFixtureStateForDebug()
+        prepareTransferCompletionFailureForDebug()
 
         persist()
         return self
+    }
+
+    /// Opt-in completion failures, reached through the normal Transfers UI.
+    /// Seed the prerequisite state only; completion and withdrawal stay real.
+    private func prepareTransferCompletionFailureForDebug() {
+        let args = ProcessInfo.processInfo.arguments
+        let saleClosed = args.contains("UITEST_TRANSFERS_SALE_CLOSED")
+        if args.contains("UITEST_TRANSFERS_BUYER_EMPTY") || saleClosed {
+            if saleClosed {
+                currentDate = Self.calendar.date(byAdding: .day, value: 1, to: transferDeadlineDate) ?? currentDate
+            }
+            guard let player = userClub.players.first(where: { candidate in
+                !candidate.isOnLoan && userClub.players.filter { $0.position == candidate.position }.count
+                    > (candidate.position == .goalkeeper ? 2 : 3)
+            }), let buyer = clubs.indices.first(where: { $0 != userClubIndex }) else { return }
+            clubs[buyer].transferBudget = saleClosed ? 100_000 : 0
+            pendingOffers = [TransferOffer(playerID: player.id, playerName: player.name,
+                fromClubIndex: buyer, amount: 5_000,
+                expiryDate: Self.calendar.date(byAdding: .day, value: 6, to: currentDate) ?? currentDate)]
+            return
+        }
+        let closed = args.contains("UITEST_TRANSFERS_TERMS_CLOSED")
+        let missing = args.contains("UITEST_TRANSFERS_MAKEWEIGHT_GONE")
+        guard closed || missing,
+              let target = transferMarket.first(where: { $0.player.name == "Marcus Bidwell" }) else { return }
+        let makeweight = missing ? userClub.players.first(where: { !$0.isOnLoan }) : nil
+        pendingOffers = []
+        _ = beginPersonalTermsWait(target, price: 1_000, sellOnPercentage: 0, buyBackFee: 0,
+                                  includedPlayer: makeweight)
+        guard let deal = pendingTransferDeals.last else { return }
+        currentDate = closed
+            ? Self.calendar.date(byAdding: .day, value: 1, to: transferDeadlineDate) ?? deal.readyDate
+            : deal.readyDate
+        if let makeweight, let destination = clubs.indices.first(where: {
+            $0 != userClubIndex && $0 != deal.sellingClubIndex
+        }) {
+            clubs[userClubIndex].players.removeAll { $0.id == makeweight.id }
+            clubs[destination].players.append(makeweight)
+            validateRoles()
+        }
+        checkPendingTransferDeals()
     }
 
     /// Builds on the shared Career navigation fixture with exactly what

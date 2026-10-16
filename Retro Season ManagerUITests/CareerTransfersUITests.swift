@@ -128,6 +128,98 @@ final class CareerTransfersUITests: XCTestCase {
         return button
     }
 
+    // MARK: - Completion failures through the real UI
+
+    func testClosedWindowPersonalTermsShowsReasonAndAllowsWithdrawal() throws {
+        assertBlockedPersonalTerms(argument: "UITEST_TRANSFERS_TERMS_CLOSED",
+                                  reason: "transfer window has closed", screenshot: "closed_terms")
+    }
+
+    func testMissingMakeweightShowsReasonAndAllowsWithdrawal() throws {
+        assertBlockedPersonalTerms(argument: "UITEST_TRANSFERS_MAKEWEIGHT_GONE",
+                                  reason: "is no longer at", screenshot: "missing_makeweight")
+    }
+
+    private func completionFailureApp(_ argument: String) -> XCUIApplication {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        // Reuse the disposable save/archive root without arming a write failure.
+        app.launchArguments = ["UITEST_CAREER_TRANSFERS", "UITEST_RECOVERY_ERRORS", argument]
+        app.launch()
+        openTransfers(app)
+        openNegotiations(app)
+        return app
+    }
+
+    private func revealDealButton(_ app: XCUIApplication, suffix: String) -> XCUIElement {
+        let button = app.buttons.matching(NSPredicate(
+            format: "identifier BEGINSWITH %@ AND identifier ENDSWITH %@",
+            "career.transfers.deal.", suffix)).firstMatch
+        for _ in 0..<5 {
+            if button.waitForExistence(timeout: 1) && button.isHittable { return button }
+            app.scrollViews["career.transfers.scroll"].swipeUp()
+        }
+        XCTFail("A reachable deal action is required: \(suffix)")
+        return button
+    }
+
+    private func assertBlockedPersonalTerms(argument: String, reason: String, screenshot: String) {
+        let app = completionFailureApp(argument)
+        let summary = anyElement(app, "career.transfers.summary")
+        let before = budget(fromSummary: summary.label)
+        XCTAssertNotNil(before)
+        revealDealButton(app, suffix: ".terms").tap()
+        let propose = app.buttons["career.transfers.terms.propose"]
+        XCTAssertTrue(propose.waitForExistence(timeout: 8))
+        propose.tap()
+        let failure = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", reason)).firstMatch
+        XCTAssertTrue(failure.waitForExistence(timeout: 6), "The actual guard reason must reach the sheet")
+        XCTAssertTrue(failure.isHittable, "The rejection must be visible in landscape")
+        shot(app, screenshot)
+        app.buttons["career.transfers.terms.cancel"].tap()
+        XCTAssertEqual(budget(fromSummary: summary.label), before)
+        revealDealButton(app, suffix: ".withdraw").tap()
+        let confirm = app.buttons["career.sheet.confirm.confirm"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 6))
+        confirm.tap()
+        let terms = app.buttons.matching(NSPredicate(
+            format: "identifier BEGINSWITH %@ AND identifier ENDSWITH %@",
+            "career.transfers.deal.", ".terms")).firstMatch
+        let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: terms)
+        XCTAssertEqual(XCTWaiter.wait(for: [gone], timeout: 6), .completed)
+        XCTAssertEqual(budget(fromSummary: summary.label), before, "Withdrawal must not spend the fee")
+        app.terminate()
+    }
+
+    func testUnaffordableBuyerShowsReasonAndKeepsOfferAndBudget() throws {
+        assertBlockedSale(argument: "UITEST_TRANSFERS_BUYER_EMPTY", reason: "can no longer afford", screenshot: "buyer_empty")
+    }
+
+    func testClosedWindowIncomingSaleShowsReasonAndKeepsOfferAndBudget() throws {
+        assertBlockedSale(argument: "UITEST_TRANSFERS_SALE_CLOSED", reason: "transfer window is closed", screenshot: "sale_closed")
+    }
+
+    private func assertBlockedSale(argument: String, reason: String, screenshot: String) {
+        let app = completionFailureApp(argument)
+        let summary = anyElement(app, "career.transfers.summary")
+        let before = budget(fromSummary: summary.label)
+        XCTAssertNotNil(before)
+        XCTAssertEqual(offersCount(fromSummary: summary.label), 1)
+        incomingOfferAction(app, "accept").tap()
+        let failure = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", reason)).firstMatch
+        XCTAssertTrue(failure.waitForExistence(timeout: 6))
+        let scroll = app.scrollViews["career.transfers.scroll"]
+        for _ in 0..<4 {
+            if failure.isHittable { break }
+            scroll.swipeDown()
+        }
+        XCTAssertTrue(failure.isHittable, "The refusal must be visible in landscape")
+        XCTAssertEqual(offersCount(fromSummary: summary.label), 1, "No sale was completed")
+        XCTAssertEqual(budget(fromSummary: summary.label), before)
+        shot(app, screenshot)
+        app.terminate()
+    }
+
     // MARK: - Summary, market cards, states, prices, actions
 
     func testTransferCentreSummaryMarketCardsAndPrimaryActions() throws {

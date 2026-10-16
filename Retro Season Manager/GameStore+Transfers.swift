@@ -148,6 +148,16 @@ extension GameStore {
         guard pendingTransferDeals[dealIndex].isReady else {
             return .rejected(reason: "\(deal.player.name) isn't ready to talk terms yet.", counterWage: nil)
         }
+        // The fee was agreed inside the window; a medical that runs past the
+        // deadline can't complete a signing outside it.
+        guard transferWindowOpen else {
+            return .rejected(reason: "The transfer window has closed — talks with \(deal.player.name) can't be completed.", counterWage: nil)
+        }
+        // The makeweight the seller was promised must still be at the club.
+        if let includedPlayerID = deal.includedPlayerID,
+           !userClub.players.contains(where: { $0.id == includedPlayerID }) {
+            return .rejected(reason: "\(deal.includedPlayerName ?? "The makeweight") is no longer at \(userClub.name), so the deal can't go through as agreed.", counterWage: nil)
+        }
         guard userClub.wageBill + wage <= userClub.wageBudget else {
             return .rejected(reason: "The board won't sanction that wage — it would break the club's wage budget.", counterWage: nil)
         }
@@ -563,6 +573,7 @@ extension GameStore {
     /// (accepting after a successful counter). Returns nil on success, or
     /// a user-facing failure message.
     private func completeSale(offer: TransferOffer, price: Int) -> String? {
+        guard transferWindowOpen else { return "The transfer window is closed." }
         guard let playerIndex = clubs[userClubIndex].players.firstIndex(where: { $0.id == offer.playerID }) else {
             pendingOffers.removeAll { $0.id == offer.id }
             return "That player has already left."
@@ -579,6 +590,11 @@ extension GameStore {
         guard clubs.indices.contains(offer.fromClubIndex) else {
             pendingOffers.removeAll { $0.id == offer.id }
             return "That club is no longer interested."
+        }
+        // Buyers' budgets move between the bid and acceptance; the sale is
+        // only real if the buyer can still pay.
+        guard clubs[offer.fromClubIndex].transferBudget >= price else {
+            return "\(clubs[offer.fromClubIndex].name) can no longer afford \(formatMoney(price))."
         }
         clubs[userClubIndex].players.remove(at: playerIndex)
         clubs[userClubIndex].transferBudget += price
