@@ -888,10 +888,12 @@ extension GameStore {
     // MARK: - Squad roles
 
     /// Assigns any missing roles automatically and drops roles for players who
-    /// have left the club.
+    /// have left the club. Starters who have left (sold, released, loaned out
+    /// or moved by a world event) are removed from the XI too.
     func validateRoles() {
         let squad = userClub.players
         func exists(_ id: UUID?) -> Bool { id != nil && squad.contains { $0.id == id } }
+        userStarterIDs.formIntersection(squad.map(\.id))
 
         if !exists(captainID) {
             // Ability still matters most, but a natural leader edges out a

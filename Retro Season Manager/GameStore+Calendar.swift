@@ -469,6 +469,7 @@ extension GameStore {
         checkOwnershipChanges()
         checkMarqueePlayerArrivals()
         checkMarqueePlayerTransfers()
+        validateRoles()            // drop starters/roles for anyone a world event moved on
         checkMonthlyAwards()
         checkInternationalCallUps()
         checkRivalManagerSackings()

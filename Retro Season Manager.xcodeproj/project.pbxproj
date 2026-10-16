@@ -15,6 +15,7 @@
 		9D0000000000000000000001 /* LegendsPlayerDetailStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D0000000000000000000002 /* LegendsPlayerDetailStateTests.swift */; };
 		00662B6C39544AA6851F522C /* LegendsPackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E30D7225752E3B1942D844E5 /* LegendsPackTests.swift */; };
 		07803EFF6F1D3ECD04BCF825 /* CareerSeasonSoakTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86D3D33B9AC8783B537A219E /* CareerSeasonSoakTests.swift */; };
+		C0FFEE0000000000000000B1 /* CareerMultiSeasonEnduranceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE0000000000000000A2 /* CareerMultiSeasonEnduranceTests.swift */; };
 		0BA5CDDF24DC0BA9798F2DCB /* GameStoreTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F4E8DEDB4ADD31ECB559195 /* GameStoreTestSupport.swift */; };
 		11302683010CCC0470AF64EF /* TransferGeniusTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A739EF8ADAACAE333C948C4 /* TransferGeniusTests.swift */; };
 		14DC54ED4A6C4CAA11BEA01E /* LegendsMatchSimulationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5EBC684871666B50828C720 /* LegendsMatchSimulationTests.swift */; };
@@ -153,6 +154,7 @@
 		7D47B1D34444477EAA4F7759 /* PlayerStoriesTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PlayerStoriesTests.swift; sourceTree = "<group>"; };
 		7F4E8DEDB4ADD31ECB559195 /* GameStoreTestSupport.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = GameStoreTestSupport.swift; sourceTree = "<group>"; };
 		86D3D33B9AC8783B537A219E /* CareerSeasonSoakTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CareerSeasonSoakTests.swift; sourceTree = "<group>"; };
+		C0FFEE0000000000000000A2 /* CareerMultiSeasonEnduranceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CareerMultiSeasonEnduranceTests.swift; sourceTree = "<group>"; };
 		99F66221DBD753E2397F71B3 /* SaveStateRoundTripTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SaveStateRoundTripTests.swift; sourceTree = "<group>"; };
 		9A3F72AB53965A5C95A66808 /* LegendsOpponentRosterTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendsOpponentRosterTests.swift; sourceTree = "<group>"; };
 		9B121F6A9C9D225B23258477 /* CareerStoryGenerationTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CareerStoryGenerationTests.swift; sourceTree = "<group>"; };
@@ -299,6 +301,7 @@
 				9A3F72AB53965A5C95A66808 /* LegendsOpponentRosterTests.swift */,
 				D5EBC684871666B50828C720 /* LegendsMatchSimulationTests.swift */,
 				86D3D33B9AC8783B537A219E /* CareerSeasonSoakTests.swift */,
+				C0FFEE0000000000000000A2 /* CareerMultiSeasonEnduranceTests.swift */,
 				D0FACE0000FACE00000000K02 /* CareerSeasonFlowTests.swift */,
 				D0FACE0000FACE00000000S02 /* SeasonHistoryCompetitionWinnersTests.swift */,
 				F00DCAFE0FAFE00000000B02 /* InjurySuspensionAuditTests.swift */,
@@ -564,6 +567,7 @@
 				ABC676A02BA509F38C1A65B5 /* LegendsOpponentRosterTests.swift in Sources */,
 				14DC54ED4A6C4CAA11BEA01E /* LegendsMatchSimulationTests.swift in Sources */,
 				07803EFF6F1D3ECD04BCF825 /* CareerSeasonSoakTests.swift in Sources */,
+				C0FFEE0000000000000000B1 /* CareerMultiSeasonEnduranceTests.swift in Sources */,
 				D0FACE0000FACE00000000K01 /* CareerSeasonFlowTests.swift in Sources */,
 				D0FACE0000FACE00000000S01 /* SeasonHistoryCompetitionWinnersTests.swift in Sources */,
 				F00DCAFE0FAFE00000000B01 /* InjurySuspensionAuditTests.swift in Sources */,
