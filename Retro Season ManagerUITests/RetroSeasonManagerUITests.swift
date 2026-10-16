@@ -1068,62 +1068,55 @@ final class RetroSeasonManagerUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["legends.division.userRow"].waitForExistence(timeout: 6),
                       "Table must render after reopening Division")
 
-        // Lower content: the recent-results panel sits well below the fold
-        // on compact landscape phones.
+        let scroll = app.scrollViews["legends.division.scroll"]
+        XCTAssertTrue(scroll.waitForExistence(timeout: 6))
         let results = app.descendants(matching: .any)["legends.division.results"].firstMatch
         XCTAssertTrue(results.waitForExistence(timeout: 8), "Expected the recent results panel")
-        let window = app.windows.firstMatch
         let resultsBefore = results.frame
-        XCTAssertTrue(resultsBefore.minY > window.frame.maxY - 60,
-                      "Precondition: results start below the visible area (frame \(resultsBefore), window \(window.frame))")
+        let viewport = scroll.frame.insetBy(dx: 0, dy: 4)
+        XCTAssertGreaterThan(resultsBefore.minY, viewport.maxY - 60,
+                             "Precondition: recent results start below the fold")
 
-        // Scroll down using the suite's accepted drag gesture (a plain
-        // app.swipeUp() is unreliable on some simulators). With the defect
-        // the content never moves — the GeometryReader pins the scroll
-        // extent to the viewport.
-        func dragContentUp() {
-            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.72))
-            let end = start.withOffset(CGVector(dx: 0, dy: -140))
-            start.press(forDuration: 0.05, thenDragTo: end)
+        // Compact layouts put the table BELOW the fixture centre; wide
+        // layouts put it beside it. Follow the target's actual frame rather
+        // than assuming that returning to the table always means scrolling
+        // toward the top. Keep gestures inside this screen's scroll viewport.
+        func reveal(_ element: XCUIElement, name: String) {
+            XCTAssertTrue(element.waitForExistence(timeout: 6), name)
+            for _ in 0..<12 {
+                let bounds = scroll.frame.insetBy(dx: 0, dy: 4)
+                let frame = element.frame
+                if frame.minY >= bounds.minY && frame.maxY <= bounds.maxY { return }
+                let movingUp = frame.maxY > bounds.maxY
+                let distance = movingUp ? frame.maxY - bounds.maxY : bounds.minY - frame.minY
+                let travel = min(bounds.height * 0.45, max(20, distance + 8))
+                let start = scroll.coordinate(withNormalizedOffset:
+                    CGVector(dx: 0.55, dy: movingUp ? 0.78 : 0.22))
+                let end = start.withOffset(CGVector(dx: 0, dy: movingUp ? -travel : travel))
+                start.press(forDuration: 0.05, thenDragTo: end,
+                            withVelocity: 300, thenHoldForDuration: 0.2)
+                Thread.sleep(forTimeInterval: 0.4)
+            }
+            XCTFail("\(name) must be fully visible; frame \(element.frame), viewport \(scroll.frame)")
         }
-        func dragContentDown() {
-            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35))
-            let end = start.withOffset(CGVector(dx: 0, dy: 140))
-            start.press(forDuration: 0.05, thenDragTo: end)
-        }
-        for _ in 1...2 {
-            dragContentUp()
-            Thread.sleep(forTimeInterval: 0.4)
-        }
+
+        reveal(results, name: "Recent results")
         let resultsAfterScroll = results.frame
         XCTAssertLessThan(resultsAfterScroll.minY, resultsBefore.minY - 40,
-                          "Swiping up must move the Division content; results frame stayed at \(resultsAfterScroll)")
-        XCTAssertLessThanOrEqual(resultsAfterScroll.minY, window.frame.maxY,
-                                 "Lower content must become visible after scrolling")
-
-        // Hold the position long enough to expose a scroll reset from
-        // ordinary view updates (e.g. a verticalSizeClass / layout flip).
+                          "Scrolling must move the Division content")
         Thread.sleep(forTimeInterval: 1.5)
-        let resultsHeld = results.frame
-        XCTAssertLessThan(resultsHeld.minY, resultsBefore.minY - 40,
-                          "Scroll position must hold; content snapped back to \(resultsHeld)")
+        XCTAssertEqual(results.frame.minY, resultsAfterScroll.minY, accuracy: 8,
+                       "The visible results must hold their scroll position")
 
-        // The table (upper content) must remain reachable by scrolling back.
-        var userRowVisible = false
-        var userRowFrame: CGRect = .zero
-        for _ in 0..<4 {
-            dragContentDown()
-            let userRow = app.descendants(matching: .any)["legends.division.userRow"].firstMatch
-            if userRow.waitForExistence(timeout: 2) {
-                userRowFrame = userRow.frame
-                if userRowFrame.minY >= window.frame.minY && userRowFrame.maxY <= window.frame.maxY + 20 {
-                    userRowVisible = true
-                    break
-                }
-            }
-        }
-        XCTAssertTrue(userRowVisible,
-                      "User table row must be back in the visible area after scrolling up; frame \(userRowFrame)")
+        let userRow = app.descendants(matching: .any)["legends.division.userRow"].firstMatch
+        reveal(userRow, name: "User table row")
+        XCTAssertTrue(userRow.isHittable, "The highlighted user row must be reachable")
+
+        // Explicitly exercise the reverse direction too, returning to the
+        // next-fixture card above both the results and the compact table.
+        let nextFixture = app.descendants(matching: .any)["legends.division.nextFixture"].firstMatch
+        reveal(nextFixture, name: "Next fixture")
+        XCTAssertTrue(nextFixture.isHittable)
 
         Thread.sleep(forTimeInterval: 0.6)
         let screenshot = XCUIScreen.main.screenshot()

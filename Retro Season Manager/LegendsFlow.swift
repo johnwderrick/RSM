@@ -1546,6 +1546,7 @@ struct LegendsDivisionTableView: View {
                     .frame(maxWidth: .infinity, alignment: .top)
                 }
                 .frame(width: geo.size.width, height: geo.size.height)
+                .accessibilityIdentifier("legends.division.scroll")
             }
         }
     }
