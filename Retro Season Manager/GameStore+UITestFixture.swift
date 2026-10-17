@@ -520,6 +520,17 @@ extension GameStore {
         //    persisted IDs cannot survive a relaunch (see the doc comment).
         ensureTransfersFixtureStateForDebug()
         prepareTransferCompletionFailureForDebug()
+        if ProcessInfo.processInfo.arguments.contains("UITEST_TRANSFERS_YOUTH") {
+            youthProspects = [("Academy Audit Forward", Position.forward), ("Academy Audit Keeper", Position.goalkeeper)].map { name, position in
+                var player = Self.makePlayer(name: name, position: position, nationality: "England",
+                                             age: 17, rating: 85, startYear: startYear)
+                player.isAcademyProduct = true
+                player.contractYears = 3
+                return player
+            }
+            let blocked = ProcessInfo.processInfo.arguments.contains("UITEST_YOUTH_WAGE_BLOCKED")
+            clubs[userClubIndex].wageBudget = userClub.wageBill + (blocked ? 0 : youthProspects.reduce(0) { $0 + $1.wage })
+        }
 
         persist()
         return self

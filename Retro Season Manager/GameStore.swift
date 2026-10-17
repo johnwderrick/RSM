@@ -87,6 +87,8 @@ struct SaveState: Codable {
     var lastSeasonCupWinnerID: UUID?
     var history: [SeasonRecord]
     var youthProspects: [Player]
+    /// Optional for saves written before academies were scoped to a club.
+    var youthAcademies: [UUID: YouthAcademySnapshot]?
     var allTimeScorers: [String: Int]
     /// Optional: added after `SaveState` was first written, so an older
     /// save simply won't have it — falls back to empty at load instead of
@@ -738,6 +740,7 @@ final class GameStore {
 
     /// This season's youth-academy prospects the manager can promote.
     var youthProspects: [Player] = []
+    var youthAcademies: [UUID: YouthAcademySnapshot] = [:]
     /// The squad's weekly training emphasis.
     var trainingFocus: TrainingFocus = .balanced
     /// The chosen game difficulty.

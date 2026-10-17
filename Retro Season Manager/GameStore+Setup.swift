@@ -197,6 +197,8 @@ extension GameStore {
     /// - Parameter clubIndex: The club the manager will control.
     func newGame(clubIndex: Int, startYear: Int = 2000, managerName: String = "") {
         currentSaveID = UUID()
+        youthProspects = []
+        youthAcademies = [:]
         self.startYear = startYear
         let trimmedName = managerName.trimmingCharacters(in: .whitespacesAndNewlines)
         self.managerName = trimmedName.isEmpty ? Self.randomName() : trimmedName
@@ -329,7 +331,7 @@ extension GameStore {
     }
 
     /// Regenerates fixtures and (optionally) clears season records.
-    func startNewSeason(resetRecords: Bool) {
+    func startNewSeason(resetRecords: Bool, generateAcademy: Bool = true) {
         if resetRecords {
             for index in clubs.indices { clubs[index].resetSeason() }
             seasonLedger = []
@@ -356,7 +358,7 @@ extension GameStore {
         startUefaCup()
         startCommunityShield()
         startUefaSuperCup()
-        generateYouthIntake()
+        if generateAcademy { generateYouthIntake() }
         shuffleForeignDivisions()
         scheduleFriendlies()
     }

@@ -220,6 +220,110 @@ final class CareerTransfersUITests: XCTestCase {
         app.terminate()
     }
 
+    // MARK: - Academy promotion and release
+
+    private func launchAcademy(blocked: Bool = false) -> XCUIApplication {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_CAREER_TRANSFERS", "UITEST_RECOVERY_ERRORS", "UITEST_TRANSFERS_YOUTH"]
+        if blocked { app.launchArguments.append("UITEST_YOUTH_WAGE_BLOCKED") }
+        app.launch()
+        openTransfers(app)
+        selectAcademyTab(app, slug: "youth")
+        XCTAssertTrue(buttonMatching(app, "career.transfers.youth.promote.").waitForExistence(timeout: 6))
+        return app
+    }
+
+    private func selectAcademyTab(_ app: XCUIApplication, slug: String) {
+        let tab = app.buttons["career.transfers.tab.\(slug)"]
+        XCTAssertTrue(tab.waitForExistence(timeout: 6))
+        func selected() -> Bool {
+            let expectation = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isSelected == true"), object: tab)
+            return XCTWaiter.wait(for: [expectation], timeout: 3) == .completed
+        }
+        tab.tap()
+        if !selected() { tab.tap() }
+        XCTAssertTrue(selected())
+    }
+
+    private func revealAcademyAction(_ app: XCUIApplication, _ button: XCUIElement) {
+        for _ in 0..<5 {
+            if button.exists && button.isHittable { return }
+            app.scrollViews["career.transfers.scroll"].swipeUp()
+        }
+        XCTFail("Academy action must be reachable: \(button.identifier)")
+    }
+
+    private func squadCount(_ app: XCUIApplication) -> Int? {
+        let label = anyElement(app, "career.transfers.summary").label
+        guard let prefix = label.range(of: "Squad ") else { return nil }
+        return label[prefix.upperBound...].split(separator: " ").first.flatMap { Int($0) }
+    }
+
+    func testAcademyPromotionAndReleaseKeepSeniorOwnershipAndBudget() throws {
+        let app = launchAcademy()
+        let before = try XCTUnwrap(squadCount(app))
+        let budgetBefore = try XCTUnwrap(budget(fromSummary: anyElement(app, "career.transfers.summary").label))
+        let promote = buttonMatching(app, "career.transfers.youth.promote.")
+        let promoteID = promote.identifier
+        let playerID = String(promoteID.dropFirst("career.transfers.youth.promote.".count))
+        revealAcademyAction(app, promote)
+        promote.tap()
+        let removed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.buttons[promoteID])
+        XCTAssertEqual(XCTWaiter.wait(for: [removed], timeout: 6), .completed)
+        XCTAssertEqual(squadCount(app), before + 1)
+        XCTAssertEqual(budget(fromSummary: anyElement(app, "career.transfers.summary").label), budgetBefore)
+        shot(app, "youth_promoted")
+        selectAcademyTab(app, slug: "squad")
+        let senior = anyElement(app, "career.transfers.squad.\(playerID)")
+        for _ in 0..<12 {
+            if senior.exists && senior.isHittable { break }
+            app.scrollViews["career.transfers.scroll"].swipeUp()
+        }
+        XCTAssertTrue(senior.exists && senior.isHittable, "The promoted identity must be reachable in the senior squad")
+        shot(app, "youth_senior")
+        senior.tap()
+        XCTAssertTrue(anyElement(app, "career.playerProfile.screen").waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Academy Audit Forward"].waitForExistence(timeout: 6))
+        shot(app, "youth_senior_profile")
+        app.buttons["career.playerProfile.close"].tap()
+        XCTAssertTrue(screenVisible(app, "transfers", timeout: 8))
+        let youthTab = app.buttons["career.transfers.tab.youth"]
+        for _ in 0..<12 {
+            if youthTab.isHittable { break }
+            app.scrollViews["career.transfers.scroll"].swipeDown()
+        }
+        selectAcademyTab(app, slug: "youth")
+        let release = buttonMatching(app, "career.transfers.youth.release.")
+        XCTAssertTrue(release.waitForExistence(timeout: 6))
+        revealAcademyAction(app, release)
+        release.tap()
+        XCTAssertTrue(app.staticTexts["NO PROSPECTS RIGHT NOW"].waitForExistence(timeout: 6))
+        XCTAssertEqual(squadCount(app), before + 1, "Releasing an academy prospect must not remove the promoted senior")
+        shot(app, "youth_released")
+        app.terminate()
+    }
+
+    func testAcademyPromotionShowsWageRefusalAndKeepsProspect() throws {
+        let app = launchAcademy(blocked: true)
+        let before = squadCount(app)
+        let promote = buttonMatching(app, "career.transfers.youth.promote.")
+        let id = promote.identifier
+        revealAcademyAction(app, promote)
+        promote.tap()
+        let reason = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "senior wage budget")).firstMatch
+        XCTAssertTrue(reason.waitForExistence(timeout: 6))
+        for _ in 0..<4 {
+            if reason.isHittable { break }
+            app.scrollViews["career.transfers.scroll"].swipeDown()
+        }
+        XCTAssertTrue(reason.isHittable, "The wage refusal must be visible in landscape")
+        XCTAssertTrue(app.buttons[id].exists, "The prospect must stay available after refusal")
+        XCTAssertEqual(squadCount(app), before)
+        shot(app, "youth_wage_refusal")
+        app.terminate()
+    }
+
     // MARK: - Summary, market cards, states, prices, actions
 
     func testTransferCentreSummaryMarketCardsAndPrimaryActions() throws {

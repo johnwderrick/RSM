@@ -927,8 +927,25 @@ extension GameStore {
 
     // MARK: - Youth academy
 
-    /// Generates this season's crop of youth prospects for the user's club.
+    /// Saves the live pool without changing when its last intake occurred.
+    func snapshotCurrentAcademy() {
+        guard var academy = youthAcademies[userClub.id] else { return }
+        academy.prospects = youthProspects
+        youthAcademies[userClub.id] = academy
+    }
+
+    /// A new job exposes the destination's academy, not the outgoing club's.
+    func activateCurrentAcademy() {
+        youthProspects = youthAcademies[userClub.id]?.prospects ?? []
+        generateYouthIntake()
+    }
+
+    /// Generates one intake per club and season. Returning to a previously
+    /// managed club develops its retained prospects for the elapsed years.
     func generateYouthIntake() {
+        let previousSeason = youthAcademies[userClub.id]?.lastIntakeSeason
+        guard previousSeason.map({ $0 < season }) ?? true else { return }
+        let elapsedYears = max(1, season - (previousSeason ?? season))
         let base = userClub.prestige
         let level = userClub.youthFacilityLevel
         var sawForeignTalent = false
@@ -963,10 +980,13 @@ extension GameStore {
         // academy entirely at 21.
         let developedHoldovers: [Player] = youthProspects.compactMap { prospect in
             var developed = prospect
-            developed.age += 1
+            developed.age += elapsedYears
             guard developed.age <= 20 else { return nil }
-            let growth = Int.random(in: 1...4) + (level >= 4 ? 1 : 0)
-            developed.rating = Self.clampRating(developed.rating + growth)
+            for _ in 0..<elapsedYears {
+                let growth = Int.random(in: 1...4) + (level >= 4 ? 1 : 0)
+                developed.rating = Self.clampRating(developed.rating + growth)
+            }
+            developed.value = playerValue(rating: developed.rating, age: developed.age, startYear: startYear)
             return developed
         }
 
@@ -974,6 +994,7 @@ extension GameStore {
         // prospects if the combined list runs over a sensible academy size.
         let combined = (developedHoldovers + freshIntake).sorted { $0.rating > $1.rating }
         youthProspects = Array(combined.prefix(12))
+        youthAcademies[userClub.id] = YouthAcademySnapshot(lastIntakeSeason: season, prospects: youthProspects)
 
         if sawForeignTalent {
             addNews(.info, "Academy news", "This year's youth intake includes a prospect spotted by the club's scouts overseas.")
@@ -985,7 +1006,11 @@ extension GameStore {
     func promoteYouth(_ player: Player) -> String {
         guard userClub.players.count < 30 else { return "Squad is full (30 players)." }
         guard let index = youthProspects.firstIndex(where: { $0.id == player.id }) else { return "No longer available." }
-        let prospect = youthProspects.remove(at: index)
+        let prospect = youthProspects[index]
+        guard userClub.wageBill + prospect.wage <= userClub.wageBudget else {
+            return "Can't promote \(prospect.name) — the senior wage budget won't cover his \(formatMoney(prospect.wage))/wk wage."
+        }
+        youthProspects.remove(at: index)
         clubs[userClubIndex].players.append(prospect)
         youthPromotedThisSeasonIDs.insert(prospect.id)
         addNews(.transfer, "Youth promoted", "\(prospect.name) (\(prospect.age)) has been promoted to the first team.",

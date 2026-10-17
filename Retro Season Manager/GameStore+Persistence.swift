@@ -63,6 +63,7 @@ extension GameStore {
     @discardableResult
     func persist() -> Bool {
         guard hasStarted else { return false }
+        snapshotCurrentAcademy()
         let state = SaveState(season: season,
                               currentMatchday: currentMatchday,
                               userClubIndex: userClubIndex,
@@ -117,6 +118,7 @@ extension GameStore {
                               lastSeasonCupWinnerID: lastSeasonCupWinnerID,
                               history: history,
                               youthProspects: youthProspects,
+                              youthAcademies: youthAcademies,
                               allTimeScorers: allTimeScorers,
                               allTimeAppearances: allTimeAppearances,
                               careerRecordByClub: careerRecordByClub,
@@ -234,6 +236,12 @@ extension GameStore {
         lastSeasonCupWinnerID = state.lastSeasonCupWinnerID
         history = state.history
         youthProspects = state.youthProspects
+        youthAcademies = state.youthAcademies ?? [:]
+        // Preserve an older save's existing pool as this season's intake;
+        // loading must not age it or invent a replacement crop.
+        if youthAcademies[userClub.id] == nil {
+            youthAcademies[userClub.id] = YouthAcademySnapshot(lastIntakeSeason: season, prospects: youthProspects)
+        }
         allTimeScorers = state.allTimeScorers
         allTimeAppearances = state.allTimeAppearances ?? [:]
         careerRecordByClub = state.careerRecordByClub ?? [:]
@@ -380,17 +388,21 @@ extension GameStore {
         progressSquads()           // age, develop, retire, youth intake
         simulateWorldEvents()      // takeovers, crises, wonderkids — the wider world keeps moving
         validateRoles()            // reassign captain/penalty/free-kick if the holder retired or left
-        season += 1
-        startNewSeason(resetRecords: true)
+        snapshotCurrentAcademy()
         // Job offers identify a club by its season-one array position. Its
         // promotion/relegation can change that club's future tier, not its
         // stable identity or array slot, so apply the saved choice via UUID.
         let acceptedDestinationID = pendingClubSwitch.flatMap { index in
             clubs.indices.contains(index) ? clubs[index].id : nil
         }
+        season += 1
+        // A departing manager leaves the old academy in its club snapshot;
+        // only the destination receives a fresh intake during this handoff.
+        startNewSeason(resetRecords: true, generateAcademy: acceptedDestinationID == nil)
         if let acceptedDestinationID,
            let destination = clubs.firstIndex(where: { $0.id == acceptedDestinationID }) {
             userClubIndex = destination
+            activateCurrentAcademy()
             managerContractYears = Int.random(in: 2...4)
             addNews(.board, "New chapter", "You are the new manager of \(clubs[destination].name).")
             // startNewSeason schedules friendlies for the outgoing club; the

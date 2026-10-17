@@ -661,6 +661,13 @@ enum Difficulty: String, CaseIterable, Identifiable, Codable {
     }
 }
 
+/// A club's academy remains attached to that club across managerial moves.
+/// The season marker also makes intake generation safe to repeat after reload.
+struct YouthAcademySnapshot: Codable {
+    var lastIntakeSeason: Int
+    var prospects: [Player]
+}
+
 /// The weekly training emphasis for the squad.
 enum TrainingFocus: String, CaseIterable, Identifiable, Codable {
     case balanced = "Balanced"
