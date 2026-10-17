@@ -7,6 +7,17 @@
 
 import SwiftUI
 
+#if DEBUG
+/// Records the asset selected by a real pressed-state render. UI tests read
+/// this after releasing the touch, avoiding concurrent XCTest activities.
+@MainActor @Observable
+final class PressedArtworkUITestProbe {
+    static let shared = PressedArtworkUITestProbe()
+    static let enabled = ProcessInfo.processInfo.arguments.contains("UITEST_PRESSED_ARTWORK")
+    var lastAsset = ""
+}
+#endif
+
 enum GameExperience {
     case career
     case legends
@@ -257,6 +268,7 @@ struct ExperienceSelectView: View {
                     .padding(12)
             }
             .accessibilityLabel(Text("experience.closeSettings"))
+            .accessibilityIdentifier("experience.settings.close")
             .buttonStyle(ExperienceEntryButtonStyle())
         }
     }
@@ -328,15 +340,23 @@ private struct EntryArtworkButtonStyle: ButtonStyle {
     }
 
     func makeBody(configuration: Configuration) -> some View {
+        let asset = ExperienceSelectorArtwork.entry(entry, pressed: configuration.isPressed)
         ZStack {
-            Image(ExperienceSelectorArtwork.entry(entry, pressed: configuration.isPressed))
+            Image(asset)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 // Expose the resolved state as a leaf accessibility element so
                 // UI tests can assert the pressed artwork swaps in on press.
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("")
-                .accessibilityIdentifier(ExperienceSelectorArtwork.entry(entry, pressed: configuration.isPressed))
+                .accessibilityIdentifier(asset)
+                #if DEBUG
+                .onChange(of: asset) { _, shownAsset in
+                    if configuration.isPressed && PressedArtworkUITestProbe.enabled {
+                        PressedArtworkUITestProbe.shared.lastAsset = shownAsset
+                    }
+                }
+                #endif
             HStack(spacing: 7) {
                 Text("experience.tapToEnter")
                 Image(systemName: "chevron.right")
@@ -368,15 +388,23 @@ private struct SettingsButtonStyle: ButtonStyle {
     }
 
     func makeBody(configuration: Configuration) -> some View {
+        let asset = ExperienceSelectorArtwork.settings(pressed: configuration.isPressed)
         ZStack {
-            Image(ExperienceSelectorArtwork.settings(pressed: configuration.isPressed))
+            Image(asset)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 // Expose the resolved state as a leaf accessibility element so
                 // UI tests can assert the pressed artwork swaps in on press.
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("")
-                .accessibilityIdentifier(ExperienceSelectorArtwork.settings(pressed: configuration.isPressed))
+                .accessibilityIdentifier(asset)
+                #if DEBUG
+                .onChange(of: asset) { _, shownAsset in
+                    if configuration.isPressed && PressedArtworkUITestProbe.enabled {
+                        PressedArtworkUITestProbe.shared.lastAsset = shownAsset
+                    }
+                }
+                #endif
             if compact {
                 Image(systemName: "gearshape.fill")
                     .font(.system(size: 17, weight: .black))

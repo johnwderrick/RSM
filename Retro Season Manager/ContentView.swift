@@ -303,5 +303,15 @@ struct ContentView: View {
         .tint(store.hasStarted ? store.userColor : Retro.accent)
         .animation(.easeInOut(duration: 0.2), value: store.isBusy)
         .animation(.easeInOut(duration: 0.25), value: store.pendingAchievementCelebration)
+        #if DEBUG
+        .overlay(alignment: .topLeading) {
+            if PressedArtworkUITestProbe.enabled {
+                Text(PressedArtworkUITestProbe.shared.lastAsset)
+                    .font(.system(size: 1))
+                    .accessibilityIdentifier("uitest.pressedArtwork")
+                    .allowsHitTesting(false)
+            }
+        }
+        #endif
     }
 }

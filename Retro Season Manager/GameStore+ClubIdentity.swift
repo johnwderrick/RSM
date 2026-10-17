@@ -88,7 +88,8 @@ extension GameStore {
     /// lower-league one, and vice versa for Underdog/Community
     /// Club/Selling Club — without needing any hand-authored data for the
     /// ~180 clubs the override table doesn't cover.
-    static func deriveClubIdentity(prestige: Int, tier: Int) -> ClubIdentity {
+    static func deriveClubIdentity(prestige: Int, tier: Int,
+                                   draw: (Range<Double>) -> Double = { Double.random(in: $0) }) -> ClubIdentity {
         var weights: [ClubIdentity: Double] = Dictionary(uniqueKeysWithValues: ClubIdentity.allCases.map { ($0, 1.0) })
         if tier == 0 && prestige >= 75 {
             weights[.historicGiant, default: 1] += 2
@@ -111,7 +112,7 @@ extension GameStore {
         }
         let ordered = ClubIdentity.allCases
         let total = ordered.reduce(0.0) { $0 + (weights[$1] ?? 1) }
-        var roll = Double.random(in: 0..<total)
+        var roll = draw(0..<total)
         for identity in ordered {
             let w = weights[identity] ?? 1
             if roll < w { return identity }

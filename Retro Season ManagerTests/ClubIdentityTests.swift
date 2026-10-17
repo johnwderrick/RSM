@@ -38,8 +38,13 @@ final class ClubIdentityTests: XCTestCase {
     func testDerivedIdentityWeightingFavoursUnderdogForLowPrestigeBottomTier() {
         var underdogCount = 0
         let trials = 2000
-        for _ in 0..<trials where GameStore.deriveClubIdentity(prestige: 40, tier: 3) == .underdog {
-            underdogCount += 1
+        // Cover the weighted roll's whole range at evenly spaced midpoints.
+        // Random sampling can miss this threshold even with correct weights.
+        for trial in 0..<trials {
+            let identity = GameStore.deriveClubIdentity(prestige: 40, tier: 3) { range in
+                range.lowerBound + (range.upperBound - range.lowerBound) * (Double(trial) + 0.5) / Double(trials)
+            }
+            if identity == .underdog { underdogCount += 1 }
         }
         // Flat weighting across 10 identities would land ~10%; the
         // low-prestige/bottom-tier bonus should push this well above that.

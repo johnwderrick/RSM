@@ -1,9 +1,8 @@
 import XCTest
 
 /// Drives the real experience-selector screen in the simulator: press-holds
-/// each TAP TO ENTER / Settings button and asserts the corresponding pressed
-/// artwork image becomes the visible accessibility element while held — proving
-/// the two-state artwork stays in sync with the press state.
+/// each TAP TO ENTER / Settings button and checks the asset recorded by its
+/// pressed-state image render after release. All XCTest queries stay serial.
 ///
 /// Each button is tested in its own fresh launch because pressing the entry
 /// buttons navigates away from the selector.
@@ -2555,62 +2554,37 @@ final class RetroSeasonManagerUITests: XCTestCase {
         return true
     }
 
-    /// Launches the app fresh, finds `buttonID`, asserts the pressed artwork is
-    /// NOT present initially, then holds the button and asserts the pressed
-    /// image IS exposed mid-hold.
+    /// A real hold drives the image swap. Read the DEBUG render receipt after
+    /// release so every XCTest query stays on this test's execution thread.
     private func assertPressedArtworkWhileHeld(buttonID: String,
                                                normalImageID: String,
                                                pressedImageID: String) throws {
         let app = XCUIApplication()
-        let holdDuration: TimeInterval = 3.0
-        let pollInterval: TimeInterval = 0.1
+        app.launchArguments = ["UITEST_PRESSED_ARTWORK"]
+        app.launch()
 
-        // The first UI test sometimes starts with a cold accessibility tree
-        // on hosted runners. Give the real press interaction one clean
-        // relaunch before failing, while still requiring the transient
-        // pressed artwork to appear during an active hold.
-        for attempt in 1...2 {
-            if attempt > 1 {
-                app.terminate()
-            }
-            app.launch()
+        let button = app.buttons[buttonID]
+        XCTAssertTrue(button.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.images[normalImageID].waitForExistence(timeout: 5))
+        XCTAssertTrue(button.isHittable)
+        XCTAssertFalse(app.images[pressedImageID].exists)
+        let receipt = app.staticTexts["uitest.pressedArtwork"]
+        XCTAssertFalse(receipt.exists && receipt.label == pressedImageID)
 
-            let button = app.buttons[buttonID]
-            XCTAssertTrue(button.waitForExistence(timeout: 8),
-                          "Expected button '\(buttonID)' to appear on the experience selector")
-            XCTAssertTrue(app.images[normalImageID].waitForExistence(timeout: 5),
-                          "Expected normal art '\(normalImageID)' before testing its pressed state")
-            XCTAssertTrue(button.isHittable,
-                          "Button '\(buttonID)' must be hittable before starting the hold")
-            XCTAssertFalse(app.images[pressedImageID].exists,
-                           "Pressed art '\(pressedImageID)' should not be present before pressing")
-
-            let visibleWhileHeld = expectation(
-                description: "pressed art visible while held: \(buttonID), attempt \(attempt)"
-            )
-            DispatchQueue.global(qos: .userInitiated).async {
-                var elapsed: TimeInterval = 0
-                while elapsed < holdDuration {
-                    Thread.sleep(forTimeInterval: pollInterval)
-                    elapsed += pollInterval
-                    if app.images[pressedImageID].exists {
-                        visibleWhileHeld.fulfill()
-                        return
-                    }
-                }
-            }
-
-            button.press(forDuration: holdDuration)
-            let result = XCTWaiter().wait(
-                for: [visibleWhileHeld],
-                timeout: holdDuration + 2
-            )
-            if result == .completed {
-                return
-            }
+        button.press(forDuration: 3)
+        if buttonID == "experience.settings" {
+            let close = app.buttons["experience.settings.close"]
+            XCTAssertTrue(close.waitForExistence(timeout: 8))
+            close.tap()
         }
-
-        XCTFail("Pressed art '\(pressedImageID)' was not visible during either real hold.")
+        let observed = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "label == %@", pressedImageID), object: receipt)
+        XCTAssertEqual(XCTWaiter.wait(for: [observed], timeout: 6), .completed,
+                       "The real hold must render the expected pressed asset")
+        let capture = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        capture.name = "Pressed artwork receipt: \(buttonID)"
+        capture.lifetime = .keepAlways
+        add(capture)
     }
 
     /// Shared entry into the Settings destination via the sidebar, using
