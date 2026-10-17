@@ -34,7 +34,7 @@ final class CareerSettingsUITests: XCTestCase {
     @discardableResult
     private func launch(extraArguments: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["UITEST_CAREER_SETTINGS"] + extraArguments
+        app.launchArguments = ["UITEST_CAREER_SETTINGS", "UITEST_RECOVERY_ERRORS"] + extraArguments
         app.launch()
         return app
     }
@@ -299,11 +299,24 @@ final class CareerSettingsUITests: XCTestCase {
         XCTAssertTrue(error.waitForExistence(timeout: 8))
         XCTAssertTrue(error.staticTexts["Your career is still open. Please try saving again before leaving."].exists)
         XCTAssertTrue(exists(app, "career.settings.summary", 5), "A failed save must keep Settings open")
+        let careerSummary = waitFor(app, "career.settings.summary").label
+        shot(app, "\(launchArgument)_refusal")
         error.buttons["OK"].tap()
+        XCTAssertTrue(error.waitForNonExistence(timeout: 6))
 
         exit.tap()
         XCTAssertTrue(app.staticTexts["⚽︎ RETRO SEASON MANAGER"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["Resume"].waitForExistence(timeout: 8))
+        XCTAssertFalse(error.exists, "The consumed failure must not be rearmed during the retry")
+        let resume = app.buttons["career.menu.resume"]
+        XCTAssertTrue(resume.waitForExistence(timeout: 8))
+        XCTAssertTrue(resume.isEnabled)
+        shot(app, "\(launchArgument)_menu")
+        resume.tap()
+        _ = waitFor(app, "career.home.screen", 15)
+        waitFor(app, "career.nav.settings").tap()
+        XCTAssertEqual(waitFor(app, "career.settings.summary").label, careerSummary,
+                       "Resume must restore the same career after the successful retry")
+        shot(app, "\(launchArgument)_resumed")
     }
 
     // MARK: - F. Scroll stability

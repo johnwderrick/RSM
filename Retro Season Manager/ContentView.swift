@@ -31,6 +31,18 @@ struct ContentView: View {
     private static let transfersFixture: GameStore = {
         GameStore().prepareCareerTransfersFixtureForDebug()
     }()
+
+    // Reconstructing the root view must not seed another save or rearm a
+    // consumed one-shot failure while the user retries Save & Exit.
+    private static let settingsFixture: GameStore = {
+        let career = GameStore().prepareCareerSettingsFixtureForDebug()
+        if ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_SAVE_FAIL_FILE") {
+            SaveSlots.debugFailNextWrite = .saveFile
+        } else if ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_SAVE_FAIL_INDEX") {
+            SaveSlots.debugFailNextWrite = .index
+        }
+        return career
+    }()
     #endif
 
     init() {
@@ -140,14 +152,7 @@ struct ContentView: View {
             _experience = State(initialValue: .career)
         }
         if ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_SETTINGS") {
-            let career = GameStore()
-            career.prepareCareerSettingsFixtureForDebug()
-            if ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_SAVE_FAIL_FILE") {
-                SaveSlots.debugFailNextWrite = .saveFile
-            } else if ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_SAVE_FAIL_INDEX") {
-                SaveSlots.debugFailNextWrite = .index
-            }
-            _store = State(initialValue: career)
+            _store = State(initialValue: Self.settingsFixture)
             _experience = State(initialValue: .career)
         }
         if ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_SHEETS") {
