@@ -309,6 +309,24 @@ extension GameStore {
         //    their defaults and toggle freely).
         autoPickAssist = true
 
+        if ProcessInfo.processInfo.arguments.contains("UITEST_SQUAD_QUICK_SELECT") {
+            for index in clubs[userClubIndex].players.indices {
+                clubs[userClubIndex].players[index].injuryWeeks = 0
+                clubs[userClubIndex].players[index].suspensionMatches = 0
+            }
+            autoPickLineup()
+            for (name, position, natural, secondary) in [
+                ("Quick Select Midfielder", Position.midfielder, DetailedPosition.centralMid, DetailedPosition.leftBack),
+                ("Quick Select Defender", Position.defender, DetailedPosition.centreBack, DetailedPosition.centralMid)
+            ] {
+                var player = Self.makePlayer(name: name, position: position, nationality: "England",
+                                             age: 24, rating: 55, startYear: startYear)
+                player.detailedPosition = natural
+                player.secondaryPositions = [secondary]
+                clubs[userClubIndex].players.append(player)
+            }
+        }
+
         persist()
         return self
     }

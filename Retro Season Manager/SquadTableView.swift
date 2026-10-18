@@ -162,7 +162,8 @@ struct SquadTableRow: View {
         for candidate in DetailedPosition.plausibleRoles(for: player.position) where !roles.contains(candidate) {
             roles.append(candidate)
         }
-        return roles
+        // Only roles in the player's own group can be filled by him.
+        return roles.filter { $0.broad == player.position }
     }
 
     /// Roles genuinely worth training toward — no existing natural,
@@ -210,6 +211,7 @@ struct SquadTableRow: View {
                             onMessage("\(surname(player.name)) moved to \(role.fullName).")
                         }
                     }
+                    .accessibilityIdentifier("career.squad.selectRole.\(role.rawValue)")
                 }
                 if isStarter {
                     Divider()
@@ -253,6 +255,8 @@ struct SquadTableRow: View {
                     }
                 )
             }
+            .accessibilityIdentifier("career.squad.roleMenu.\(player.id)")
+            .accessibilityLabel("Choose role for \(player.name)")
 
             Button(action: onOpenProfile) {
                 HStack(spacing: 8) {

@@ -1094,6 +1094,10 @@ extension GameStore {
         guard !player.isSuspended else {
             return .blocked("\(player.name) is suspended for \(player.suspensionMatches) match\(player.suspensionMatches == 1 ? "" : "es").")
         }
+        // A player is seated by his own position, so he can only fill a slot in his own group.
+        guard player.position == role.broad else {
+            return .blocked("\(player.name) plays as a \(player.position.rawValue) and can't fill a \(role.fullName) slot.")
+        }
         if userStarterIDs.contains(player.id) { return .added }
         let group = userClub.players.filter { userStarterIDs.contains($0.id) && $0.position == role.broad }
         if group.count >= slots(for: role.broad), let weakest = group.min(by: {

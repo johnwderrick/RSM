@@ -45,6 +45,60 @@ final class CareerLandscapePolishUITests: XCTestCase {
 
     // MARK: - 1. Pitch slot tap targets
 
+    func testQuickSelectMenusExcludeOtherGroupsAndAllowSelection() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_CAREER_SETTINGS", "UITEST_RECOVERY_ERRORS", "UITEST_SQUAD_QUICK_SELECT"]
+        app.launch()
+        let squad = app.buttons["career.nav.squad"]
+        XCTAssertTrue(squad.waitForExistence(timeout: 20))
+        squad.tap()
+        let list = app.buttons["career.squad.mode.list"]
+        XCTAssertTrue(list.waitForExistence(timeout: 8))
+        list.tap()
+
+        for (name, group, allowed, forbidden) in [
+            ("Quick Select Midfielder", "MID", "CM", "LB"),
+            ("Quick Select Defender", "DEF", "LB", "CM")
+        ] {
+            let filter = app.buttons[group]
+            XCTAssertTrue(filter.waitForExistence(timeout: 6))
+            filter.tap()
+            let menu = app.buttons["Choose role for \(name)"]
+            let scroll = app.scrollViews["career.squad.list.scroll"]
+            for _ in 0..<10 {
+                if menu.exists && menu.isHittable { break }
+                scroll.swipeUp()
+            }
+            XCTAssertTrue(menu.exists && menu.isHittable)
+            menu.tap()
+            let option = app.buttons["career.squad.selectRole.\(allowed)"]
+            XCTAssertTrue(option.waitForExistence(timeout: 6))
+            XCTAssertFalse(app.buttons["career.squad.selectRole.\(forbidden)"].exists,
+                           "A secondary role in another group must not be offered")
+            XCTAssertFalse(app.buttons["Move to Bench"].exists, "The fixture starts this player on the bench")
+            shot(app, "quick_select_\(group)_menu")
+            option.tap()
+            let surname = String(name.split(separator: " ").last!)
+            let moved = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "\(surname) moved to")).firstMatch
+            XCTAssertTrue(moved.waitForExistence(timeout: 6))
+            menu.tap()
+            let bench = app.buttons["Move to Bench"]
+            // Native menus virtualize their lower rows on compact screens.
+            // Scroll the menu collection, not the roster beneath it.
+            for _ in 0..<6 {
+                if bench.exists && bench.isHittable { break }
+                let popup = app.collectionViews.firstMatch
+                guard popup.exists else { break }
+                popup.swipeUp()
+            }
+            XCTAssertTrue(bench.waitForExistence(timeout: 6), "Selecting the offered role must make this player a starter")
+            bench.tap()
+            let dropped = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "\(surname) dropped to the bench")).firstMatch
+            XCTAssertTrue(dropped.waitForExistence(timeout: 6))
+            shot(app, "quick_select_\(group)_complete")
+        }
+    }
+
     func testPitchSlotChangeButtonsMeetMinimumTapTarget() throws {
         let app = launch()
         let squadTab = app.buttons["career.nav.squad"]
