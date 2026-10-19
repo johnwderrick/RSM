@@ -30,28 +30,42 @@ final class SquadQuickSelectTests: XCTestCase {
         super.tearDown()
     }
 
+    /// These tests exercise selection, not random squad generation. Keep a
+    /// complete 4-4-2 plus known healthy bench players regardless of new-game
+    /// formation, player roles or availability rolls.
+    private func fixture() async -> (store: GameStore, defender: Player, midfielder: Player) {
+        let store = await makeTestStore()
+        store.newGame(clubIndex: 0, startYear: 2000, managerName: "Quick Select Audit")
+        func player(_ name: String, _ position: Position, _ role: DetailedPosition, _ rating: Int) -> Player {
+            Player(name: name, position: position, detailedPosition: role, age: 24, rating: rating)
+        }
+        let starters = [player("Starting Keeper", .goalkeeper, .goalkeeper, 85)]
+            + [90, 85, 80, 75].enumerated().map { player("Starting Defender \($0.offset)", .defender, .leftBack, $0.element) }
+            + [88, 84, 80, 76].enumerated().map { player("Starting Midfielder \($0.offset)", .midfielder, .centralMid, $0.element) }
+            + [86, 82].enumerated().map { player("Starting Forward \($0.offset)", .forward, .striker, $0.element) }
+        let defender = player("Bench Defender", .defender, .leftBack, 55)
+        let midfielder = player("Bench Midfielder", .midfielder, .centralMid, 55)
+        store.clubs[store.userClubIndex].players = starters + [defender, midfielder]
+        store.formation = Formation.all.first { $0.name == "4-4-2" }!
+        store.userStarterIDs = Set(starters.map(\.id))
+        return (store, defender, midfielder)
+    }
+
     /// A bench midfielder quick-selected into a defensive role must be
     /// refused, and the hand-picked XI must survive intact. Before the fix
     /// this evicted a defender, inserted the midfielder, left the XI
     /// invalid, and `userStartingXI()` silently replaced it with the
     /// best XI.
     func testCrossGroupQuickSelectIsRefusedAndKeepsHandPickedXI() async {
-        let store = await makeTestStore()
-        store.newGame(clubIndex: 0, startYear: 2000, managerName: "Quick Select Audit")
-        store.autoPickLineup()
-        guard let handPickedDefender = store.userClub.players.first(where: {
-            $0.position == .defender && !store.userStarterIDs.contains($0.id) && $0.isAvailable
-        }) else { return XCTFail("Fixture needs a bench defender for a non-auto-picked XI") }
+        let (store, handPickedDefender, benchMidfielder) = await fixture()
         _ = store.assignStarter(handPickedDefender, forRole: .leftBack)
+        XCTAssertTrue(store.userStarterIDs.contains(handPickedDefender.id))
         XCTAssertTrue(store.isValidLineup(store.userClub.players.filter { store.userStarterIDs.contains($0.id) }),
                       "Precondition: the hand-picked XI must be valid")
 
         let startersBefore = store.userStarterIDs
-        guard let benchMidfielder = store.userClub.players.first(where: {
-            $0.position == .midfielder && !store.userStarterIDs.contains($0.id) && $0.isAvailable
-        }) else {
-            return XCTFail("Fixture needs an available bench midfielder")
-        }
+        XCTAssertTrue(benchMidfielder.isAvailable)
+        XCTAssertFalse(startersBefore.contains(benchMidfielder.id))
 
         let change = store.assignStarter(benchMidfielder, forRole: .leftBack)
 
@@ -68,15 +82,9 @@ final class SquadQuickSelectTests: XCTestCase {
     /// at left-back evicts the weakest defender and leaves a valid XI
     /// containing the chosen player.
     func testSameGroupQuickSelectReplacesWeakestAndStaysValid() async {
-        let store = await makeTestStore()
-        store.newGame(clubIndex: 0, startYear: 2000, managerName: "Quick Select Audit")
-        store.autoPickLineup()
-
-        guard let benchDefender = store.userClub.players.first(where: {
-            $0.position == .defender && !store.userStarterIDs.contains($0.id) && $0.isAvailable
-        }) else {
-            return XCTFail("Fixture needs an available bench defender")
-        }
+        let (store, benchDefender, _) = await fixture()
+        XCTAssertTrue(benchDefender.isAvailable)
+        XCTAssertFalse(store.userStarterIDs.contains(benchDefender.id))
 
         let before = store.userStarterIDs
         let weakest = store.userClub.players.filter { before.contains($0.id) && $0.position == .defender }
