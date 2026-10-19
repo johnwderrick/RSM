@@ -395,8 +395,26 @@ extension GameStore {
         return nil
     }
 
+    /// Only the current authoritative, unplayed commitment may be completed.
+    /// Prior rounds are replaced and fixture IDs are regenerated on reload,
+    /// so an unknown ID is stale too, not permission to apply player effects.
+    private func canCommitLiveMatch(_ match: LiveMatch) -> Bool {
+        guard match.homeIndex == userClubIndex || match.awayIndex == userClubIndex else { return false }
+        if match.isCup {
+            let ties = [communityShieldTie, uefaSuperCupTie].compactMap { $0 }
+                + euroTies + uefaCupTies + leagueCupTies + cupTies
+            guard let tie = ties.first(where: { $0.id == match.tieID }) else { return false }
+            return !tie.played && !tie.isBye
+                && tie.homeIndex == match.homeIndex && tie.awayIndex == match.awayIndex
+        }
+        guard let fixture = fixtures.first(where: { $0.id == match.fixtureID }) else { return false }
+        return !fixture.played && fixture.matchday == currentMatchday
+            && fixture.homeIndex == match.homeIndex && fixture.awayIndex == match.awayIndex
+    }
+
     func finishLiveMatch() {
         guard let match = live, match.isFinished else { return }
+        guard canCommitLiveMatch(match) else { live = nil; return }
         if match.isCup {
             if match.tieID == communityShieldTie?.id { finishLiveCommunityShield(match) }
             else if match.tieID == uefaSuperCupTie?.id { finishLiveUefaSuperCup(match) }

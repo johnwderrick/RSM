@@ -516,4 +516,168 @@ final class LiveMatchTests: XCTestCase {
         XCTAssertEqual(goalsByID(store), goalsAfterFirst, "A second full-time call must not add goals")
         XCTAssertEqual(store.news.count, newsAfterFirst, "A second full-time call must not post news again")
     }
+
+    // MARK: - Stale completion (audit)
+
+    /// Played-state and table numbers, so a replayed completion that
+    /// re-applies a result is caught even when player stats don't move.
+    private func tableSnapshot(_ store: GameStore) -> [Int] {
+        store.clubs.flatMap { [$0.played, $0.won, $0.drawn, $0.goalsFor, $0.goalsAgainst] }
+    }
+
+    func testStaleLeagueLiveMatchCannotReapplyAFinishedFixture() async {
+        let store = await freshStore()
+        let match = makeMatch(store, userLevel: 80, opponentLevel: 80)
+        match.skipToEnd()
+
+        store.live = match
+        store.finishLiveMatch()
+        let fixtureIndex = store.fixtures.firstIndex { $0.id == match.fixtureID }
+        XCTAssertEqual(fixtureIndex.map { store.fixtures[$0].played }, true)
+        let appsAfterFirst = appsByID(store)
+        let goalsAfterFirst = goalsByID(store)
+        let tableAfterFirst = tableSnapshot(store)
+        let matchdayAfterFirst = store.currentMatchday
+        let newsAfterFirst = store.news.count
+
+        // A stale LiveMatch for the same fixture is handed back to the store.
+        store.live = match
+        store.finishLiveMatch()
+        XCTAssertEqual(store.currentMatchday, matchdayAfterFirst, "A stale league completion must not advance the matchday")
+        XCTAssertEqual(appsByID(store), appsAfterFirst, "A stale league completion must not add appearances")
+        XCTAssertEqual(goalsByID(store), goalsAfterFirst, "A stale league completion must not add goals")
+        XCTAssertEqual(tableSnapshot(store), tableAfterFirst, "A stale league completion must not count the result twice")
+        XCTAssertEqual(store.news.count, newsAfterFirst, "A stale league completion must not post news again")
+    }
+
+    func testStaleCupCompletionCannotReplayRoundOrEffectsOnAnyRoute() async throws {
+        for competition in 0..<6 {
+            let store = await cupStore()
+            let user = store.userClubIndex
+            let other = try XCTUnwrap(store.clubs.indices.first { $0 != user })
+            let tie = CupTie(round: 1, homeIndex: user, awayIndex: other)
+            switch competition {
+            case 0: store.cupTies = [tie]
+            case 1: store.leagueCupTies = [tie]
+            case 2: store.euroTies = [tie]
+            case 3: store.uefaCupTies = [tie]
+            case 4: store.communityShieldTie = tie
+            default: store.uefaSuperCupTie = tie
+            }
+            let match = LiveMatch(store: store, knockoutTie: tie, date: store.currentDate,
+                                  competitionName: "Audit cup", roundName: "Final")
+            match.testScoreGoal(match.userSide)
+            match.testScoreGoal(match.userSide)
+            match.testFinishNow()
+
+            store.live = match
+            store.finishLiveMatch()
+            let appsAfterFirst = appsByID(store)
+            let cupGoalsAfterFirst = Dictionary(uniqueKeysWithValues: store.userClub.players.map { ($0.id, $0.cupGoals) })
+            let roundAfterFirst = store.cupRound
+            let tiesAfterFirst = store.cupTies.map { [$0.homeGoals, $0.awayGoals, $0.winnerIndex, $0.round] }
+            let newsAfterFirst = store.news.count
+
+            store.live = match
+            store.finishLiveMatch()
+            XCTAssertEqual(appsByID(store), appsAfterFirst, "Route \(competition): a stale cup completion must not add appearances")
+            XCTAssertEqual(Dictionary(uniqueKeysWithValues: store.userClub.players.map { ($0.id, $0.cupGoals) }), cupGoalsAfterFirst,
+                           "Route \(competition): a stale cup completion must not add cup goals")
+            XCTAssertEqual(store.cupRound, roundAfterFirst, "Route \(competition): a stale completion must not advance the round again")
+            XCTAssertEqual(store.cupTies.map { [$0.homeGoals, $0.awayGoals, $0.winnerIndex, $0.round] }, tiesAfterFirst,
+                           "Route \(competition): a stale completion must not rewrite the bracket")
+            XCTAssertEqual(store.news.count, newsAfterFirst, "Route \(competition): a stale completion must not post news again")
+        }
+    }
+    /// Compare the entire persisted model, including all teams, brackets,
+    /// prizes, ledger, ratings, fitness and disciplinary state.
+    private func completionSnapshot(_ store: GameStore) throws -> Data {
+        XCTAssertTrue(store.persist())
+        let id = try XCTUnwrap(store.currentSaveID)
+        let object = try JSONSerialization.jsonObject(with: Data(contentsOf: SaveSlots.fileURL(for: id)))
+        return try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+    }
+
+    func testStaleCupCompletionAfterRoundReplacementIsANoOp() async throws {
+        for competition in 0..<4 {
+            let store = await cupStore()
+            let user = store.userClubIndex
+            let others = Array(store.clubs.indices.filter { $0 != user }.prefix(3))
+            let tie = CupTie(round: 1, homeIndex: user, awayIndex: others[0])
+            let otherTie = CupTie(round: 1, homeIndex: others[1], awayIndex: others[2])
+            switch competition {
+            case 0: store.cupRound = 1; store.cupTies = [tie, otherTie]
+            case 1: store.leagueCupRound = 1; store.leagueCupTies = [tie, otherTie]
+            case 2: store.euroRound = 1; store.euroTies = [tie, otherTie]
+            default: store.uefaCupRound = 1; store.uefaCupTies = [tie, otherTie]
+            }
+            let match = LiveMatch(store: store, knockoutTie: tie, date: store.currentDate,
+                                  competitionName: "Audit cup", roundName: "Semi-final")
+            match.testScoreGoal(match.userSide)
+            match.testFinishNow()
+            store.live = match
+            store.finishLiveMatch()
+            let currentTies = [store.cupTies, store.leagueCupTies, store.euroTies, store.uefaCupTies][competition]
+            XCTAssertFalse(currentTies.contains { $0.id == tie.id }, "Must exercise a replaced round")
+            XCTAssertTrue(currentTies.contains { !$0.played }, "The next round must still be waiting")
+            let before = try completionSnapshot(store)
+            store.live = match
+            store.finishLiveMatch()
+            XCTAssertNil(store.live)
+            XCTAssertEqual(try completionSnapshot(store), before, "Route \(competition): an obsolete tie must not affect any saved state")
+        }
+    }
+
+    func testStaleLeagueCompletionAfterReloadIsANoOp() async throws {
+        let store = await freshStore()
+        let match = makeMatch(store, userLevel: 80, opponentLevel: 80)
+        match.testFinishNow()
+        store.live = match
+        store.finishLiveMatch()
+        let reloaded = await makeTestStore()
+        XCTAssertTrue(reloaded.loadSavedGame(id: try XCTUnwrap(store.currentSaveID)))
+        XCTAssertFalse(reloaded.fixtures.contains { $0.id == match.fixtureID }, "Reload regenerates transient fixture IDs")
+        let before = try completionSnapshot(reloaded)
+        reloaded.live = match
+        reloaded.finishLiveMatch()
+        XCTAssertNil(reloaded.live)
+        XCTAssertEqual(try completionSnapshot(reloaded), before)
+    }
+
+    func testUnregisteredCupCompletionIsANoOp() async throws {
+        let store = await cupStore()
+        let other = try XCTUnwrap(store.clubs.indices.first { $0 != store.userClubIndex })
+        let tie = CupTie(round: 1, homeIndex: store.userClubIndex, awayIndex: other)
+        let match = LiveMatch(store: store, knockoutTie: tie, date: store.currentDate,
+                              competitionName: "Obsolete cup", roundName: "Final")
+        match.testFinishNow()
+        let before = try completionSnapshot(store)
+        store.live = match
+        store.finishLiveMatch()
+        XCTAssertNil(store.live)
+        XCTAssertEqual(try completionSnapshot(store), before)
+    }
+
+    func testMismatchedAndFutureLeagueCompletionsAreNoOps() async throws {
+        for future in [false, true] {
+            let store = await freshStore()
+            let fixture = try XCTUnwrap(store.fixtures.first {
+                ($0.homeIndex == store.userClubIndex || $0.awayIndex == store.userClubIndex)
+                    && (future ? $0.matchday > store.currentMatchday : $0.matchday == store.currentMatchday)
+            })
+            let actualOpponent = fixture.homeIndex == store.userClubIndex ? fixture.awayIndex : fixture.homeIndex
+            let wrongOpponent = try XCTUnwrap(store.clubs.indices.first { $0 != store.userClubIndex && $0 != actualOpponent })
+            let match = future ? LiveMatch(store: store, fixture: fixture)
+                : LiveMatch(store: store, homeIndex: store.userClubIndex, awayIndex: wrongOpponent,
+                            date: store.currentDate, competition: "League", isCup: false,
+                            tieID: nil, matchID: fixture.id)
+            match.testFinishNow()
+            let before = try completionSnapshot(store)
+            store.live = match
+            store.finishLiveMatch()
+            XCTAssertNil(store.live)
+            XCTAssertEqual(try completionSnapshot(store), before, future ? "Future fixture" : "Wrong opponent")
+        }
+    }
+
 }

@@ -272,9 +272,13 @@ final class CareerLiveMatchUITests: XCTestCase {
     // MARK: - Skip and full time
 
     func testLiveMatchSkipReachesFullTimeContinueReturnsToDashboard() throws {
-        let app = launch()
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_RECOVERY_ERRORS", "UITEST_CAREER_PREMATCH"]
+        app.launch()
         openLiveMatch(app)
+        shot(app, "continue_live_\(UIDevice.current.name)")
         skipToFullTime(app)
+        shot(app, "continue_fulltime_\(UIDevice.current.name)")
 
         // Answer the post-match interview if it is in the way, then
         // CONTINUE — the same route the navigation regression pins.
