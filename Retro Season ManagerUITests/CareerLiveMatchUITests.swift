@@ -105,6 +105,53 @@ final class CareerLiveMatchUITests: XCTestCase {
         XCTAssertTrue(postMatch.waitForExistence(timeout: 12), "Full-time CONTINUE missing after SKIP")
     }
 
+    func testSubstitutionPersistsThroughFullTime() throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_RECOVERY_ERRORS", "UITEST_CAREER_PREMATCH",
+                               "UITEST_CAREER_PREMATCH_NO_PROMPTS", "UITEST_LIVE_SUBSTITUTION"]
+        app.launch()
+        openLiveMatch(app)
+        XCTAssertTrue(app.buttons["career.match.pause"].label.contains("PLAY"))
+        app.buttons["career.match.bar.SUBS 5/5"].tap()
+        let offRows = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "career.match.sub.off."))
+        let onRows = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "career.match.sub.on."))
+        XCTAssertTrue(offRows.firstMatch.waitForExistence(timeout: 8))
+        let off = try XCTUnwrap(offRows.allElementsBoundByIndex.first { !$0.label.hasSuffix(", GK") })
+        let on = try XCTUnwrap(onRows.allElementsBoundByIndex.first { !$0.label.hasSuffix(", GK") })
+        let offID = off.identifier
+        let onID = on.identifier
+        let offName = off.label.components(separatedBy: ",")[0]
+        let onName = on.label.components(separatedBy: ",")[0]
+        let unused = onRows.allElementsBoundByIndex.filter { $0.identifier != onID }.map { ($0.identifier, $0.label.components(separatedBy: ",")[0]) }
+        print("SUBSTITUTION_AUDIT off=\(offID) on=\(onID) unused=\(unused.map { $0.0 }.joined(separator: ","))")
+        off.tap()
+        on.tap()
+        shot(app, "selected_sub_\(UIDevice.current.name)")
+        app.buttons["career.match.sub.confirm"].tap()
+        XCTAssertTrue(app.buttons["career.match.bar.SUBS 4/5"].waitForExistence(timeout: 6))
+        app.buttons["career.match.bar.SUBS 4/5"].tap()
+        XCTAssertFalse(app.buttons[offID].exists, "The departed player must not remain on the pitch")
+        XCTAssertFalse(app.buttons[onID].exists, "The incoming player must no longer be on the bench")
+        XCTAssertTrue(app.buttons[onID.replacingOccurrences(of: ".on.", with: ".off.")].exists)
+        app.buttons["Cancel"].tap()
+        skipToFullTime(app)
+        let ratings = app.descendants(matching: .any).matching(identifier: "career.postMatch.ratingRow")
+        let labels = ratings.allElementsBoundByIndex.map(\.label)
+        let ratedIDs = Set(ratings.allElementsBoundByIndex.compactMap { $0.value as? String })
+        XCTAssertTrue(ratedIDs.contains(String(offID.suffix(36))))
+        XCTAssertTrue(ratedIDs.contains(String(onID.suffix(36))))
+        for (id, _) in unused { XCTAssertFalse(ratedIDs.contains(String(id.suffix(36)))) }
+        XCTAssertTrue(labels.contains { $0.hasPrefix(offName + ", rating") })
+        XCTAssertTrue(labels.contains { $0.hasPrefix(onName + ", rating") })
+        for (_, name) in unused { XCTAssertFalse(labels.contains { $0.hasPrefix(name + ", rating") }) }
+        shot(app, "sub_fulltime_\(UIDevice.current.name)")
+        app.buttons["career.postMatch.continue"].tap()
+        XCTAssertTrue(anyElement(app, "career.continue").waitForExistence(timeout: 12))
+        shot(app, "sub_committed_\(UIDevice.current.name)")
+        app.terminate()
+    }
+
     // MARK: - Control surface on phone landscape
 
     func testLiveMatchShowsScoreStatsAndAllMatchControls() throws {

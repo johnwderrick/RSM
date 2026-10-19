@@ -294,9 +294,13 @@ struct PlayerProfileSheet: View {
                 Spacer()
                 Text(player.averageRating.map { String(format: "Avg %.2f", $0) } ?? "Avg —")
                 Spacer()
-                Text("Goals \(player.goals)")
+                Text("Goals \(player.totalGoals)")
             }
             .font(.system(.callout, design: .monospaced))
+            Text("League \(player.goals) · Cup \(player.cupGoals)")
+                .font(.system(.caption, design: .monospaced))
+                .foregroundStyle(CareerPalette.mutedInk)
+                .frame(maxWidth: .infinity, alignment: .trailing)
         }
     }
 

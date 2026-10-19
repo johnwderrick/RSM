@@ -258,7 +258,7 @@ extension GameStore {
                     // UP HIS BOOTS" newspaper templates, previously dead code
                     // for the user's own retirees since this call never passed it.
                     let apps = allTimeAppearances[retiree.name] ?? retiree.apps
-                    let goals = allTimeScorers[retiree.name] ?? retiree.goals
+                    let goals = allTimeScorers[retiree.name] ?? retiree.totalGoals
                     let statsLine = goals > 0
                         ? "He leaves after \(apps) appearance\(apps == 1 ? "" : "s") and \(goals) goal\(goals == 1 ? "" : "s") for \(clubs[clubIndex].name)."
                         : "He leaves after \(apps) appearance\(apps == 1 ? "" : "s") for \(clubs[clubIndex].name)."

@@ -325,6 +325,9 @@ struct Player: Identifiable, Codable {
     var rating: Int
     /// League goals scored this season.
     var goals: Int = 0
+    /// Goals in live knockout and one-off cup matches this season.
+    var cupGoals: Int = 0
+    var totalGoals: Int { goals + cupGoals }
     /// Weeks remaining on an injury. Zero means fully fit.
     var injuryWeeks: Int = 0
     /// Matches remaining on a suspension (e.g. after a red card).
@@ -507,7 +510,7 @@ struct Player: Identifiable, Codable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, position, detailedPosition, secondaryPositions, age, rating, goals, injuryWeeks, suspensionMatches
+        case id, name, position, detailedPosition, secondaryPositions, age, rating, goals, cupGoals, injuryWeeks, suspensionMatches
         case fitness, value, wage, morale, apps, ratingPoints, isTransferListed
         case contractYears, onLoanFromClubIndex, wantsToLeave
         case attributes, foot, recentRatings
@@ -551,6 +554,7 @@ extension Player {
         age = try container.decode(Int.self, forKey: .age)
         rating = try container.decode(Int.self, forKey: .rating)
         goals = try container.decodeIfPresent(Int.self, forKey: .goals) ?? 0
+        cupGoals = try container.decodeIfPresent(Int.self, forKey: .cupGoals) ?? 0
         injuryWeeks = try container.decodeIfPresent(Int.self, forKey: .injuryWeeks) ?? 0
         suspensionMatches = try container.decodeIfPresent(Int.self, forKey: .suspensionMatches) ?? 0
         fitness = try container.decodeIfPresent(Int.self, forKey: .fitness) ?? 100
@@ -1482,6 +1486,7 @@ struct Club: Identifiable, Codable {
         goalsFor = 0; goalsAgainst = 0
         for index in players.indices {
             players[index].goals = 0
+            players[index].cupGoals = 0
             players[index].assists = 0
             players[index].cleanSheets = 0
             players[index].apps = 0

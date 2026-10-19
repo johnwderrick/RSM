@@ -471,6 +471,11 @@ extension GameStore {
                 clubs[userClubIndex].players[index].morale = min(100, max(0, clubs[userClubIndex].players[index].morale + scaledDelta + scaledDerbyBonus))
             }
         }
+        // Match fitness for the players who featured, as quick sim and
+        // FORCE SIM already apply it to the user's XI (simulate) and as the
+        // live cup paths do (applyLivePlayerEffects).
+        let leagueAppeared = clubs[userClubIndex].players.filter { match.userAppearedIDs.contains($0.id) }
+        applyMatchFitness(clubIndex: userClubIndex, xi: leagueAppeared)
         updateSquadMorale(appearedIDs: Set(match.userAppearedIDs))
         updateBoard(userWon: won, draw: draw, isHome: match.userSide == .home,
                     opponentIndex: match.userSide == .home ? match.awayIndex : match.homeIndex,
@@ -520,6 +525,11 @@ extension GameStore {
     /// Applies injuries, suspensions, ratings and morale from a live match
     /// (shared by league and cup, without touching the table or the board).
     func applyLivePlayerEffects(_ match: LiveMatch) {
+        // Goals reach career totals here too, exactly once per scorer — the
+        // league path credits its own in finishLiveMatch, so cup ties must
+        // do it themselves or a live cup goal never leaves the match record.
+        for id in match.homeScorerIDs { incrementCupGoal(clubIndex: match.homeIndex, playerID: id) }
+        for id in match.awayScorerIDs { incrementCupGoal(clubIndex: match.awayIndex, playerID: id) }
         for out in match.injuredOut {
             setInjury(clubIndex: out.side == .home ? match.homeIndex : match.awayIndex,
                       playerID: out.id, weeks: Int.random(in: 2...5))
@@ -595,6 +605,12 @@ extension GameStore {
     func incrementGoal(clubIndex: Int, playerID: UUID) {
         if let index = clubs[clubIndex].players.firstIndex(where: { $0.id == playerID }) {
             clubs[clubIndex].players[index].goals += 1
+        }
+    }
+
+    private func incrementCupGoal(clubIndex: Int, playerID: UUID) {
+        if let index = clubs[clubIndex].players.firstIndex(where: { $0.id == playerID }) {
+            clubs[clubIndex].players[index].cupGoals += 1
         }
     }
 

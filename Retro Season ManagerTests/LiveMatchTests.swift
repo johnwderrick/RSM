@@ -20,6 +20,21 @@ import XCTest
 
 @MainActor
 final class LiveMatchTests: XCTestCase {
+    private var isolatedRoot: URL!
+
+    override func setUp() {
+        super.setUp()
+        isolatedRoot = FileManager.default.temporaryDirectory.appendingPathComponent("LiveMatchReview-\(UUID().uuidString)")
+        SaveSlots.useIsolatedRootForTesting(isolatedRoot)
+        LegacyArchive.useIsolatedRootForTesting(isolatedRoot.appendingPathComponent("legacy"))
+    }
+
+    override func tearDown() {
+        SaveSlots.useIsolatedRootForTesting(nil)
+        LegacyArchive.useIsolatedRootForTesting(nil)
+        if testRun?.failureCount == 0 { try? FileManager.default.removeItem(at: isolatedRoot) }
+        super.tearDown()
+    }
     private func freshStore() async -> GameStore {
         let store = await makeTestStore()
         store.newGame(clubIndex: 0, startYear: 2000, managerName: "Test")
@@ -275,5 +290,230 @@ final class LiveMatchTests: XCTestCase {
             XCTAssertGreaterThanOrEqual(match.homePossession, 25)
             XCTAssertLessThanOrEqual(match.homePossession, 75)
         }
+    }
+
+    // MARK: - Full-time participation credit (audit)
+
+    /// A 2010 save whose user club holds a round-1 cup tie, so the real
+    /// cup finishers have a tie to commit.
+    private func cupStore() async -> GameStore {
+        let store = await makeTestStore()
+        store.newGame(clubIndex: 0, startYear: 2010, managerName: "Audit")
+        return store
+    }
+
+    private func goalsByID(_ store: GameStore) -> [UUID: Int] {
+        Dictionary(uniqueKeysWithValues: store.clubs[store.userClubIndex].players.map { ($0.id, $0.goals) })
+    }
+
+    private func appsByID(_ store: GameStore) -> [UUID: Int] {
+        Dictionary(uniqueKeysWithValues: store.clubs[store.userClubIndex].players.map { ($0.id, $0.apps) })
+    }
+
+    func testLeagueLiveFullTimeCreditsEachUserScorerExactlyOnce() async {
+        let store = await freshStore()
+        let match = makeMatch(store, userLevel: 80, opponentLevel: 80)
+        let userSide: Side = match.isUserHome ? .home : .away
+        match.testScoreGoal(userSide)
+        match.testScoreGoal(userSide)
+        match.testFinishNow()
+        let scorerIDs = userSide == .home ? match.homeScorerIDs : match.awayScorerIDs
+        let before = goalsByID(store)
+
+        store.live = match
+        store.finishLiveMatch()
+        XCTAssertNil(store.live)
+        for player in store.clubs[store.userClubIndex].players {
+            let expected = before[player.id, default: 0] + scorerIDs.filter { $0 == player.id }.count
+            XCTAssertEqual(player.goals, expected, "\(player.name) goals should rise by exactly their live goals")
+        }
+    }
+
+    func testLiveCupTieFullTimeCreditsUserScorersExactlyOnce() async {
+        let store = await cupStore()
+        guard let tie = store.nextUserCupTie else { return XCTFail("Expected a round-1 user cup tie") }
+        let match = LiveMatch(store: store, knockoutTie: tie, date: store.cupRoundDate(tie.round),
+                              competitionName: GameStore.cupName, roundName: "Round 1")
+        let userSide: Side = match.isUserHome ? .home : .away
+        let otherSide: Side = match.isUserHome ? .away : .home
+        match.testScoreGoal(userSide)
+        match.testScoreGoal(userSide)
+        match.testScoreGoal(otherSide)
+        match.testFinishNow()
+        let scorerIDs = userSide == .home ? match.homeScorerIDs : match.awayScorerIDs
+        let before = Dictionary(uniqueKeysWithValues: store.userClub.players.map { ($0.id, $0.cupGoals) })
+
+        store.live = match
+        store.finishLiveMatch()
+        XCTAssertNil(store.live)
+        for player in store.clubs[store.userClubIndex].players {
+            let expected = before[player.id, default: 0] + scorerIDs.filter { $0 == player.id }.count
+            XCTAssertEqual(player.cupGoals, expected, "Live cup goals must reach \(player.name)'s career total")
+        }
+    }
+
+    func testLiveCupGoalsDoNotChangeLeagueGoldenBootTotals() async throws {
+        let store = await cupStore()
+        let tie = try XCTUnwrap(store.nextUserCupTie)
+        let match = LiveMatch(store: store, knockoutTie: tie, date: store.cupRoundDate(tie.round),
+                              competitionName: GameStore.cupName, roundName: "Round 1")
+        match.testScoreGoal(match.userSide)
+        match.testFinishNow()
+        let scorerID = try XCTUnwrap((match.isUserHome ? match.homeScorerIDs : match.awayScorerIDs).first)
+        let before = try XCTUnwrap(store.userClub.players.first { $0.id == scorerID }).goals
+        store.live = match
+        store.finishLiveMatch()
+        let after = try XCTUnwrap(store.userClub.players.first { $0.id == scorerID }).goals
+        XCTAssertEqual(after, before,
+                       "Cup goals must not enter Player.goals: goldenBoot/topScorers use this league-goal field")
+    }
+
+    func testCupGoalsRoundTripDefaultForOldSavesAndReset() async throws {
+        let store = await cupStore()
+        let index = store.clubs[store.userClubIndex].players.startIndex
+        store.clubs[store.userClubIndex].players[index].goals = 2
+        store.clubs[store.userClubIndex].players[index].cupGoals = 3
+        let player = store.userClub.players[index]
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(player)) as? [String: Any])
+        json.removeValue(forKey: "cupGoals")
+        let old = try JSONDecoder().decode(Player.self, from: JSONSerialization.data(withJSONObject: json))
+        XCTAssertEqual(old.goals, 2)
+        XCTAssertEqual(old.cupGoals, 0)
+        store.persist()
+        let reloaded = await makeTestStore()
+        XCTAssertTrue(reloaded.loadSavedGame(id: try XCTUnwrap(store.currentSaveID)))
+        XCTAssertEqual(reloaded.userClub.players[index].cupGoals, 3)
+        XCTAssertEqual(reloaded.userClub.players[index].totalGoals, 5)
+        var club = reloaded.userClub
+        club.resetSeason()
+        XCTAssertEqual(club.players[index].totalGoals, 0)
+    }
+
+    func testSeasonHonoursAccumulatesCupOnlyScorerOnce() async {
+        let store = await cupStore()
+        let index = store.clubs[store.userClubIndex].players.startIndex
+        store.clubs[store.userClubIndex].players[index].goals = 0
+        store.clubs[store.userClubIndex].players[index].cupGoals = 3
+        let name = store.userClub.players[index].name
+        let before = store.allTimeScorers[name, default: 0]
+        store.recordSeasonHonours()
+        XCTAssertEqual(store.allTimeScorers[name], before + 3)
+        store.recordSeasonHonours()
+        XCTAssertEqual(store.allTimeScorers[name], before + 3)
+    }
+
+    func testEveryLiveCupRouteKeepsGoalsOutOfLeagueStandings() async throws {
+        for competition in 0..<6 {
+            let store = await cupStore()
+            let user = store.userClubIndex
+            let other = try XCTUnwrap(store.clubs.indices.first { $0 != user })
+            let tie = CupTie(round: 1, homeIndex: user, awayIndex: other)
+            switch competition {
+            case 0: store.cupTies = [tie]
+            case 1: store.leagueCupTies = [tie]
+            case 2: store.euroTies = [tie]
+            case 3: store.uefaCupTies = [tie]
+            case 4: store.communityShieldTie = tie
+            default: store.uefaSuperCupTie = tie
+            }
+            let match = LiveMatch(store: store, knockoutTie: tie, date: store.currentDate,
+                                  competitionName: "Audit cup", roundName: "Final")
+            match.testScoreGoal(.home)
+            match.testScoreGoal(.away)
+            match.testFinishNow()
+            let before = Dictionary(uniqueKeysWithValues: [user, other].flatMap { store.clubs[$0].players }.map { ($0.id, ($0.goals, $0.cupGoals)) })
+            store.live = match
+            store.finishLiveMatch()
+            for club in [user, other] {
+                for player in store.clubs[club].players {
+                    let scored = (match.homeScorerIDs + match.awayScorerIDs).filter { $0 == player.id }.count
+                    XCTAssertEqual(player.goals, before[player.id]?.0, "League goals changed in cup route \(competition)")
+                    XCTAssertEqual(player.cupGoals, (before[player.id]?.1 ?? 0) + scored, "Cup route \(competition)")
+                }
+            }
+        }
+    }
+
+    func testUefaSuperCupLiveFullTimeAppliesPlayerEffects() async {
+        let store = await cupStore()
+        let userIndex = store.userClubIndex
+        let otherIndex = (0..<store.clubs.count).first { $0 != userIndex }!
+        let tie = CupTie(round: 1, homeIndex: userIndex, awayIndex: otherIndex)
+        store.uefaSuperCupTie = tie
+        let match = LiveMatch(store: store, knockoutTie: tie, date: store.uefaSuperCupDate(),
+                              competitionName: GameStore.uefaSuperCupName, roundName: "Final")
+        match.skipToEnd()
+        let appearedIDs = match.userAppearedIDs
+        XCTAssertFalse(appearedIDs.isEmpty)
+        let before = appsByID(store)
+
+        store.live = match
+        store.finishLiveMatch()
+        XCTAssertNil(store.live)
+        for id in appearedIDs {
+            XCTAssertEqual(store.clubs[userIndex].players.first { $0.id == id }?.apps,
+                           (before[id] ?? 0) + 1, "A live Super Cup appearance must be recorded once")
+        }
+    }
+
+    func testLeagueLiveFullTimeAppliesMatchFitnessToParticipantsOnly() async {
+        let store = await freshStore()
+        for i in store.clubs[store.userClubIndex].players.indices {
+            store.clubs[store.userClubIndex].players[i].fitness = 100
+        }
+        let match = makeMatch(store, userLevel: 80, opponentLevel: 80)
+        match.skipToEnd()
+        let appeared = Set(match.userAppearedIDs)
+
+        store.live = match
+        store.finishLiveMatch()
+        for player in store.clubs[store.userClubIndex].players {
+            if appeared.contains(player.id) {
+                XCTAssertLessThan(player.fitness, 100, "\(player.name) played a live league match and must lose fitness like a quick-sim match")
+            } else {
+                XCTAssertEqual(player.fitness, 100, "\(player.name) did not play and must keep full fitness")
+            }
+        }
+    }
+
+    func testSubstitutesAreCreditedOnlyIfTheyTookThePitchAndRepeatTapsSpendNothing() async {
+        let store = await freshStore()
+        let match = makeMatch(store, userLevel: 80, opponentLevel: 80)
+        guard let off = match.userOnPitch.first, let on = match.userBench.first else {
+            return XCTFail("Expected an on-pitch starter and a bench player")
+        }
+        XCTAssertTrue(match.makeUserSub(off: off, on: on))
+        XCTAssertFalse(match.makeUserSub(off: off, on: on), "A repeated tap must not reapply the same substitution")
+        XCTAssertEqual(match.userSubsLeft, 4, "A repeated tap must spend exactly one allowance")
+        let unused = match.userBench.map { $0.id }
+        XCTAssertFalse(unused.isEmpty, "Some bench players should remain unused")
+        let before = appsByID(store)
+
+        match.skipToEnd()
+        store.live = match
+        store.finishLiveMatch()
+        let clubPlayers = store.clubs[store.userClubIndex].players
+        XCTAssertEqual(clubPlayers.first { $0.id == on.id }?.apps, (before[on.id] ?? 0) + 1, "The substitute who came on is credited once")
+        XCTAssertEqual(clubPlayers.first { $0.id == off.player.id }?.apps, (before[off.player.id] ?? 0) + 1, "The starter who was substituted off keeps his appearance")
+        for id in unused {
+            XCTAssertEqual(clubPlayers.first { $0.id == id }?.apps, before[id], "An unused substitute must not be credited an appearance")
+        }
+    }
+
+    func testRepeatedFullTimeDeliveryDoesNotDuplicateCareerTotals() async {
+        let store = await freshStore()
+        let match = makeMatch(store, userLevel: 80, opponentLevel: 80)
+        match.skipToEnd()
+
+        store.live = match
+        store.finishLiveMatch()
+        let appsAfterFirst = appsByID(store)
+        let goalsAfterFirst = goalsByID(store)
+        let newsAfterFirst = store.news.count
+
+        store.finishLiveMatch()
+        XCTAssertEqual(appsByID(store), appsAfterFirst, "A second full-time call must not add appearances")
+        XCTAssertEqual(goalsByID(store), goalsAfterFirst, "A second full-time call must not add goals")
+        XCTAssertEqual(store.news.count, newsAfterFirst, "A second full-time call must not post news again")
     }
 }

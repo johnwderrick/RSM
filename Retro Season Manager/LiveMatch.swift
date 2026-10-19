@@ -232,6 +232,11 @@ final class LiveMatch {
         events.append(MatchEvent(minute: 0, side: nil, type: .kickOff, name: "Kick-off", note: nil))
         say("Kick-off at \(stadium). \(homeName) vs \(awayName). \(weather.glyph) \(weather.rawValue.lowercased()) conditions.")
         SoundManager.shared.play(.whistleKickOff)
+        #if DEBUG
+        // Opt-in substitution UI fixture: keep the clock still while XCTest
+        // selects real players; SKIP still runs the production match engine.
+        if ProcessInfo.processInfo.arguments.contains("UITEST_LIVE_SUBSTITUTION") { return }
+        #endif
         isPaused = false
         loopTask = Task { [weak self] in await self?.loop() }
     }

@@ -841,6 +841,11 @@ extension GameStore {
     }
 
     func finishLiveUefaSuperCup(_ match: LiveMatch) {
+        // Only an unplayed tie commits player effects: a played tie is a
+        // strict no-op, so injuries, appearances and fitness can't repeat.
+        if uefaSuperCupTie?.played == false {
+            applyLivePlayerEffects(match)
+        }
         resolveUefaSuperCup(homeGoals: match.homeGoals, awayGoals: match.awayGoals)
         live = nil
         persist()

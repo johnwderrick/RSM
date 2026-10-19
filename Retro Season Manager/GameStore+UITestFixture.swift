@@ -1235,6 +1235,15 @@ extension GameStore {
             }
         }
 
+        if ProcessInfo.processInfo.arguments.contains("UITEST_LIVE_SUBSTITUTION") {
+            for index in clubs[userClubIndex].players.indices {
+                clubs[userClubIndex].players[index].injuryWeeks = 0
+                clubs[userClubIndex].players[index].suspensionMatches = 0
+                clubs[userClubIndex].players[index].fitness = 100
+                clubs[userClubIndex].players[index].apps = 0
+            }
+        }
+
         // Freeze the lineup so the tests can pin CONFIRMED LINEUPS and
         // KICK OFF against a full, known XI (the engine's preview uses
         // `matchXIForPreview`, so this only re-asserts what the engine

@@ -358,9 +358,9 @@ extension GameStore {
         // players — a small, recurring "that mattered" moment.
         let milestones = [10, 25, 50, 100, 150, 200, 250, 300]
         for club in clubs where club.divisionTier < 4 {
-            for player in club.players where player.goals > 0 {
+            for player in club.players where player.totalGoals > 0 {
                 let before = allTimeScorers[player.name, default: 0]
-                let after = before + player.goals
+                let after = before + player.totalGoals
                 allTimeScorers[player.name] = after
                 if club.id == userClub.id, let crossed = milestones.last(where: { before < $0 && after >= $0 }) {
                     addNews(.board, "Milestone reached",

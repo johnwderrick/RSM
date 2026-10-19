@@ -1475,6 +1475,7 @@ struct MatchView: View {
                     .font(.system(.callout, design: .monospaced))
                     .accessibilityElement(children: .ignore)
                     .accessibilityIdentifier("career.postMatch.ratingRow")
+                    .accessibilityValue(entry.player.id.uuidString)
                     .accessibilityLabel("\(entry.player.name), rating \(String(format: "%.1f", entry.rating))")
                 }
             }
@@ -1596,6 +1597,7 @@ struct SubsSheet: View {
                 HStack {
                     Button("Cancel") { dismiss() }
                         .buttonStyle(.plain)
+
                         .foregroundStyle(Retro.text)
                     Spacer()
                     Button {
@@ -1616,6 +1618,7 @@ struct SubsSheet: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(!canSub)
+                    .accessibilityIdentifier("career.match.sub.confirm")
                 }
             }
             .padding()
@@ -1665,6 +1668,8 @@ struct SubsSheet: View {
                             .clipShape(RoundedRectangle(cornerRadius: 5))
                         }
                         .buttonStyle(.plain)
+                        .accessibilityIdentifier("career.match.sub.\(energy == nil ? "on" : "off").\(player.id.uuidString)")
+                        .accessibilityLabel("\(player.name), \(player.careerPositionLabel)")
                     }
                 }
             }

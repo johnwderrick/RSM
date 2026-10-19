@@ -24,6 +24,10 @@ struct ContentView: View {
         return root
     }()
     private static var recoveryFailureArmed = false
+    private static let preMatchFixture: GameStore = {
+        GameStore().prepareCareerPreMatchFixtureForDebug(
+            skipPrompts: ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_PREMATCH_NO_PROMPTS"))
+    }()
 
     // SwiftUI can reconstruct ContentView while retaining its @State.
     // Seed once per process so discarded initializers cannot create a
@@ -135,10 +139,7 @@ struct ContentView: View {
         // GameStore+UITestFixture.swift). UITEST_CAREER_PREMATCH_NO_PROMPTS
         // opts out of the team-talk/press seeding.
         if ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_PREMATCH") {
-            let career = GameStore()
-            career.prepareCareerPreMatchFixtureForDebug(
-                skipPrompts: ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_PREMATCH_NO_PROMPTS"))
-            _store = State(initialValue: career)
+            _store = State(initialValue: Self.preMatchFixture)
             _experience = State(initialValue: .career)
         }
         if ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_SCOUT") {
