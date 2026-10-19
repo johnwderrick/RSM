@@ -60,6 +60,22 @@ struct AppSettingsView: View {
                         }
                     }
 
+                    appSettingsPanel(title: "PRIVACY & SUPPORT", icon: "hand.raised.fill") {
+                        VStack(alignment: .leading, spacing: 14) {
+                            Link(destination: URL(string: "https://sites.google.com/view/retroseasonmanager/privacy-policy")!) {
+                                Label("Privacy Policy", systemImage: "arrow.up.right.square")
+                            }
+                            .accessibilityIdentifier("app.settings.privacy-policy")
+
+                            Link(destination: URL(string: "https://sites.google.com/view/retroseasonmanager/support")!) {
+                                Label("Support", systemImage: "questionmark.circle")
+                            }
+                            .accessibilityIdentifier("app.settings.support")
+                        }
+                        .font(.system(.callout, design: .monospaced))
+                        .tint(.white)
+                    }
+
                     Text("Career Mode and RSM Legends each have their own in-mode settings for save data, difficulty and progress — this screen only covers what's shared between them.")
                         .font(.system(.caption2, design: .monospaced))
                         .foregroundStyle(.white.opacity(0.45))
