@@ -369,7 +369,7 @@ struct LegacyCareersListView: View {
                             .foregroundStyle(CareerPalette.ink)
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
-                        Text("\(info.seasonsManaged) season\(info.seasonsManaged == 1 ? "" : "s") · \(info.startYear) – \(info.endYear) · \(info.trophyCount) trophy\(info.trophyCount == 1 ? "" : "ies") · \(info.finalDivisionName)")
+                        Text("\(info.seasonsManaged) season\(info.seasonsManaged == 1 ? "" : "s") · \(String(info.startYear)) – \(String(info.endYear)) · \(info.trophyCount) \(info.trophyCount == 1 ? "trophy" : "trophies") · \(info.finalDivisionName)")
                             .font(.system(size: 9, design: .monospaced))
                             .foregroundStyle(CareerPalette.mutedInk)
                             .lineLimit(2)
@@ -387,7 +387,7 @@ struct LegacyCareersListView: View {
             }
             .buttonStyle(PressableButtonStyle())
             .accessibilityIdentifier(CareerIdentifiers.museumCareer(info.managerName))
-            .accessibilityLabel("\(info.managerName) at \(info.clubName), \(info.seasonsManaged) seasons, \(info.startYear) to \(info.endYear), \(info.trophyCount) trophies, final position tier \(info.legacyTier.rawValue), legacy score \(info.legacyScore). Opens the career record.")
+            .accessibilityLabel("\(info.managerName) at \(info.clubName), \(info.seasonsManaged) seasons, \(String(info.startYear)) to \(String(info.endYear)), \(info.trophyCount) trophies, final position tier \(info.legacyTier.rawValue), legacy score \(info.legacyScore). Opens the career record.")
 
             Button {
                 Haptics.tap()

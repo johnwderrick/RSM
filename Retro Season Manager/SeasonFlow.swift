@@ -446,7 +446,7 @@ struct CareerEndView: View {
                     .font(.system(size: 13, weight: .bold, design: .monospaced))
                     .foregroundStyle(CareerPalette.line)
                     .lineLimit(1).minimumScaleFactor(0.75)
-                Text("\(store.history.count) season\(store.history.count == 1 ? "" : "s") · \(store.startYear)–\(store.startYear + store.history.count)")
+                Text("\(store.history.count) season\(store.history.count == 1 ? "" : "s") · \(String(store.startYear))–\(String(store.startYear + store.history.count))")
                     .font(.system(size: 9, weight: .bold, design: .monospaced))
                     .foregroundStyle(CareerPalette.mutedInk)
             }
@@ -474,7 +474,7 @@ struct CareerEndView: View {
         .shadow(color: CareerPalette.ink.opacity(0.06), radius: 6, y: 2)
         .accessibilityElement(children: .ignore)
         .accessibilityIdentifier(CareerIdentifiers.careerEndSummary)
-        .accessibilityLabel("Career complete. \(store.managerName). \(store.history.count) seasons, \(store.startYear) to \(store.startYear + store.history.count). Final club \(store.userClub.name), \(store.divisionName(store.userDivisionTier)).")
+        .accessibilityLabel("Career complete. \(store.managerName). \(store.history.count) seasons, \(String(store.startYear)) to \(String(store.startYear + store.history.count)). Final club \(store.userClub.name), \(store.divisionName(store.userDivisionTier)).")
     }
 
     private var storyCard: some View {

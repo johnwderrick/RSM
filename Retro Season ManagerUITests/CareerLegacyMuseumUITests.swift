@@ -51,7 +51,9 @@ final class CareerLegacyMuseumUITests: XCTestCase {
         let model = ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] ?? "unknown"
         let suffixed = "\(name)_\(model)"
         let png = XCUIScreen.main.screenshot().pngRepresentation
-        try? png.write(to: URL(fileURLWithPath: "/tmp/career_museum_\(suffixed).png"))
+        let directory = URL(fileURLWithPath: "/private/tmp/rsm-career-summary-copy-artifacts", isDirectory: true)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try? png.write(to: directory.appendingPathComponent("career_museum_\(suffixed).png"))
         let attachment = XCTAttachment(uniformTypeIdentifier: "public.png", name: suffixed, payload: png)
         attachment.lifetime = .keepAlways
         add(attachment)
@@ -136,6 +138,21 @@ final class CareerLegacyMuseumUITests: XCTestCase {
     }
 
     // MARK: - A. Overview + six wings in one container
+
+    func testCareerCardsShowUngroupedYearsAndCorrectTrophyPlural() throws {
+        let app = openMuseum(launch())
+        let whitmore = waitFor(app, "career.museum.career.ruth-whitmore")
+        XCTAssertTrue(whitmore.label.contains("2021 to 2028"), whitmore.label)
+        XCTAssertTrue(whitmore.staticTexts["8 seasons · 2021 – 2028 · 3 trophies · Premier Division"].exists,
+                      "The visible card must use plain years and the whole plural word")
+        shot(app, "career_card_three_trophies")
+        let booth = reveal(app, "career.museum.career.arthur-booth")
+        XCTAssertTrue(booth.label.contains("2019 to 2020"), booth.label)
+        XCTAssertTrue(booth.staticTexts["2 seasons · 2019 – 2020 · 0 trophies · Regional League"].exists,
+                      "A career without silverware must say 0 trophies")
+        shot(app, "career_card_copy")
+        app.terminate()
+    }
 
     func testOverviewAndAllSixWingsShowFixtureContentInOneContainer() throws {
         let app = openMuseum(launch())

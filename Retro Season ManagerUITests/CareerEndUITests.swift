@@ -25,7 +25,7 @@ final class CareerEndUITests: XCTestCase {
         let filename = "career_end_\(name)_\(model)"
         let data = XCUIScreen.main.screenshot().pngRepresentation
         let rotatedData = data
-        let artifactDirectory = URL(fileURLWithPath: "/private/tmp/rsm-freebuff-career-end-light-cards/artifacts", isDirectory: true)
+        let artifactDirectory = URL(fileURLWithPath: "/private/tmp/rsm-career-summary-copy-artifacts", isDirectory: true)
         try? FileManager.default.createDirectory(at: artifactDirectory, withIntermediateDirectories: true)
         let screenshotURL = artifactDirectory.appendingPathComponent("\(filename).png")
         try? rotatedData.write(to: screenshotURL)
@@ -84,6 +84,10 @@ final class CareerEndUITests: XCTestCase {
         XCTAssertTrue(summary.label.contains("Morgan Example"), summary.label)
         XCTAssertTrue(summary.label.contains("Old Trafford Reds"), summary.label)
         XCTAssertTrue(summary.label.contains("4 seasons"), summary.label)
+        XCTAssertTrue(summary.label.contains("2000 to 2004"), summary.label)
+        XCTAssertTrue(summary.staticTexts["4 seasons · 2000–2004"].exists,
+                      "Year numbers must remain ungrouped in the visible summary")
+        shot(app, "summary_years")
 
         let honours = waitFor(app, "career.end.honours")
         XCTAssertTrue(honours.label.contains("First Division title"), honours.label)
