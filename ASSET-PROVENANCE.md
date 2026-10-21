@@ -43,7 +43,7 @@ No font files are bundled. There are no `.ttf`, `.otf`, `.ttc` or `.woff` files,
 
 ### Audio
 
-No audio files are bundled. The repository has no `.caf`, `.mp3`, `.wav`, `.m4a` or `.aiff` files. `SoundManager.swift` looks for optional bundled cues (for example `whistle_fulltime`, `goal_crowd`) and falls back to tones it synthesises in code (`makeToneData`). If audio files are added before release, each needs its own provenance entry and licence record.
+No audio files are bundled, and the app has no sound by design — there is no audio code. If audio is ever added, each file needs its own provenance entry and licence record.
 
 ## Record status (for release readiness)
 

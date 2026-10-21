@@ -543,21 +543,25 @@ struct LegendsLiveMatchView: View {
 
                 Spacer()
 
-                Picker("Mentality", selection: Binding(get: { live.userMentality }, set: { live.userMentality = $0 })) {
-                    ForEach(Mentality.allCases) { mentality in
-                        Text(mentality.rawValue).tag(mentality)
+                Menu {
+                    Picker("Mentality", selection: Binding(get: { live.userMentality }, set: { live.userMentality = $0 })) {
+                        ForEach(Mentality.allCases) { mentality in
+                            Text(mentality.rawValue).tag(mentality)
+                        }
                     }
+                } label: {
+                    tacticMenuLabel(live.userMentality.rawValue, color: Retro.accent)
                 }
-                .pickerStyle(.menu)
-                .tint(Retro.accent)
 
-                Picker("Instruction", selection: Binding(get: { live.userInstruction }, set: { live.userInstruction = $0 })) {
-                    ForEach(MatchInstruction.allCases) { instruction in
-                        Text(instruction.rawValue).tag(instruction)
+                Menu {
+                    Picker("Instruction", selection: Binding(get: { live.userInstruction }, set: { live.userInstruction = $0 })) {
+                        ForEach(MatchInstruction.allCases) { instruction in
+                            Text(instruction.rawValue).tag(instruction)
+                        }
                     }
+                } label: {
+                    tacticMenuLabel(live.userInstruction.rawValue, color: Retro.highlight)
                 }
-                .pickerStyle(.menu)
-                .tint(Retro.highlight)
 
                 Button {
                     Haptics.tap()
@@ -592,6 +596,25 @@ struct LegendsLiveMatchView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .background(Retro.panel)
+    }
+
+    /// Single-line capsule label for the mentality/instruction menus — the
+    /// system `.menu` picker style wrapped longer values ("Attacking",
+    /// "Balanced") onto two lines in the crowded landscape control bar.
+    private func tacticMenuLabel(_ title: String, color: Color) -> some View {
+        HStack(spacing: 4) {
+            Text(title)
+                .lineLimit(1)
+                .fixedSize()
+            Image(systemName: "chevron.up.chevron.down")
+                .font(.system(size: 9, weight: .bold))
+        }
+        .font(.system(.caption, design: .monospaced).bold())
+        .foregroundStyle(color)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Retro.background.opacity(0.5))
+        .clipShape(Capsule())
     }
 
     private var momentumBar: some View {

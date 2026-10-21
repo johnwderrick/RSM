@@ -125,13 +125,11 @@ enum Haptics {
         #if os(iOS)
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         #endif
-        SoundManager.shared.play(.buttonTap)
     }
     static func impact() {
         #if os(iOS)
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         #endif
-        SoundManager.shared.play(.buttonTap)
     }
     static func success() {
         #if os(iOS)

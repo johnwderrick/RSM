@@ -65,7 +65,6 @@ extension GameStore {
         careerAchievementPoints += kind.points
         pendingAchievementCelebration = kind
         addNews(.board, "Achievement unlocked", "🏅 \(kind.rawValue) — \(kind.subtitle)")
-        SoundManager.shared.play(kind == .promotion ? .promotion : .trophyLift)
     }
 
     /// A short, specific line of context for the achievement's history
@@ -172,7 +171,6 @@ extension GameStore {
         addNews(.board, headline,
                "\(retiree.name) has been inducted as a \(clubName) legend after \(yearsAtClub) season\(yearsAtClub == 1 ? "" : "s") at the club.",
                player: retiree, clubName: clubName)
-        SoundManager.shared.play(.trophyLift)
     }
 
     private func legendBiography(_ player: Player, clubName: String, yearsAtClub: Int, appearances: Int, goals: Int,

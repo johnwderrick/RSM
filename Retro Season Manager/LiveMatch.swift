@@ -231,7 +231,6 @@ final class LiveMatch {
         guard loopTask == nil else { return }
         events.append(MatchEvent(minute: 0, side: nil, type: .kickOff, name: "Kick-off", note: nil))
         say("Kick-off at \(stadium). \(homeName) vs \(awayName). \(weather.glyph) \(weather.rawValue.lowercased()) conditions.")
-        SoundManager.shared.play(.whistleKickOff)
         #if DEBUG
         // Opt-in substitution UI fixture: keep the clock still while XCTest
         // selects real players; SKIP still runs the production match engine.
@@ -327,7 +326,6 @@ final class LiveMatch {
             isPaused = true
             events.append(MatchEvent(minute: 45, side: nil, type: .halfTime, name: "Half-time", note: nil))
             say("Half-time. \(homeShort) \(homeGoals)-\(awayGoals) \(awayShort).")
-            SoundManager.shared.play(.whistleHalfTime)
             runAISubstitutions(forcedAt: false)
         }
 
@@ -462,7 +460,6 @@ final class LiveMatch {
             events.append(MatchEvent(minute: minute, side: side, type: .yellowCard,
                                      name: player.name.uppercased(), note: nil))
             say("🟨 \(player.name) (\(teamName(side))) is booked.", side: side)
-            SoundManager.shared.play(.yellowCard)
         }
     }
 
@@ -478,7 +475,6 @@ final class LiveMatch {
         events.append(MatchEvent(minute: minute, side: side, type: .redCard,
                                  name: player.name.uppercased(), note: note))
         say("🟥 RED CARD! \(player.name) (\(teamName(side))) is sent off — \(note.lowercased()).", side: side)
-        SoundManager.shared.play(.redCard)
         redCardCount += 1
         // A red card is one of the biggest momentum swings in the game —
         // the side with a man advantage press on, the reduced side retreats.
@@ -505,7 +501,6 @@ final class LiveMatch {
                                  name: scorer.name.uppercased(), note: note))
         let how = note == "(PEN)" ? " from the spot" : (note == "(FK)" ? " with a free-kick" : "")
         say("⚽︎ GOAL! \(scorer.name) scores\(how) for \(teamName(side))!\(assistNote) \(homeShort) \(homeGoals)-\(awayGoals) \(awayShort)", side: side)
-        SoundManager.shared.play(.goalCrowd)
         bumpMomentum(toward: side, by: 0.22)
         // The crowd doesn't sing for every single goal — but the home end
         // celebrating one of their own is a nice, occasional flourish.
@@ -620,7 +615,6 @@ final class LiveMatch {
                                  name: "\(surnameOf(on.name)) ▸ \(surnameOf(off.player.name))",
                                  note: nil))
         say("Substitution for \(teamName(side)): \(on.name) on for \(off.player.name).", side: side)
-        SoundManager.shared.play(.substitution)
         lastSubOffName = off.player.name
         lastSubOnName = on.name
         substitutionFlashCount += 1
@@ -797,7 +791,6 @@ final class LiveMatch {
         computeUserRatings()
         say("Full-time! \(homeShort) \(homeGoals)-\(awayGoals) \(awayShort).")
         events.append(MatchEvent(minute: minute, side: nil, type: .fullTime, name: "Full-time", note: nil))
-        SoundManager.shared.play(.whistleFullTime)
         loopTask?.cancel()
         loopTask = nil
     }
