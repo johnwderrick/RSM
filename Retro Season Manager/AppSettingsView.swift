@@ -4,7 +4,7 @@
 //
 //  Settings reachable from the top-level "Choose your experience" screen,
 //  before either mode has been entered. Genuinely global concerns only
-//  (audio, app info) — Career Mode's own save-specific settings live in
+//  (app info) — Career Mode's own save-specific settings live in
 //  SettingsView, RSM Legends' in LegendsSettingsView. This screen used to
 //  just show SettingsView(store:) directly, which meant Career Mode's
 //  Manager Profile/Board Confidence/Trophy Cabinet menu (all built around
@@ -15,8 +15,6 @@
 import SwiftUI
 
 struct AppSettingsView: View {
-    @State private var soundEnabled = !SoundManager.shared.isMuted
-
     private var appVersion: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "—"
@@ -32,19 +30,6 @@ struct AppSettingsView: View {
                         .font(.system(.headline, design: .monospaced).bold())
                         .foregroundStyle(.white)
                         .padding(.top, 8)
-
-                    appSettingsPanel(title: "AUDIO", icon: "speaker.wave.2.fill") {
-                        Toggle(isOn: $soundEnabled) {
-                            Text("Sound Effects")
-                                .font(.system(.footnote, design: .monospaced).bold())
-                                .foregroundStyle(.white)
-                        }
-                        .tint(Retro.emerald)
-                        .onChange(of: soundEnabled) { _, newValue in
-                            SoundManager.shared.isMuted = !newValue
-                            if newValue { SoundManager.shared.play(.buttonTap) }
-                        }
-                    }
 
                     appSettingsPanel(title: "ABOUT", icon: "info.circle.fill") {
                         VStack(alignment: .leading, spacing: 6) {

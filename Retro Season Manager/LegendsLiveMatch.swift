@@ -817,7 +817,6 @@ final class LegendsLiveMatch {
     func start() {
         guard loopTask == nil else { return }
         say("Kick-off!")
-        SoundManager.shared.play(.whistleKickOff)
         isPaused = false
         loopTask = Task { [weak self] in await self?.loop() }
     }
@@ -982,7 +981,6 @@ final class LegendsLiveMatch {
             isHalfTime = true
             isPaused = true
             say("Half-time.")
-            SoundManager.shared.play(.whistleHalfTime)
             return
         }
 
@@ -1474,7 +1472,6 @@ final class LegendsLiveMatch {
             let assist = event.creatorName.map { " (assist: \($0))" } ?? ""
             say("⚽︎ GOAL! \(event.shooterName) scores! \(confirmation)\(assist) \(store.profile.clubName) \(teamGoals)-\(opponentGoals) \(opponent.name)", side: .home)
             bumpMomentum(towardUser: true, by: 0.22)
-            SoundManager.shared.play(.goalCrowd)
         } else {
             opponentGoals += 1
             let assist = event.creatorName.map { " (assist: \($0))" } ?? ""
@@ -1509,7 +1506,6 @@ final class LegendsLiveMatch {
         isFinished = true
         isPaused = true
         say("Full-time! \(store.profile.clubName) \(teamGoals)-\(opponentGoals) \(opponent.name)")
-        SoundManager.shared.play(.whistleFullTime)
     }
 
     // MARK: - Substitutions
@@ -1538,7 +1534,6 @@ final class LegendsLiveMatch {
         lastSubOffName = offName
         lastSubOnName = onName
         say("🔄 \(onName) replaces \(offName).", side: .home)
-        SoundManager.shared.play(.substitution)
         if minute > 45 { secondHalfEventCount += 1 }
         return true
     }

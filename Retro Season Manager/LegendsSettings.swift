@@ -85,9 +85,8 @@ enum LegendsPresentation {
     }
 
     /// Returns every presentation preference to its default (the originally
-    /// accepted behaviour). Sound and Auto-Save are intentionally left
-    /// alone — sound is an app-wide preference shared with Career Mode,
-    /// and autosave is a data-safety choice, not presentation.
+    /// accepted behaviour). Auto-Save is intentionally left alone — it's a
+    /// data-safety choice, not presentation.
     static func restoreDefaults(defaults: UserDefaults = .standard) {
         defaults.removeObject(forKey: reduceMotionKey)
         defaults.removeObject(forKey: commentarySizeKey)
@@ -106,7 +105,6 @@ struct LegendsSettingsView: View {
     var onNavigate: ((LegendsNavItem) -> Void)? = nil
     var onBack: () -> Void
 
-    @State private var soundEnabled = !SoundManager.shared.isMuted
     @AppStorage(LegendsPresentation.reduceMotionKey) private var reduceInterfaceMotion = false
     @AppStorage(LegendsPresentation.commentarySizeKey) private var commentarySizeRaw = LegendsPresentation.CommentaryTextSize.medium.rawValue
     @State private var lastSaved: Date?
@@ -265,18 +263,6 @@ struct LegendsSettingsView: View {
     private var presentationSection: some View {
         LegendsDashboardPanel(title: "PRESENTATION", icon: "slider.horizontal.3", color: LegendsPalette.blue) {
             VStack(alignment: .leading, spacing: 12) {
-                Toggle(isOn: $soundEnabled) {
-                    settingLabel("Sound Effects", detail: "Interface and match audio (app-wide)")
-                }
-                .tint(LegendsPalette.green)
-                .accessibilityIdentifier("settings.sound.toggle")
-                .onChange(of: soundEnabled) { _, newValue in
-                    SoundManager.shared.isMuted = !newValue
-                    if newValue { SoundManager.shared.play(.buttonTap) }
-                }
-
-                Divider().overlay(LegendsPalette.navy.opacity(0.12))
-
                 Toggle(isOn: $reduceInterfaceMotion) {
                     settingLabel("Reduce Interface Motion",
                                  detail: "Skips entrance fades and button animations in Legends")
@@ -301,10 +287,8 @@ struct LegendsSettingsView: View {
                 Button {
                     Haptics.tap()
                     LegendsPresentation.restoreDefaults()
-                    soundEnabled = !SoundManager.shared.isMuted
                     reduceInterfaceMotion = LegendsPresentation.reduceInterfaceMotion
                     commentarySizeRaw = LegendsPresentation.commentaryTextSize.rawValue
-                    SoundManager.shared.play(.buttonTap)
                 } label: {
                     Text("RESTORE PRESENTATION DEFAULTS")
                         .font(.system(size: 11, weight: .black, design: .monospaced))

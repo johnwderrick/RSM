@@ -245,7 +245,6 @@ struct ExperienceSelectView: View {
         // press instead of relying on scale/brightness alone.
         Button {
             Haptics.tap()
-            SoundManager.shared.play(.menuSettings)
             showingSettings = true
         } label: {
             Color.clear
@@ -289,7 +288,6 @@ struct ExperienceSelectView: View {
 
     private func enter(_ destination: GameExperience) {
         Haptics.tap()
-        SoundManager.shared.play(destination == .career ? .menuCareer : .menuLegends)
         experience = destination
     }
 }

@@ -8,10 +8,8 @@
 //  the post-match result panel below are unchanged from the original
 //  instant-result version; only what happens in between changed.
 //
-//  Phase 10 polish: reuses LiveMatch's own sound-cue vocabulary
-//  (whistleKickOff/whistleFullTime/goalCrowd/promotion/trophyLift)
-//  rather than inventing new cues, and adds an entrance animation plus
-//  outcome-specific haptics for the result reveal.
+//  Phase 10 polish: adds an entrance animation plus outcome-specific
+//  haptics for the result reveal.
 //
 
 import SwiftUI
@@ -219,23 +217,13 @@ struct LegendsMatchView: View {
         liveMatch = LegendsLiveMatch(store: store, opponent: opponent)
     }
 
-    /// Sound + haptic cues for a just-finished match, played once right
-    /// as the result becomes available. The in-match whistle/goal cues
-    /// already played live during `LegendsLiveMatchView` — this only
-    /// covers what's genuinely new information at this point: the
-    /// outcome haptic and any reward/promotion/retirement flourishes.
+    /// Outcome haptic for a just-finished match, played once right as the
+    /// result becomes available.
     private func announceResult(_ summary: LegendsMatchOutcomeSummary) {
         switch summary.result.outcome {
         case .win: Haptics.success()
         case .draw: Haptics.tap()
         case .loss: Haptics.warning()
-        }
-        if summary.promoted { SoundManager.shared.play(.promotion) }
-        if summary.leveledUp || summary.newManager != nil || summary.newStadium != nil || !summary.completedChallenges.isEmpty {
-            SoundManager.shared.play(.trophyLift)
-        }
-        if let retiredCount = summary.seasonAdvance?.retiredCards.count, retiredCount > 0 {
-            SoundManager.shared.play(.redCard)
         }
     }
 
