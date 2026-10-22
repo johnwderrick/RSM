@@ -164,18 +164,50 @@ final class CareerCalendarUITests: XCTestCase {
         let scroll = app.scrollViews["career.calendar.scroll"]
         XCTAssertTrue(scroll.waitForExistence(timeout: 5), "Calendar's main scroll container missing")
 
-        // August can hold 270+ authoritative rows (both national cups draw
-        // their 116-tie first rounds in-month), so allow a long scroll.
-        var swipes = 0
-        while !dayDetail.isHittable && swipes < 20 {
-            scroll.swipeUp()
-            swipes += 1
+        // August can hold hundreds of rows. A fast swipe can carry the
+        // short selected-day header past the viewport between snapshots.
+        // Measure the target after each gesture and reverse if necessary;
+        // near the target, drag slowly and hold to avoid inertial overshoot.
+        var steps = 0
+        var trace: [String] = []
+        while steps < 60 {
+            let visible = scroll.frame.intersection(app.frame).insetBy(dx: 4, dy: 4)
+            let target = dayDetail.frame
+            trace.append("step=\(steps) target=\(target) viewport=\(visible)")
+            if visible.contains(target), dayDetail.isHittable { break }
+            guard visible.width > 20, visible.height > 40 else { break }
+
+            let distance: CGFloat
+            if target.maxY > visible.maxY {
+                distance = target.maxY - visible.maxY + 12
+            } else if target.minY < visible.minY {
+                distance = target.minY - visible.minY - 12
+            } else {
+                // A geometrically visible but obstructed target must still
+                // become hittable; scrolling must not hide that failure.
+                Thread.sleep(forTimeInterval: 0.3)
+                steps += 1
+                continue
+            }
+            let far = abs(distance) > visible.height * 1.5
+            let travel = min(abs(distance), visible.height * 0.75)
+            let dy = distance > 0 ? -travel : travel
+            let origin = app.coordinate(withNormalizedOffset: .zero)
+            let start = origin.withOffset(CGVector(dx: visible.midX, dy: visible.midY - dy / 2))
+            start.press(forDuration: 0.05,
+                        thenDragTo: start.withOffset(CGVector(dx: 0, dy: dy)),
+                        withVelocity: far ? .fast : .slow,
+                        thenHoldForDuration: far ? 0 : 0.3)
             Thread.sleep(forTimeInterval: 0.3)
+            steps += 1
         }
-        if !dayDetail.isHittable {
-            try? app.debugDescription.data(using: .utf8)!
-                .write(to: URL(fileURLWithPath: "/tmp/cal-tree-scroll.txt"))
-        }
+        let diagnostic = XCTAttachment(string: trace.joined(separator: "\n"))
+        diagnostic.name = "calendar-scroll-target-frames"
+        diagnostic.lifetime = .keepAlways
+        add(diagnostic)
+        let viewport = scroll.frame.intersection(app.frame).insetBy(dx: 4, dy: 4)
+        XCTAssertTrue(viewport.contains(dayDetail.frame),
+                      "Lower content must be fully visible after scrolling")
         XCTAssertTrue(dayDetail.isHittable, "Lower content should be reachable by scrolling")
 
         let heldY = dayDetail.frame.minY

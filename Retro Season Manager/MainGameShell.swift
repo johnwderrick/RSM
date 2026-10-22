@@ -340,6 +340,9 @@ struct TopBar: View {
                 dateBlock
             }
             ContinueButton(store: store)
+                // The action is offered its width before the club name,
+                // which truncates first when large text fills the bar.
+                .layoutPriority(1)
         }
         .padding(.horizontal, compact ? 10 : 16)
         .padding(.vertical, compact ? 6 : 10)
@@ -381,6 +384,7 @@ struct ContinueButton: View {
 
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     private var compact: Bool { verticalSizeClass == .compact }
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         Button {
@@ -400,7 +404,7 @@ struct ContinueButton: View {
                 }
             }
         } label: {
-            Text(label)
+            labelText
                 .font(.system(.callout, design: .monospaced).bold())
                 .padding(.horizontal, compact ? 12 : 18)
                 .padding(.vertical, compact ? 8 : 10)
@@ -415,7 +419,47 @@ struct ContinueButton: View {
                 .shadow(color: (store.isUserMatchToday ? Retro.highlight : Retro.emerald).opacity(0.45), radius: 6, y: 3)
         }
         .buttonStyle(PressableButtonStyle())
+        .accessibilityLabel(label)
         .accessibilityIdentifier("career.continue")
+    }
+
+    /// At accessibility sizes the label keeps the requested type size on
+    /// two balanced lines, which leaves the rest of the top bar its room
+    /// (one full-size line squeezed the club identity and date to a
+    /// character per line). Scaling down is only the fallback if even two
+    /// lines cannot fit.
+    @ViewBuilder
+    private var labelText: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            ViewThatFits(in: .horizontal) {
+                Text(twoLineLabel)
+                    .multilineTextAlignment(.center)
+                    .fixedSize()
+                Text(twoLineLabel)
+                    .multilineTextAlignment(.center)
+                    .minimumScaleFactor(0.5)
+            }
+        } else {
+            Text(label)
+        }
+    }
+
+    /// The label broken at the space nearest its middle ("GO TO" / "MATCH").
+    private var twoLineLabel: String {
+        let words = label.split(separator: " ")
+        guard words.count > 1 else { return label }
+        let half = label.count / 2
+        var bestBreak = 1
+        var bestDistance = Int.max
+        for split in 1..<words.count {
+            let firstLine = words[..<split].joined(separator: " ")
+            let distance = abs(firstLine.count - half)
+            if distance < bestDistance {
+                bestBreak = split
+                bestDistance = distance
+            }
+        }
+        return words[..<bestBreak].joined(separator: " ") + "\n" + words[bestBreak...].joined(separator: " ")
     }
 
     private var label: String {

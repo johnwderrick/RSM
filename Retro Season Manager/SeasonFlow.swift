@@ -25,6 +25,13 @@ struct SeasonReviewView: View {
     /// white cards, reserved for actual awards.
     static let honourGold = Color(red: 0.72, green: 0.55, blue: 0.10)
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    /// Accessibility text sizes: panels stack into one column, lines wrap
+    /// instead of truncating, and the footer keeps only the handoff
+    /// action so the scrolling review keeps most of the screen.
+    private var largeText: Bool { dynamicTypeSize.isAccessibilitySize }
+    @ScaledMetric(relativeTo: .callout) private var rankWidth: CGFloat = 22
+
     var body: some View {
         ZStack {
             CareerPalette.canvas.ignoresSafeArea()
@@ -39,7 +46,10 @@ struct SeasonReviewView: View {
 
                     verdictPanel
 
-                    HStack(alignment: .top, spacing: 14) {
+                    let panels = largeText
+                        ? AnyLayout(VStackLayout(spacing: 14))
+                        : AnyLayout(HStackLayout(alignment: .top, spacing: 14))
+                    panels {
                         standingsPanel
                         awardsPanel
                     }
@@ -47,6 +57,11 @@ struct SeasonReviewView: View {
                     teamOfTheSeasonPanel
 
                     if !store.pendingJobOffers.isEmpty { jobOffersPanel }
+
+                    if largeText && !store.wasSacked {
+                        nextSeasonHintText
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 20)
@@ -55,29 +70,27 @@ struct SeasonReviewView: View {
                 .frame(maxWidth: .infinity)
             }
             .accessibilityIdentifier(CareerIdentifiers.seasonReviewScroll)
-
             // Pinned footer — the season handoff stays reachable without
-            // scrolling, whatever the content depth above it.
-            VStack(spacing: 0) {
-                Spacer(minLength: 0)
+            // scrolling. safeAreaInset keeps it inside the visible screen at
+            // accessibility text sizes (the old ignoresSafeArea stack pushed
+            // CONTINUE past the bottom edge on iPhone 17 Pro).
+            .safeAreaInset(edge: .bottom, spacing: 0) {
                 continueFooter
             }
-            .ignoresSafeArea(edges: .bottom)
         }
         .font(.system(.body, design: .monospaced))
         .foregroundStyle(CareerPalette.ink)
+        // Contain, don't merge: without this the screen identifier lands on the
+        // scroll view and footer and masks their own identifiers.
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier(CareerIdentifiers.seasonReviewScreen)
     }
 
     /// The always-visible season handoff footer.
     private var continueFooter: some View {
         VStack(spacing: 8) {
-            if !store.wasSacked {
-                Text(nextSeasonHint)
-                    .font(.system(.caption2, design: .monospaced).bold())
-                    .foregroundStyle(CareerPalette.mutedInk)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+            if !store.wasSacked && !largeText {
+                nextSeasonHintText
             }
             continueButton
         }
@@ -94,6 +107,14 @@ struct SeasonReviewView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(CareerIdentifiers.seasonReviewFooter)
+    }
+
+    private var nextSeasonHintText: some View {
+        Text(nextSeasonHint)
+            .font(.system(.caption2, design: .monospaced).bold())
+            .foregroundStyle(CareerPalette.mutedInk)
+            .lineLimit(largeText ? nil : 1)
+            .minimumScaleFactor(0.8)
     }
 
     /// Where the handoff leads: the next season's label in the same
@@ -120,7 +141,7 @@ struct SeasonReviewView: View {
                     Text(store.champion?.name ?? "—")
                         .font(.system(.title3, design: .monospaced).bold())
                         .foregroundStyle(CareerPalette.ink)
-                        .lineLimit(1)
+                        .lineLimit(largeText ? nil : 1)
                         .minimumScaleFactor(0.6)
                 }
                 Spacer()
@@ -136,8 +157,9 @@ struct SeasonReviewView: View {
                 Text("\(store.userClub.name) finished \(ordinal(store.userPosition)) on \(store.userClub.points) pts")
                     .font(.system(.callout, design: .monospaced).bold())
                     .foregroundStyle(CareerPalette.ink)
-                    .lineLimit(1)
+                    .lineLimit(largeText ? nil : 1)
                     .minimumScaleFactor(0.7)
+                    .multilineTextAlignment(.center)
                 Text(store.seasonVerdict())
                     .font(.system(.footnote, design: .monospaced))
                     .foregroundStyle(met ? CareerPalette.line : Self.verdictMiss)
@@ -167,7 +189,7 @@ struct SeasonReviewView: View {
                     let isUser = club.id == store.userClub.id
                     HStack {
                         Text("\(index + 1)")
-                            .frame(width: 22, alignment: .leading)
+                            .frame(width: rankWidth, alignment: .leading)
                             .foregroundStyle(CareerPalette.mutedInk)
                         Text(club.shortName)
                             .foregroundStyle(CareerPalette.ink)
@@ -237,7 +259,7 @@ struct SeasonReviewView: View {
             Text(name)
                 .font(.system(.callout, design: .monospaced).bold())
                 .foregroundStyle(CareerPalette.ink)
-                .lineLimit(1)
+                .lineLimit(largeText ? nil : 1)
             if !detail.isEmpty {
                 Text(detail)
                     .font(.system(.caption2, design: .monospaced))
@@ -285,22 +307,27 @@ struct SeasonReviewView: View {
     }
 
     private func jobOfferRow(_ offer: JobOffer) -> some View {
-        HStack(spacing: 10) {
+        // Accessibility sizes put ACCEPT under the offer details so both
+        // keep the full row width.
+        let row = largeText
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10))
+            : AnyLayout(HStackLayout(spacing: 10))
+        return row {
             VStack(alignment: .leading, spacing: 2) {
                 Text(offer.clubName)
                     .font(.system(.callout, design: .monospaced).bold())
                     .foregroundStyle(CareerPalette.ink)
-                    .lineLimit(1)
+                    .lineLimit(largeText ? nil : 1)
                 Text("\(offer.divisionName) · prestige \(offer.prestige)")
                     .font(.system(.caption2, design: .monospaced))
                     .foregroundStyle(CareerPalette.mutedInk)
-                    .lineLimit(1)
+                    .lineLimit(largeText ? nil : 1)
                 Text("Budget \(formatMoney(offer.transferBudget)) · \(offer.expectedObjective)")
                     .font(.system(.caption2, design: .monospaced))
                     .foregroundStyle(CareerPalette.mutedInk)
-                    .lineLimit(1)
+                    .lineLimit(largeText ? nil : 1)
             }
-            Spacer(minLength: 6)
+            if !largeText { Spacer(minLength: 6) }
             Button {
                 Haptics.tap()
                 store.acceptJobOffer(offer)
@@ -340,6 +367,10 @@ struct SeasonReviewView: View {
         } label: {
             Text(store.isFinalSeason ? "VIEW CAREER SUMMARY ▸" : "CONTINUE TO SEASON \(store.season + 1) ▸")
                 .font(.system(.callout, design: .monospaced).bold())
+                .multilineTextAlignment(.center)
+                // Wrapped accessibility-size labels keep clear of the edges.
+                .padding(.horizontal, largeText ? 12 : 0)
+                .padding(.vertical, largeText ? 6 : 0)
                 .frame(maxWidth: .infinity, minHeight: 44)
                 .foregroundStyle(Color.white)
                 .background(mustChooseJob ? CareerPalette.mutedInk.opacity(0.35) : CareerPalette.line)
@@ -356,7 +387,8 @@ struct SeasonReviewView: View {
                 .font(.system(.caption, design: .monospaced).bold())
                 .foregroundStyle(CareerPalette.ink)
             let xi = store.teamOfTheSeason()
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
+            // One column at accessibility sizes keeps each surname whole.
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: largeText ? 1 : 3), spacing: 6) {
                 ForEach(xi) { player in
                     HStack(spacing: 6) {
                         Text(player.careerPositionLabel)

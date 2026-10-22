@@ -223,6 +223,7 @@ struct PreMatchHubView: View {
     private func teamBadge(_ short: String, _ name: String, _ stars: Int, _ color: Color) -> some View {
         VStack(spacing: 5) {
             CrestView(shortName: short, size: 48, color: color)
+                .accessibilityHidden(true) // the club name below is the announced label
             Text(name)
                 .font(.system(size: 10, weight: .black, design: .monospaced))
                 .foregroundStyle(CareerPalette.ink)
@@ -269,6 +270,7 @@ struct PreMatchHubView: View {
                 Image(systemName: "chart.bar.fill")
                     .font(.system(size: 9, weight: .black))
                     .foregroundStyle(CareerPalette.line)
+                    .accessibilityHidden(true)
                 Text("MATCH ODDS")
                     .font(.system(size: 8, weight: .black, design: .monospaced))
                     .foregroundStyle(CareerPalette.mutedInk)
@@ -588,6 +590,7 @@ struct PreMatchHubView: View {
             Image(systemName: symbol)
                 .font(.system(size: 10, weight: .black))
                 .foregroundStyle(CareerPalette.line)
+                .accessibilityHidden(true)
             Text(text)
                 .font(.system(size: 9, weight: .black, design: .monospaced))
                 .foregroundStyle(CareerPalette.ink)
@@ -647,6 +650,14 @@ struct MatchView: View {
     /// control on screen there, instead of squeezing the commentary
     /// feed (and the controls) out of the layout.
     private var compact: Bool { verticalSizeClass == .compact }
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    /// Accessibility text sizes no longer fit the fixed landscape layout:
+    /// the score bar stays pinned, everything below it scrolls, and rows
+    /// wrap or stack instead of truncating — the user's chosen size is
+    /// never capped.
+    private var largeText: Bool { dynamicTypeSize.isAccessibilitySize }
+    @ScaledMetric(relativeTo: .body) private var clockWidth: CGFloat = 64
+    @ScaledMetric(relativeTo: .callout) private var statValueWidth: CGFloat = 64
 
     private var userGoals: Int { live.userSide == .home ? live.homeGoals : live.awayGoals }
     private var opponentGoals: Int { live.userSide == .home ? live.awayGoals : live.homeGoals }
@@ -664,14 +675,25 @@ struct MatchView: View {
             }
             .ignoresSafeArea()
             Retro.background.opacity(0.82).ignoresSafeArea()
-            VStack(spacing: 0) {
-                scoreBar
-                commentaryFeed
-                Divider().overlay(Retro.accent.opacity(0.2))
-                statsBlock
-                infoRow
-                controlBar
+            Group {
+                if largeText {
+                    largeTextLiveLayout
+                } else {
+                    VStack(spacing: 0) {
+                        scoreBar
+                        commentaryFeed
+                        Divider().overlay(Retro.accent.opacity(0.2))
+                        statsBlock
+                        infoRow
+                        controlBar
+                    }
+                }
             }
+            // The half-time and full-time cards cover the live screen; keep
+            // its controls out of the accessibility tree too, so assistive
+            // technologies cannot reach (or hit-test onto) SKIP, SUBS or the
+            // pickers behind the card's own actions.
+            .accessibilityHidden(live.isHalfTime || live.isFinished)
             if penaltyFlash { penaltyFlashOverlay }
             if redCardFlash { redCardFlashOverlay }
             if goalFlash { goalFlashOverlay }
@@ -908,6 +930,32 @@ struct MatchView: View {
         .allowsHitTesting(false)
     }
 
+    /// The accessibility-size live layout: clock, score and PAUSE stay
+    /// pinned, while the commentary feed, stats, match info and every
+    /// control share one scroll container below them. Without it the
+    /// fixed rows outgrow the landscape screen, and the overflow also
+    /// pushes the full-time overlay (sized by the same ZStack) off it.
+    private var largeTextLiveLayout: some View {
+        VStack(spacing: 0) {
+            scoreBar
+            GeometryReader { geo in
+                ScrollView {
+                    VStack(spacing: 0) {
+                        // The feed keeps most of the first screenful; the
+                        // stats and controls follow it by scrolling.
+                        commentaryFeed
+                            .frame(height: max(geo.size.height * 0.6, 120))
+                        Divider().overlay(Retro.accent.opacity(0.2))
+                        statsBlock
+                        infoRow
+                        controlBar
+                    }
+                }
+                .accessibilityIdentifier("career.match.largeTextScroll")
+            }
+        }
+    }
+
     // MARK: Commentary
 
     private var commentaryFeed: some View {
@@ -965,31 +1013,22 @@ struct MatchView: View {
 
     private var scoreBar: some View {
         VStack(spacing: 6) {
-            HStack(spacing: 12) {
-                Text(clockText)
-                    .font(.system(.body, design: .monospaced).bold())
-                    .foregroundStyle(statusColor)
-                    .frame(width: 64, alignment: .leading)
-                Spacer()
-                HStack(spacing: 10) {
-                    Text(live.homeShort)
-                        .fontWeight(.bold)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                    Text("\(live.homeGoals) - \(live.awayGoals)")
-                        .font(.system(.title3, design: .monospaced).bold())
-                        .foregroundStyle(Retro.highlight)
-                        .monospacedDigit()
-                    Text(live.awayShort)
-                        .fontWeight(.bold)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
+            if largeText {
+                // One row while it fits; otherwise clock and PAUSE above
+                // the score, each at the full requested size.
+                ViewThatFits(in: .horizontal) {
+                    scoreBarRow
+                    VStack(spacing: 6) {
+                        HStack(spacing: 12) {
+                            clockLabel
+                            Spacer()
+                            playPauseButton
+                        }
+                        scoreLabel
+                    }
                 }
-                .accessibilityElement(children: .ignore)
-                .accessibilityIdentifier("career.match.score")
-                .accessibilityLabel("\(live.homeName) \(live.homeGoals), \(live.awayName) \(live.awayGoals)")
-                Spacer()
-                playPauseButton
+            } else {
+                scoreBarRow
             }
             progressDots
         }
@@ -997,6 +1036,43 @@ struct MatchView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
         .background(Retro.panel)
+    }
+
+    private var scoreBarRow: some View {
+        HStack(spacing: 12) {
+            clockLabel
+            Spacer()
+            scoreLabel
+            Spacer()
+            playPauseButton
+        }
+    }
+
+    private var clockLabel: some View {
+        Text(clockText)
+            .font(.system(.body, design: .monospaced).bold())
+            .foregroundStyle(statusColor)
+            .frame(width: clockWidth, alignment: .leading)
+    }
+
+    private var scoreLabel: some View {
+        HStack(spacing: 10) {
+            Text(live.homeShort)
+                .fontWeight(.bold)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text("\(live.homeGoals) - \(live.awayGoals)")
+                .font(.system(.title3, design: .monospaced).bold())
+                .foregroundStyle(Retro.highlight)
+                .monospacedDigit()
+            Text(live.awayShort)
+                .fontWeight(.bold)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityIdentifier("career.match.score")
+        .accessibilityLabel("\(live.homeName) \(live.homeGoals), \(live.awayName) \(live.awayGoals)")
     }
 
     private var clockText: String {
@@ -1050,8 +1126,10 @@ struct MatchView: View {
             Text("\(live.stadium) · Att. \(live.attendance.formatted())")
                 .font(.system(.caption, design: .monospaced))
                 .foregroundStyle(Retro.text.opacity(0.8))
-                .lineLimit(1)
+                .lineLimit(largeText ? nil : 1)
                 .minimumScaleFactor(0.7)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: largeText)
 
             if compact {
                 // Phone landscape: the six fixed rows squeezed the
@@ -1087,8 +1165,10 @@ struct MatchView: View {
             .font(.system(.caption2, design: .monospaced).bold())
             .foregroundStyle(Retro.text.opacity(0.85))
             .monospacedDigit()
-            .lineLimit(1)
+            .lineLimit(largeText ? nil : 1)
             .minimumScaleFactor(0.6)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: largeText)
             .frame(maxWidth: .infinity)
             .accessibilityElement(children: .ignore)
             .accessibilityIdentifier("career.match.statsLine")
@@ -1124,57 +1204,104 @@ struct MatchView: View {
     private var halfTimeSummaryOverlay: some View {
         ZStack {
             Color.black.opacity(0.75).ignoresSafeArea()
-            VStack(spacing: 12) {
-                Text("HALF TIME")
-                    .font(.system(.title2, design: .monospaced).bold())
-                    .foregroundStyle(Retro.accent)
-                Text("\(live.homeName) \(live.homeGoals) - \(live.awayGoals) \(live.awayName)")
-                    .font(.system(.title3, design: .monospaced).bold())
-                    .foregroundStyle(Retro.highlight)
-                    .multilineTextAlignment(.center)
-                Text(halfTimeNarrative)
-                    .font(.system(.callout, design: .monospaced))
-                    .foregroundStyle(Retro.text)
-                    .multilineTextAlignment(.center)
-                VStack(spacing: 6) {
-                    ForEach(Array(matchStatPairs.enumerated()), id: \.offset) { _, stat in
-                        statRow(home: stat.0, label: stat.1, away: stat.2)
+            if largeText {
+                // Accessibility sizes: the recap scrolls and the resume
+                // action is pinned beneath it, as on the full-time overlay.
+                VStack(spacing: 0) {
+                    ScrollView {
+                        halfTimeRecap
+                            .padding(24)
+                            .frame(maxWidth: 720)
+                            .background(Retro.panel)
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                            .padding(24)
+                            .frame(maxWidth: .infinity)
                     }
+                    halfTimeResumeButton
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 8)
+                        .background(Retro.panel)
                 }
-                Button {
-                    live.resume()
-                } label: {
-                    Text("CONTINUE TO 2ND HALF ▸")
-                        .font(.system(.body, design: .monospaced).bold())
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(Retro.accent)
-                        .foregroundStyle(Retro.background)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
+            } else {
+                VStack(spacing: 12) {
+                    halfTimeRecap
+                    halfTimeResumeButton
                 }
-                .buttonStyle(.plain)
+                .padding(24)
+                .frame(maxWidth: 420)
+                .background(Retro.panel)
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .padding(24)
             }
-            .padding(24)
-            .frame(maxWidth: 420)
-            .background(Retro.panel)
-            .clipShape(RoundedRectangle(cornerRadius: 14))
-            .padding(24)
         }
     }
 
-    private func statRow(home: String, label: String, away: String) -> some View {
-        HStack {
-            Text(home)
+    private var halfTimeRecap: some View {
+        VStack(spacing: 12) {
+            Text("HALF TIME")
+                .font(.system(.title2, design: .monospaced).bold())
                 .foregroundStyle(Retro.accent)
-                .frame(width: 64, alignment: .leading)
-            Spacer()
-            Text(label)
-                .font(.system(.caption2, design: .monospaced))
-                .foregroundStyle(Retro.text.opacity(0.85))
-            Spacer()
-            Text(away)
+            Text("\(live.homeName) \(live.homeGoals) - \(live.awayGoals) \(live.awayName)")
+                .font(.system(.title3, design: .monospaced).bold())
+                .foregroundStyle(Retro.highlight)
+                .multilineTextAlignment(.center)
+            Text(halfTimeNarrative)
+                .font(.system(.callout, design: .monospaced))
                 .foregroundStyle(Retro.text)
-                .frame(width: 64, alignment: .trailing)
+                .multilineTextAlignment(.center)
+            VStack(spacing: 6) {
+                ForEach(Array(matchStatPairs.enumerated()), id: \.offset) { _, stat in
+                    statRow(home: stat.0, label: stat.1, away: stat.2)
+                }
+            }
+        }
+    }
+
+    private var halfTimeResumeButton: some View {
+        Button {
+            live.resume()
+        } label: {
+            Text("CONTINUE TO 2ND HALF ▸")
+                .font(.system(.body, design: .monospaced).bold())
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(Retro.accent)
+                .foregroundStyle(Retro.background)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("career.match.halfTime.resume")
+    }
+
+    private func statRow(home: String, label: String, away: String) -> some View {
+        let homeText = Text(home)
+            .foregroundStyle(Retro.accent)
+            .frame(width: statValueWidth, alignment: .leading)
+        let labelText = Text(label)
+            .font(.system(.caption2, design: .monospaced))
+            .foregroundStyle(Retro.text.opacity(0.85))
+        let awayText = Text(away)
+            .foregroundStyle(Retro.text)
+            .frame(width: statValueWidth, alignment: .trailing)
+        return ViewThatFits(in: .horizontal) {
+            HStack {
+                homeText
+                Spacer()
+                labelText
+                Spacer()
+                awayText
+            }
+            // Accessibility sizes: the label moves above the two values
+            // once one line no longer fits.
+            VStack(spacing: 2) {
+                labelText
+                HStack {
+                    homeText
+                    Spacer()
+                    awayText
+                }
+            }
         }
         .font(.system(.callout, design: .monospaced).bold())
         .padding(.horizontal, 10)
@@ -1188,12 +1315,21 @@ struct MatchView: View {
     }
 
     private var infoRow: some View {
-        HStack {
-            Text(live.competition)
-            Spacer()
-            Text("\(live.weather.glyph) \(live.weather.rawValue)")
-            Spacer()
-            Text(live.dateText)
+        ViewThatFits(in: .horizontal) {
+            HStack {
+                Text(live.competition)
+                Spacer()
+                Text("\(live.weather.glyph) \(live.weather.rawValue)")
+                Spacer()
+                Text(live.dateText)
+            }
+            // Accessibility sizes: stacked, so nothing truncates.
+            VStack(alignment: .leading, spacing: 2) {
+                Text(live.competition)
+                Text("\(live.weather.glyph) \(live.weather.rawValue)")
+                Text(live.dateText)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .font(.system(.caption2, design: .monospaced))
         .foregroundStyle(Retro.text.opacity(0.7))
@@ -1210,85 +1346,71 @@ struct MatchView: View {
             if compact {
                 // Phone landscape: two balanced rows keep every control
                 // tappable at ~40pt heights instead of one overstuffed
-                // row that clipped the mentality/instruction menus.
-                HStack(spacing: 8) {
-                    ForEach([1.0, 2.0, 3.0], id: \.self) { value in
-                        speedButton(value)
+                // row that clipped the mentality/instruction menus. At
+                // accessibility sizes each row wraps onto further rows
+                // rather than squeezing its controls.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) {
+                        speedButtons
+                        skipButton
+                        Spacer()
+                        subsButton
                     }
-
-                    barButton("SKIP") { live.skipToEnd() }
-
-                    Spacer()
-
-                    barButton("SUBS \(live.userSubsLeft)/5") { showSubs = true }
-                        .disabled(live.userSubsLeft == 0)
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 8) {
+                            speedButtons
+                            skipButton
+                        }
+                        subsButton
+                    }
                 }
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("career.match.controlsRow1")
 
-                HStack(spacing: 8) {
-                    Text("MENTALITY")
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
-                        .foregroundStyle(Retro.text.opacity(0.8))
-                    Picker("Mentality", selection: Binding(
-                        get: { live.userMentality },
-                        set: { live.userMentality = $0 }
-                    )) {
-                        ForEach(Mentality.allCases) { Text($0.rawValue).tag($0) }
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) {
+                        mentalityLabel
+                        mentalityPicker
+                        instructionLabel
+                        instructionPicker
+                        Spacer()
                     }
-                    .pickerStyle(.menu)
-                    .tint(Retro.accent)
-                    .accessibilityIdentifier("career.match.mentality")
-
-                    Text("INSTRUCTION")
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
-                        .foregroundStyle(Retro.text.opacity(0.8))
-                    Picker("Instruction", selection: Binding(
-                        get: { live.userInstruction },
-                        set: { live.userInstruction = $0 }
-                    )) {
-                        ForEach(MatchInstruction.allCases) { Text($0.rawValue).tag($0) }
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 8) {
+                            mentalityLabel
+                            mentalityPicker
+                        }
+                        HStack(spacing: 8) {
+                            instructionLabel
+                            instructionPicker
+                        }
                     }
-                    .pickerStyle(.menu)
-                    .tint(Retro.highlight)
-                    .accessibilityIdentifier("career.match.instruction")
-
-                    Spacer()
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("career.match.controlsRow2")
             } else {
-                HStack(spacing: 8) {
-                    ForEach([1.0, 2.0, 3.0], id: \.self) { value in
-                        speedButton(value)
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) {
+                        speedButtons
+                        skipButton
+                        Spacer()
+                        mentalityPicker
+                        instructionPicker
+                        subsButton
                     }
-
-                    barButton("SKIP") { live.skipToEnd() }
-
-                    Spacer()
-
-                    Picker("Mentality", selection: Binding(
-                        get: { live.userMentality },
-                        set: { live.userMentality = $0 }
-                    )) {
-                        ForEach(Mentality.allCases) { Text($0.rawValue).tag($0) }
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 8) {
+                            speedButtons
+                            skipButton
+                            Spacer()
+                            subsButton
+                        }
+                        HStack(spacing: 8) {
+                            mentalityPicker
+                            instructionPicker
+                        }
                     }
-                    .pickerStyle(.menu)
-                    .tint(Retro.accent)
-                    .accessibilityIdentifier("career.match.mentality")
-
-                    Picker("Instruction", selection: Binding(
-                        get: { live.userInstruction },
-                        set: { live.userInstruction = $0 }
-                    )) {
-                        ForEach(MatchInstruction.allCases) { Text($0.rawValue).tag($0) }
-                    }
-                    .pickerStyle(.menu)
-                    .tint(Retro.highlight)
-                    .accessibilityIdentifier("career.match.instruction")
-
-                    barButton("SUBS \(live.userSubsLeft)/5") { showSubs = true }
-                        .disabled(live.userSubsLeft == 0)
                 }
             }
         }
@@ -1297,6 +1419,57 @@ struct MatchView: View {
         .background(Retro.panel)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("career.match.controlBar")
+    }
+
+    private var speedButtons: some View {
+        ForEach([1.0, 2.0, 3.0], id: \.self) { value in
+            speedButton(value)
+        }
+    }
+
+    private var skipButton: some View {
+        barButton("SKIP") { live.skipToEnd() }
+    }
+
+    private var subsButton: some View {
+        barButton("SUBS \(live.userSubsLeft)/5") { showSubs = true }
+            .disabled(live.userSubsLeft == 0)
+    }
+
+    private var mentalityLabel: some View {
+        Text("MENTALITY")
+            .font(.system(size: 9, weight: .bold, design: .monospaced))
+            .foregroundStyle(Retro.text.opacity(0.8))
+    }
+
+    private var instructionLabel: some View {
+        Text("INSTRUCTION")
+            .font(.system(size: 9, weight: .bold, design: .monospaced))
+            .foregroundStyle(Retro.text.opacity(0.8))
+    }
+
+    private var mentalityPicker: some View {
+        Picker("Mentality", selection: Binding(
+            get: { live.userMentality },
+            set: { live.userMentality = $0 }
+        )) {
+            ForEach(Mentality.allCases) { Text($0.rawValue).tag($0) }
+        }
+        .pickerStyle(.menu)
+        .tint(Retro.accent)
+        .accessibilityIdentifier("career.match.mentality")
+    }
+
+    private var instructionPicker: some View {
+        Picker("Instruction", selection: Binding(
+            get: { live.userInstruction },
+            set: { live.userInstruction = $0 }
+        )) {
+            ForEach(MatchInstruction.allCases) { Text($0.rawValue).tag($0) }
+        }
+        .pickerStyle(.menu)
+        .tint(Retro.highlight)
+        .accessibilityIdentifier("career.match.instruction")
     }
 
     private func speedButton(_ value: Double) -> some View {
@@ -1383,8 +1556,13 @@ struct MatchView: View {
                         fullTimeCard
                             .frame(maxWidth: .infinity, minHeight: geo.size.height)
                     }
+                    .accessibilityIdentifier("career.postMatch.scroll")
                 }
+                // Lay the footer out first so the flexible scroll area yields
+                // height to it; otherwise CONTINUE is pushed below the screen
+                // at accessibility text sizes.
                 fullTimeFooter
+                    .layoutPriority(1)
             }
         }
         .accessibilityElement(children: .contain)
@@ -1439,6 +1617,7 @@ struct MatchView: View {
                 .multilineTextAlignment(.center)
                 .accessibilityElement(children: .ignore)
                 .accessibilityIdentifier("career.postMatch.score")
+                .accessibilityLabel("\(live.homeName) \(live.homeGoals), \(live.awayName) \(live.awayGoals)")
 
             Text(fullTimeVerdict.flavor)
                 .font(.system(.caption, design: .monospaced))
@@ -1489,7 +1668,10 @@ struct MatchView: View {
                         .font(.system(.caption, design: .monospaced).bold())
                         .foregroundStyle(Retro.text)
                         .multilineTextAlignment(.center)
-                    HStack(spacing: 8) {
+                    // Accessibility sizes stack the answers so each keeps
+                    // its full wording instead of three cramped columns.
+                    let answers = largeText ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
+                    answers {
                         ForEach(question.options) { option in
                             Button {
                                 store.answerPress(option, headline: "Post-match interview")
@@ -1518,7 +1700,9 @@ struct MatchView: View {
             }
         }
         .padding(24)
-        .frame(maxWidth: 420)
+        // Accessibility sizes use the landscape width the card otherwise
+        // leaves empty, so lines wrap less.
+        .frame(maxWidth: largeText ? 720 : 420)
         .background(Retro.panel)
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .padding(.horizontal, 24)
@@ -1572,26 +1756,26 @@ struct SubsSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var offID: UUID?
     @State private var onID: UUID?
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    /// Accessibility sizes: the header and both lists share one scroll
+    /// container with names wrapping, and MAKE SUB / Cancel stay pinned.
+    private var largeText: Bool { dynamicTypeSize.isAccessibilitySize }
 
     var body: some View {
         ZStack {
             Retro.background.ignoresSafeArea()
             VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text("SUBSTITUTIONS")
-                        .font(.system(.headline, design: .monospaced).bold())
-                        .foregroundStyle(Retro.accent)
-                    Spacer()
-                    Text("\(live.userSubsLeft) remaining")
-                        .font(.system(.footnote, design: .monospaced))
-                        .foregroundStyle(Retro.highlight)
-                }
-
-                HStack(alignment: .top, spacing: 12) {
-                    column(title: "OFF (on pitch)", players: live.userOnPitch.map { ($0.player, Int($0.energy)) },
-                           selected: offID) { offID = $0 }
-                    column(title: "ON (bench)", players: live.userBench.map { ($0, nil) },
-                           selected: onID) { onID = $0 }
+                if largeText {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 12) {
+                            header
+                            columns
+                        }
+                    }
+                    .accessibilityIdentifier("career.match.sub.scroll")
+                } else {
+                    header
+                    columns
                 }
 
                 HStack {
@@ -1627,51 +1811,87 @@ struct SubsSheet: View {
         .foregroundStyle(Retro.text)
     }
 
+    private var header: some View {
+        let layout = largeText
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+            : AnyLayout(HStackLayout())
+        return layout {
+            Text("SUBSTITUTIONS")
+                .font(.system(.headline, design: .monospaced).bold())
+                .foregroundStyle(Retro.accent)
+            if !largeText { Spacer() }
+            Text("\(live.userSubsLeft) remaining")
+                .font(.system(.footnote, design: .monospaced))
+                .foregroundStyle(Retro.highlight)
+        }
+    }
+
+    private var columns: some View {
+        // Accessibility sizes stack the two lists so each name has the
+        // full sheet width instead of breaking mid-word in half a column.
+        let layout = largeText
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 16))
+            : AnyLayout(HStackLayout(alignment: .top, spacing: 12))
+        return layout {
+            column(title: "OFF (on pitch)", players: live.userOnPitch.map { ($0.player, Int($0.energy)) },
+                   selected: offID) { offID = $0 }
+            column(title: "ON (bench)", players: live.userBench.map { ($0, nil) },
+                   selected: onID) { onID = $0 }
+        }
+    }
+
     private var canSub: Bool {
         offID != nil && onID != nil && live.userSubsLeft > 0
     }
 
     private func column(title: String, players: [(Player, Int?)], selected: UUID?,
                         onSelect: @escaping (UUID) -> Void) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        let playerList = VStack(spacing: 4) {
+            ForEach(players, id: \.0.id) { player, energy in
+                Button {
+                    onSelect(player.id)
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(player.careerPositionLabel)
+                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            .frame(width: 30)
+                            .foregroundStyle(Retro.highlight)
+                        Text(surname(player.name))
+                            .lineLimit(largeText ? nil : 1)
+                            .multilineTextAlignment(.leading)
+                        Spacer()
+                        if let energy {
+                            Text("\(energy)%")
+                                .font(.system(.caption2, design: .monospaced))
+                                .foregroundStyle(energy < 70 ? Retro.highlight : Retro.text.opacity(0.7))
+                        } else {
+                            Text("\(player.rating)")
+                                .font(.system(.caption, design: .monospaced).bold())
+                                .foregroundStyle(Retro.accent)
+                        }
+                    }
+                    .font(.system(.callout, design: .monospaced))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(selected == player.id ? Retro.token.opacity(0.6) : Retro.panel.opacity(0.5))
+                    .clipShape(RoundedRectangle(cornerRadius: 5))
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("career.match.sub.\(energy == nil ? "on" : "off").\(player.id.uuidString)")
+                .accessibilityLabel("\(player.name), \(player.careerPositionLabel)")
+            }
+        }
+
+        return VStack(alignment: .leading, spacing: 6) {
             Text(title)
                 .font(.system(.caption, design: .monospaced).bold())
                 .foregroundStyle(Retro.text.opacity(0.85))
-            ScrollView {
-                VStack(spacing: 4) {
-                    ForEach(players, id: \.0.id) { player, energy in
-                        Button {
-                            onSelect(player.id)
-                        } label: {
-                            HStack(spacing: 6) {
-                                Text(player.careerPositionLabel)
-                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                    .frame(width: 30)
-                                    .foregroundStyle(Retro.highlight)
-                                Text(surname(player.name))
-                                    .lineLimit(1)
-                                Spacer()
-                                if let energy {
-                                    Text("\(energy)%")
-                                        .font(.system(.caption2, design: .monospaced))
-                                        .foregroundStyle(energy < 70 ? Retro.highlight : Retro.text.opacity(0.7))
-                                } else {
-                                    Text("\(player.rating)")
-                                        .font(.system(.caption, design: .monospaced).bold())
-                                        .foregroundStyle(Retro.accent)
-                                }
-                            }
-                            .font(.system(.callout, design: .monospaced))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 5)
-                            .background(selected == player.id ? Retro.token.opacity(0.6) : Retro.panel.opacity(0.5))
-                            .clipShape(RoundedRectangle(cornerRadius: 5))
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("career.match.sub.\(energy == nil ? "on" : "off").\(player.id.uuidString)")
-                        .accessibilityLabel("\(player.name), \(player.careerPositionLabel)")
-                    }
-                }
+            // At accessibility sizes the sheet's own scroll container holds
+            // the lists; a nested scroll per column would trap the rows.
+            if largeText {
+                playerList
+            } else {
+                ScrollView { playerList }
             }
         }
         .frame(maxWidth: .infinity)

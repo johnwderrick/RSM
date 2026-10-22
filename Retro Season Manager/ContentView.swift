@@ -195,7 +195,8 @@ struct ContentView: View {
         // season's end (see GameStore+UITestFixture.swift).
         if ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_SEASON_END") {
             let career = GameStore()
-            career.prepareCareerSeasonEndFixtureForDebug()
+            career.prepareCareerSeasonEndFixtureForDebug(
+                sacked: ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_SEASON_END_SACKED"))
             _store = State(initialValue: career)
             _experience = State(initialValue: .career)
         }

@@ -283,6 +283,9 @@ struct StarRatingView: View {
                     .foregroundStyle(Retro.highlight)
             }
         }
+        // One rating reading instead of five "Favourite" star images.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(stars) of 5 stars")
     }
 }
 

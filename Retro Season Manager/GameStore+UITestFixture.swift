@@ -1431,11 +1431,17 @@ extension GameStore {
     ///   false, so the review shows the standard verdict panel and the
     ///   CONTINUE TO SEASON 2 action (no forced job-choice trap).
     ///
+    /// The `sacked` variant then applies the board's decision through the
+    /// real `checkForSacking()` and re-rolls offers through the real
+    /// generator's sacked branch, so the review shows the SACKED banner,
+    /// a must-choose JOB OFFERS panel and a disabled handoff until an
+    /// offer is accepted.
+    ///
     /// In-memory only: a brand-new store with its own save ID. Real player
     /// saves are never read or modified; the launch argument is only ever
     /// set by the UI-test runner.
     @discardableResult
-    func prepareCareerSeasonEndFixtureForDebug() -> GameStore {
+    func prepareCareerSeasonEndFixtureForDebug(sacked: Bool = false) -> GameStore {
         // A fresh career for a known club.
         let catalogue = Self.catalogueEntries()
         let clubIndex = catalogue.firstIndex { $0.name == "Old Trafford Reds" } ?? 0
@@ -1516,6 +1522,14 @@ extension GameStore {
         }
         assert(!pendingJobOffers.isEmpty,
                "recordSeasonHonours() must have offered end-of-season job opportunities")
+
+        if sacked {
+            boardConfidence = 5
+            checkForSacking()
+            generateJobOffers()
+            assert(wasSacked && !pendingJobOffers.isEmpty,
+                   "A sacked manager must be offered at least one job")
+        }
 
         // The career is persisted exactly once, like a real session.
         persist()

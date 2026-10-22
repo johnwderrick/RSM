@@ -69,6 +69,7 @@
 		9C000000000000000000A007 /* CareerFixtureCalendarTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C000000000000000000A008 /* CareerFixtureCalendarTests.swift */; };
 		9C000000000000000000B001 /* SquadQuickSelectTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C000000000000000000B002 /* SquadQuickSelectTests.swift */; };
 		9C000000000000000000A009 /* PostMatchVerdictTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C000000000000000000A00A /* PostMatchVerdictTests.swift */; };
+		AB1E7E5700000000000A0003 /* CalendarRowAccessibilityActivationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB1E7E5700000000000A0004 /* CalendarRowAccessibilityActivationTests.swift */; };
 		A1B2C3D4E5F6071829384F01 /* CareerSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6071829384F02 /* CareerSettingsTests.swift */; };
 		A1B2C3D4E5F6071829384A11 /* CareerSettingsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6071829384A12 /* CareerSettingsUITests.swift */; };
 		D0FACED0FACE000000000D01 /* CareerTeamSetupUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0FACED0FACE000000000D02 /* CareerTeamSetupUITests.swift */; };
@@ -84,6 +85,7 @@
 		C0FAFAED0FAFE00000000A05 /* CareerLiveMatchUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FAFAED0FAFE00000000A06 /* CareerLiveMatchUITests.swift */; };
 		C0FAFAED0FAFE00000000A07 /* CareerEndUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FAFAED0FAFE00000000A08 /* CareerEndUITests.swift */; };
 		9C000000000000000000A00B /* CareerPostMatchUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C000000000000000000A00C /* CareerPostMatchUITests.swift */; };
+		AB1E7E5700000000000A0001 /* CareerLargeTextLayoutUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB1E7E5700000000000A0002 /* CareerLargeTextLayoutUITests.swift */; };
 		C0FAFAED0FAFE00000000A03 /* CareerPreMatchUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FAFAED0FAFE00000000A04 /* CareerPreMatchUITests.swift */; };
 		A1B2C3D4E5F6071829384A01 /* TransfersFixtureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6071829384A02 /* TransfersFixtureTests.swift */; };
 		A1B2C3D4E5F6071829384B01 /* TransferMarketPersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6071829384B02 /* TransferMarketPersistenceTests.swift */; };
@@ -182,6 +184,7 @@
 		9C000000000000000000A008 /* CareerFixtureCalendarTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CareerFixtureCalendarTests.swift; sourceTree = "<group>"; };
 		9C000000000000000000B002 /* SquadQuickSelectTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SquadQuickSelectTests.swift; sourceTree = "<group>"; };
 		9C000000000000000000A00A /* PostMatchVerdictTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PostMatchVerdictTests.swift; sourceTree = "<group>"; };
+		AB1E7E5700000000000A0004 /* CalendarRowAccessibilityActivationTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CalendarRowAccessibilityActivationTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6071829384F02 /* CareerSettingsTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CareerSettingsTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6071829384A12 /* CareerSettingsUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CareerSettingsUITests.swift; sourceTree = "<group>"; };
 		D0FACED0FACE000000000D02 /* CareerTeamSetupUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CareerTeamSetupUITests.swift; sourceTree = "<group>"; };
@@ -197,6 +200,7 @@
 		C0FAFAED0FAFE00000000A06 /* CareerLiveMatchUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CareerLiveMatchUITests.swift; sourceTree = "<group>"; };
 		C0FAFAED0FAFE00000000A08 /* CareerEndUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CareerEndUITests.swift; sourceTree = "<group>"; };
 		9C000000000000000000A00C /* CareerPostMatchUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CareerPostMatchUITests.swift; sourceTree = "<group>"; };
+		AB1E7E5700000000000A0002 /* CareerLargeTextLayoutUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CareerLargeTextLayoutUITests.swift; sourceTree = "<group>"; };
 		C0FAFAED0FAFE00000000A04 /* CareerPreMatchUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CareerPreMatchUITests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6071829384A02 /* TransfersFixtureTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TransfersFixtureTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6071829384B02 /* TransferMarketPersistenceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TransferMarketPersistenceTests.swift; sourceTree = "<group>"; };
@@ -278,6 +282,7 @@
 				9C000000000000000000A008 /* CareerFixtureCalendarTests.swift */,
 				9C000000000000000000B002 /* SquadQuickSelectTests.swift */,
 				9C000000000000000000A00A /* PostMatchVerdictTests.swift */,
+				AB1E7E5700000000000A0004 /* CalendarRowAccessibilityActivationTests.swift */,
 				A1B2C3D4E5F6071829384F02 /* CareerSettingsTests.swift */,
 				0582AC3CBBD90FAD6863EEFE /* ContractSheetsTests.swift */,
 				D2506E195DEE4E98995C4AE0 /* CareerLoanLifecycleTests.swift */,
@@ -392,6 +397,7 @@
 				C0FAFAED0FAFE00000000A06 /* CareerLiveMatchUITests.swift */,
 				C0FAFAED0FAFE00000000A08 /* CareerEndUITests.swift */,
 				9C000000000000000000A00C /* CareerPostMatchUITests.swift */,
+				AB1E7E5700000000000A0002 /* CareerLargeTextLayoutUITests.swift */,
 				DED8E8CEA24F798E8869840C /* CareerContractSheetsUITests.swift */,
 				E2D3C4B5A6F7081929384A5B /* CareerScoutUITests.swift */,
 				B1B2B3B4B5B6B7B8B9BABBBC /* RetroSeasonManagerUITests.swift */,
@@ -550,6 +556,7 @@
 				9C000000000000000000A007 /* CareerFixtureCalendarTests.swift in Sources */,
 				9C000000000000000000B001 /* SquadQuickSelectTests.swift in Sources */,
 				9C000000000000000000A009 /* PostMatchVerdictTests.swift in Sources */,
+				AB1E7E5700000000000A0003 /* CalendarRowAccessibilityActivationTests.swift in Sources */,
 				A1B2C3D4E5F6071829384F01 /* CareerSettingsTests.swift in Sources */,
 				C0D41EE6E559A561127D0FEE /* LegendsCardDatabaseTests.swift in Sources */,
 				00662B6C39544AA6851F522C /* LegendsPackTests.swift in Sources */,
@@ -644,6 +651,7 @@
 				C0FAFAED0FAFE00000000A05 /* CareerLiveMatchUITests.swift in Sources */,
 				C0FAFAED0FAFE00000000A07 /* CareerEndUITests.swift in Sources */,
 				9C000000000000000000A00B /* CareerPostMatchUITests.swift in Sources */,
+				AB1E7E5700000000000A0001 /* CareerLargeTextLayoutUITests.swift in Sources */,
 				1676624D235FCD63EE4EA8DA /* CareerContractSheetsUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

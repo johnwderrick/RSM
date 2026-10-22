@@ -107,6 +107,7 @@ struct CalendarView: View {
                     }
                     .buttonStyle(PressableButtonStyle())
                     .accessibilityIdentifier("career.calendar.month.previous")
+                    .accessibilityLabel("Previous month")
 
                     Text(displayedMonth.formatted(.dateTime.month(.wide).year()))
                         .font(.system(size: 12, weight: .black, design: .monospaced))
@@ -123,6 +124,7 @@ struct CalendarView: View {
                     }
                     .buttonStyle(PressableButtonStyle())
                     .accessibilityIdentifier("career.calendar.month.next")
+                    .accessibilityLabel("Next month")
 
                     Button { Haptics.tap(); displayedMonth = store.currentDate; selectedDate = store.currentDate } label: {
                         Text("TODAY")
@@ -219,10 +221,13 @@ struct CalendarView: View {
             .overlay(RoundedRectangle(cornerRadius: 6).stroke(isToday ? CareerPalette.line.opacity(0.55) : .clear, lineWidth: 1))
             .clipShape(RoundedRectangle(cornerRadius: 6))
             .foregroundStyle(CareerPalette.ink)
+            // Label the content inside the button: a label set on the Button
+            // itself did not reach the accessibility tree (day cells read "1").
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(day.formatted(.dateTime.day().month(.wide)))\(isToday ? ", today" : "")\(userDay ? ", your match" : (hasEvent ? ", event" : ""))")
+            .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : [.isButton])
         }
         .buttonStyle(.plain)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(day.formatted(.dateTime.day().month(.wide)))\(isToday ? ", today" : "")\(userDay ? ", your match" : (hasEvent ? ", event" : ""))")
     }
 
     // MARK: - Competition filters (presentation-only)
@@ -398,6 +403,13 @@ struct CalendarView: View {
             squadClubIndex = IdentifiableInt(value: opponentIndex)
         }
         .accessibilityElement(children: .ignore)
+        // Tappable row: announce it as a button and make VoiceOver activation
+        // do what a tap does (open the club squad sheet).
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction(.default) {
+            Haptics.tap()
+            squadClubIndex = IdentifiableInt(value: opponentIndex)
+        }
         .accessibilityIdentifier("career.calendar.row.\(row.played && isUser ? "played" : "upcoming").\(index)")
         .accessibilityLabel("\(row.context), \(isUser ? (userIsHome ? "home" : "away") + " against " + opponent.name : home.name + " versus " + away.name), \(row.played ? "played " + state : "upcoming")")
     }
@@ -664,6 +676,8 @@ private struct Card<Content: View>: View {
                 // element and clobber identifiers the content set itself.
                 .accessibilityElement(children: .ignore)
                 .accessibilityIdentifier(headerID ?? "")
+                // Without a label the ignored header element announces nothing.
+                .accessibilityLabel([titleText, subtitleText].filter { !$0.isEmpty }.joined(separator: ", "))
             }
             content
         }
