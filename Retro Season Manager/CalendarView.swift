@@ -387,7 +387,46 @@ struct CalendarView: View {
         let opponentIndex = isUser ? (userIsHome ? row.awayIndex : row.homeIndex) : row.homeIndex
         let opponent = store.clubs[opponentIndex]
 
-        return HStack(spacing: 8) {
+        // Precomputed with explicit types so the modifier chain below stays
+        // cheap to type-check (CI's Xcode 26.3 gave up on the inline form).
+        let matchupLabel: String
+        if isUser {
+            let venue: String = userIsHome ? "home" : "away"
+            matchupLabel = venue + " against " + opponent.name
+        } else {
+            matchupLabel = home.name + " versus " + away.name
+        }
+        let statusLabel: String = row.played ? "played " + state : "upcoming"
+        let rowLabel: LocalizedStringKey = "\(row.context), \(matchupLabel), \(statusLabel)"
+        let rowKind: String = row.played && isUser ? "played" : "upcoming"
+        let rowIdentifier: String = "career.calendar.row.\(rowKind).\(index)"
+        let rowBackground: Color = isUser ? CareerPalette.line.opacity(0.10) : Color.clear
+        let rowAccent: Color = isUser ? CareerPalette.line : Color.clear
+
+        return scheduleRowContent(row, state: state, stateColor: stateColor, isUser: isUser,
+                                  userIsHome: userIsHome, opponentIndex: opponentIndex)
+        .background(rowBackground)
+        .overlay(alignment: .leading) { Rectangle().fill(rowAccent).frame(width: 3) }
+        .contentShape(Rectangle())
+        .onTapGesture { openSquadSheet(clubIndex: opponentIndex) }
+        .accessibilityElement(children: .ignore)
+        // Tappable row: announce it as a button and make VoiceOver activation
+        // do what a tap does (open the club squad sheet).
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction(.default) { openSquadSheet(clubIndex: opponentIndex) }
+        .accessibilityIdentifier(rowIdentifier)
+        .accessibilityLabel(rowLabel)
+    }
+
+    private func scheduleRowContent(
+        _ row: ScheduleRow,
+        state: String,
+        stateColor: Color,
+        isUser: Bool,
+        userIsHome: Bool,
+        opponentIndex: Int
+    ) -> some View {
+        HStack(spacing: 8) {
             scheduleDateBadge(row)
             scheduleMatchup(row, isUser: isUser, userIsHome: userIsHome, opponentIndex: opponentIndex)
             Spacer(minLength: 3)
@@ -395,23 +434,11 @@ struct CalendarView: View {
         }
         .font(.system(size: 10, design: .monospaced)).foregroundStyle(CareerPalette.ink)
         .padding(.horizontal, 8).padding(.vertical, 7)
-        .background(isUser ? CareerPalette.line.opacity(0.10) : Color.clear)
-        .overlay(alignment: .leading) { Rectangle().fill(isUser ? CareerPalette.line : Color.clear).frame(width: 3) }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            Haptics.tap()
-            squadClubIndex = IdentifiableInt(value: opponentIndex)
-        }
-        .accessibilityElement(children: .ignore)
-        // Tappable row: announce it as a button and make VoiceOver activation
-        // do what a tap does (open the club squad sheet).
-        .accessibilityAddTraits(.isButton)
-        .accessibilityAction(.default) {
-            Haptics.tap()
-            squadClubIndex = IdentifiableInt(value: opponentIndex)
-        }
-        .accessibilityIdentifier("career.calendar.row.\(row.played && isUser ? "played" : "upcoming").\(index)")
-        .accessibilityLabel("\(row.context), \(isUser ? (userIsHome ? "home" : "away") + " against " + opponent.name : home.name + " versus " + away.name), \(row.played ? "played " + state : "upcoming")")
+    }
+
+    private func openSquadSheet(clubIndex: Int) {
+        Haptics.tap()
+        squadClubIndex = IdentifiableInt(value: clubIndex)
     }
 
     private func scheduleDateBadge(_ row: ScheduleRow) -> some View {

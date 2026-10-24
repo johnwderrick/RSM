@@ -163,16 +163,21 @@ final class CareerLargeTextLayoutUITests: XCTestCase {
         var steps = 0
         while !isFullyOnScreen(element, in: app, within: scroll, above: footer), steps < maxSteps {
             let region = visibleRegion(app, within: scroll, above: footer).insetBy(dx: 1, dy: 1)
+            // Drags also stay clear of the screen's top and bottom edges: on
+            // a short landscape screen (iPhone SE) a drag starting ~29pt from
+            // the top opens Notification Center over the app instead.
+            let clear = region.intersection(app.frame.insetBy(dx: 0, dy: 50))
+            let lane = clear.isNull || clear.height < 40 ? region : clear
             let frame = element.frame
             // Positive: content must move up (target below the region).
             let needed = frame.maxY > region.maxY
                 ? frame.maxY - region.maxY + 12
                 : -(region.minY - frame.minY + 12)
-            let far = abs(needed) > region.height * 1.5
-            let travel = far ? region.height * 0.8 : min(abs(needed), region.height * 0.8)
+            let far = abs(needed) > lane.height * 1.5
+            let travel = far ? lane.height * 0.8 : min(abs(needed), lane.height * 0.8)
             let dy = needed > 0 ? -travel : travel
             let origin = app.coordinate(withNormalizedOffset: .zero)
-            let start = origin.withOffset(CGVector(dx: region.midX, dy: region.midY - dy / 2))
+            let start = origin.withOffset(CGVector(dx: lane.midX, dy: lane.midY - dy / 2))
             start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: dy)),
                         withVelocity: far ? .fast : .slow, thenHoldForDuration: far ? 0 : 0.3)
             steps += 1
