@@ -66,7 +66,18 @@ final class CalendarRowAccessibilityActivationTests: XCTestCase {
         await settle()
         let title = firstElement(in: sheet.view) { $0.accessibilityLabel == opponent }
         XCTAssertNotNil(title, "The presented sheet should be \(opponent)'s squad")
+
+        // Tear the sheet and window down and let UIKit release them while
+        // this test still holds `store`. Left to UIKit, the sheet's hosting
+        // view drops the last store reference from a run-loop autorelease
+        // pool during the *next* test, outside any task, and GameStore's
+        // main-actor deinit then hits the Concurrency runtime's TaskLocal
+        // double-free (see makeTestStore()).
         sheet.dismiss(animated: false)
+        window.rootViewController = nil
+        window.isHidden = true
+        await settle()
+        withExtendedLifetime(store) {}
     }
 
     // MARK: - Helpers

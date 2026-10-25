@@ -694,10 +694,14 @@ struct MatchView: View {
             // technologies cannot reach (or hit-test onto) SKIP, SUBS or the
             // pickers behind the card's own actions.
             .accessibilityHidden(live.isHalfTime || live.isFinished)
-            if penaltyFlash { penaltyFlashOverlay }
-            if redCardFlash { redCardFlashOverlay }
-            if goalFlash { goalFlashOverlay }
-            if let eventFlash { MatchFlashOverlay(kind: eventFlash) }
+            // The flashes are decorative and already pass touches through;
+            // keep them out of the accessibility tree too, so a full-screen
+            // flash image never answers an assistive hit test over PAUSE or
+            // the other live controls. The score and feed carry the event.
+            if penaltyFlash { penaltyFlashOverlay.accessibilityHidden(true) }
+            if redCardFlash { redCardFlashOverlay.accessibilityHidden(true) }
+            if goalFlash { goalFlashOverlay.accessibilityHidden(true) }
+            if let eventFlash { MatchFlashOverlay(kind: eventFlash).accessibilityHidden(true) }
             if showConfetti { PixelConfettiBurst(colors: confettiColors) }
             if live.isHalfTime {
                 halfTimeSummaryOverlay
