@@ -396,6 +396,38 @@ final class CareerLargeTextLayoutUITests: XCTestCase {
         capture(app, size, step, [("topBarAction", app.buttons["career.continue"])])
     }
 
+    private func runAchievementOverSeasonReview(_ size: TextSize) {
+        let app = launch(size, ["UITEST_CAREER_SEASON_END",
+                                "UITEST_CAREER_SEASON_END_ACHIEVEMENT",
+                                "UITEST_HOLD_ACHIEVEMENT_CELEBRATION"])
+        let celebration = anyElement(app, "career.achievement.screen")
+        XCTAssertTrue(celebration.waitForExistence(timeout: 40))
+        capture(app, size, "achievement_over_review")
+        let coveredHandoff = app.buttons["career.seasonReview.continue"]
+        print("ACHIEVEMENT covered handoff exists=\(coveredHandoff.exists) hittable=\(coveredHandoff.isHittable)")
+        // XCTest can retain covered descendants in its structural hierarchy;
+        // assert the relevant interaction state rather than structural absence.
+        XCTAssertFalse(coveredHandoff.isHittable,
+                       "The covered season handoff must not be an accessible tap target")
+        let dismiss = app.buttons["career.achievement.continue"]
+        XCTAssertTrue(dismiss.isHittable)
+        dismiss.tap()
+        XCTAssertTrue(anyElement(app, "career.seasonReview.screen").waitForExistence(timeout: 10))
+        let handoff = app.buttons["career.seasonReview.continue"]
+        assertPinned(handoff, app, "Season CONTINUE after celebration")
+        handoff.tap()
+        assertDashboardAfterRollover(app, size, "achievement_then_next_dashboard")
+        app.terminate()
+    }
+
+    func testAchievementCelebrationHidesSeasonHandoffAtDefaultText() {
+        runAchievementOverSeasonReview(.standard)
+    }
+
+    func testAchievementCelebrationHidesSeasonHandoffAtLargestAccessibilityText() {
+        runAchievementOverSeasonReview(.largest)
+    }
+
     private func runSeasonReview(_ size: TextSize) {
         let app = openSeasonReview(size, sacked: false)
         let cont = app.buttons["career.seasonReview.continue"]
