@@ -197,6 +197,9 @@ struct ContentView: View {
             let career = GameStore()
             career.prepareCareerSeasonEndFixtureForDebug(
                 sacked: ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_SEASON_END_SACKED"))
+            if ProcessInfo.processInfo.arguments.contains("UITEST_CAREER_SEASON_END_ACHIEVEMENT") {
+                career.pendingAchievementCelebration = .leagueTitle
+            }
             _store = State(initialValue: career)
             _experience = State(initialValue: .career)
         }
@@ -263,35 +266,41 @@ struct ContentView: View {
     var body: some View {
         ZStack {
             Retro.background.ignoresSafeArea()
-            if startsAtNewGame && !store.hasStarted {
-                ClubSelectView(store: store, onBack: {
-                    startsAtNewGame = false
-                    experience = nil
-                })
-            } else if let live = store.live {
-                MatchView(store: store, live: live)
-            } else if store.atPreMatch {
-                PreMatchHubView(store: store)
-            } else if store.careerEnded {
-                CareerEndView(store: store)
-            } else if store.hasStarted && store.isSeasonOver {
-                SeasonReviewView(store: store)
-            } else if store.hasStarted {
-                MainGameView(store: store)
-            } else if experience == .legends {
-                if legendsStore.profile.managerProfile == nil {
-                    LegendsManagerOnboardingView(store: legendsStore) {
-                        // The profile is persisted by the onboarding flow;
-                        // the surrounding view re-evaluates into the dashboard.
+            ZStack {
+                if startsAtNewGame && !store.hasStarted {
+                    ClubSelectView(store: store, onBack: {
+                        startsAtNewGame = false
+                        experience = nil
+                    })
+                } else if let live = store.live {
+                    MatchView(store: store, live: live)
+                } else if store.atPreMatch {
+                    PreMatchHubView(store: store)
+                } else if store.careerEnded {
+                    CareerEndView(store: store)
+                } else if store.hasStarted && store.isSeasonOver {
+                    SeasonReviewView(store: store)
+                } else if store.hasStarted {
+                    MainGameView(store: store)
+                } else if experience == .legends {
+                    if legendsStore.profile.managerProfile == nil {
+                        LegendsManagerOnboardingView(store: legendsStore) {
+                            // The profile is persisted by the onboarding flow;
+                            // the surrounding view re-evaluates into the dashboard.
+                        }
+                    } else {
+                        LegendsHomeView(store: legendsStore) { experience = nil }
                     }
+                } else if experience == .career {
+                    MainMenuView(store: store, onSwitchExperience: { experience = nil })
                 } else {
-                    LegendsHomeView(store: legendsStore) { experience = nil }
+                    ExperienceSelectView(experience: $experience)
                 }
-            } else if experience == .career {
-                MainMenuView(store: store, onSwitchExperience: { experience = nil })
-            } else {
-                ExperienceSelectView(experience: $experience)
             }
+            // The celebration is a modal interaction. Covered controls must
+            // not remain discoverable/activatable by assistive technologies.
+            .accessibilityElement(children: .contain)
+            .accessibilityHidden(store.pendingAchievementCelebration != nil)
             if store.isBusy {
                 LoadingOverlay(message: store.busyMessage)
             }

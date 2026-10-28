@@ -52,6 +52,7 @@ struct AchievementUnlockOverlay: View {
                         .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier(CareerIdentifiers.achievementContinue)
                 .padding(.top, 8)
             }
             .scaleEffect(popped ? 1.0 : 0.6)
@@ -60,6 +61,8 @@ struct AchievementUnlockOverlay: View {
             }
             CRTScanlineOverlay()
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(CareerIdentifiers.achievementScreen)
         .matchShake(trigger: shakeTrigger)
         .onAppear {
             withAnimation(.spring(response: 0.4, dampingFraction: 0.6)) { popped = true }
@@ -68,6 +71,11 @@ struct AchievementUnlockOverlay: View {
             Haptics.success()
             // Never blocks play if the player doesn't tap Continue.
             Task {
+                #if DEBUG
+                // Hold only the explicit modal regression fixture so assertions
+                // cannot race the normal six-second automatic dismissal.
+                if ProcessInfo.processInfo.arguments.contains("UITEST_HOLD_ACHIEVEMENT_CELEBRATION") { return }
+                #endif
                 try? await Task.sleep(for: .seconds(6))
                 if store.pendingAchievementCelebration == kind {
                     store.pendingAchievementCelebration = nil

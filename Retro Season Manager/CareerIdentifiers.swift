@@ -31,6 +31,11 @@ enum CareerIdentifiers {
     /// The dashboard top bar's season label (e.g. "… · SEASON 2001/02").
     static let homeSeasonLabel = "career.home.seasonLabel"
 
+    // MARK: Achievement celebration
+
+    static let achievementScreen = "career.achievement.screen"
+    static let achievementContinue = "career.achievement.continue"
+
     // MARK: Season-end review
 
     /// The SeasonReviewView root canvas.
