@@ -21,15 +21,42 @@ final class CalendarRowAccessibilityActivationTests: XCTestCase {
 
     func testScheduleRowAccessibilityActivationOpensOpponentSquadSheet() async throws {
         try enableAccessibilityAutomation()
-        let store = await makeTestStore()
-        store.prepareCareerNavigationFixtureForDebug()
+        // Keep construction, UIKit teardown and the final store release in
+        // one real Swift task. UIKit/SwiftUI autorelease pools must not own
+        // the last GameStore reference after the test has returned.
+        try await Task { @MainActor in
+            var retainedStore: GameStore? = await makeTestStore()
+            weak var releasedStore = retainedStore
+            var activationError: Error?
+            do {
+                let store = try XCTUnwrap(retainedStore)
+                store.prepareCareerNavigationFixtureForDebug()
+                try await activateUpcomingRowAndCheckSheet(store: store)
+            } catch {
+                activationError = error
+            }
+            // The helper's row, sheet, host and window locals are now gone.
+            // Yield a run-loop turn while the task still owns the store so
+            // UIKit can drain the presentation's autoreleased references.
+            await settle()
+            retainedStore = nil
+            XCTAssertNil(releasedStore, "Calendar and squad-sheet hosts must release the store during task-owned cleanup")
+            if let activationError { throw activationError }
+        }.value
+    }
 
+    private func activateUpcomingRowAndCheckSheet(store: GameStore) async throws {
         // A tall landscape-width window so the whole schedule is laid out.
         let host = UIHostingController(rootView: CalendarView(store: store))
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 874, height: 2400))
         window.rootViewController = host
         window.makeKeyAndVisible()
-        defer { window.isHidden = true }
+        defer {
+            // Also detach on an unwrap/activation failure, not just success.
+            host.dismiss(animated: false)
+            window.rootViewController = nil
+            window.isHidden = true
+        }
         await settle()
 
         var seen: [String] = []
@@ -67,17 +94,12 @@ final class CalendarRowAccessibilityActivationTests: XCTestCase {
         let title = firstElement(in: sheet.view) { $0.accessibilityLabel == opponent }
         XCTAssertNotNil(title, "The presented sheet should be \(opponent)'s squad")
 
-        // Tear the sheet and window down and let UIKit release them while
-        // this test still holds `store`. Left to UIKit, the sheet's hosting
-        // view drops the last store reference from a run-loop autorelease
-        // pool during the *next* test, outside any task, and GameStore's
-        // main-actor deinit then hits the Concurrency runtime's TaskLocal
-        // double-free (see makeTestStore()).
-        sheet.dismiss(animated: false)
-        window.rootViewController = nil
-        window.isHidden = true
-        await settle()
-        withExtendedLifetime(store) {}
+        // Wait for actual dismissal, then return out of this helper so
+        // every strong accessibility/controller local is released before
+        // the caller checks the fixture's lifetime.
+        await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+            sheet.dismiss(animated: false) { done.resume() }
+        }
     }
 
     // MARK: - Helpers
